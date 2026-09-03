@@ -1,0 +1,6 @@
+{
+  "PreToolUse": [
+    {"matcher": "Bash", "script": "git-guard.py", "timeout": 10},
+    {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "script": "write-guard.py", "timeout": 10}
+  ]
+}
