@@ -30,6 +30,11 @@ class RenderAgentsMdTest(unittest.TestCase):
             capture_output=True,
         )
 
+    def assert_error(self, proc):
+        self.assertEqual(proc.returncode, 1)
+        self.assertTrue(proc.stderr.startswith(b"ERROR: "), proc.stderr)
+        self.assertEqual(proc.stdout, b"")
+
     def test_marker_blank_line_claude_md_verbatim_then_rule_bodies_in_name_order(self):
         self.rule("b-style.md", '---\npaths: ["**/*.ts"]\n---\n\n# Style\n\nBody b.\n')
         self.rule("a-git.md", "# Git\n\nBody a.\n")
@@ -45,8 +50,14 @@ class RenderAgentsMdTest(unittest.TestCase):
     def test_empty_rules_dir_renders_claude_md_alone(self):
         self.assertEqual(self.render().stdout, (MARKER + "\n\n" + CLAUDE_MD).encode("utf-8"))
 
+    def test_rule_body_is_unchanged_with_or_without_frontmatter(self):
+        self.rule("a.md", "# Git\n\nBody a.\n")
+        self.rule("b.md", "---\nother: true\n---\n# Notes\n\nBody b.\n")
+        expected = MARKER + "\n\n" + CLAUDE_MD + "\n# Git\n\nBody a.\n" + "\n# Notes\n\nBody b.\n"
+        self.assertEqual(self.render().stdout, expected.encode("utf-8"))
+
     def test_frontmatter_is_removed_only_as_a_leading_fenced_block(self):
-        self.rule("a.md", '---\npaths: ["x"]\n---\nbody a\n')
+        self.rule("a.md", "---\nother: true\n---\nbody a\n")
         self.rule("b.md", "# Title\n---\nnot frontmatter\n---\nbody b\n")
         self.rule("c.md", "---\nunterminated: true\nbody c\n")
         self.rule("d.md", "body d\n")
@@ -70,16 +81,10 @@ class RenderAgentsMdTest(unittest.TestCase):
         self.assertTrue(self.render().stdout.endswith(b"\nbody\n"))
 
     def test_missing_claude_md_exits_1_with_error(self):
-        proc = self.render(claude_md=self.dir / "absent.md")
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith(b"ERROR: "), proc.stderr)
-        self.assertEqual(proc.stdout, b"")
+        self.assert_error(self.render(claude_md=self.dir / "absent.md"))
 
     def test_missing_rules_dir_exits_1_with_error(self):
-        proc = self.render(rules_dir=self.dir / "absent")
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith(b"ERROR: "), proc.stderr)
-        self.assertEqual(proc.stdout, b"")
+        self.assert_error(self.render(rules_dir=self.dir / "absent"))
 
 
 if __name__ == "__main__":

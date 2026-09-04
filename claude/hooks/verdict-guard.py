@@ -1,22 +1,32 @@
 #!/usr/bin/env python3
-"""SubagentStop hook: a reviewer or verifier whose last message states no verdict is sent back to state one."""
+"""SubagentStop hook: a reviewer whose last message does not end with its verdict, or a verifier whose last message states none, is sent back to give one."""
 
 import json
 import re
 import sys
 
-VERDICTS = {
-    "reviewer": (("ACCEPTED", "NOT ACCEPTED"), "reviewer output must end with ACCEPTED or NOT ACCEPTED"),
-    "verifier": (("VERIFIED", "DISPROVEN", "UNVERIFIABLE"), "verifier output must state VERIFIED, DISPROVEN or UNVERIFIABLE per claim"),
-}
 EMPHASIS = re.compile(r"[*_`]")
 BEFORE = r'(?:^|(?<=[\s("]))'
 AFTER = r'(?=$|[\s.,;:!?)"])'
 
 
+def ends_with_verdict(message, tokens):
+    lines = [line for line in message.splitlines() if line.strip()]
+    if not lines:
+        return False
+    final = EMPHASIS.sub("", lines[-1]).strip()
+    return any(final in (token, token + ".") for token in tokens)
+
+
 def states_verdict(message, tokens):
     plain = EMPHASIS.sub("", message)
     return any(re.search(BEFORE + re.escape(token) + AFTER, plain, re.MULTILINE) for token in tokens)
+
+
+VERDICTS = {
+    "reviewer": (("ACCEPTED", "NOT ACCEPTED"), ends_with_verdict, "reviewer output must end with ACCEPTED or NOT ACCEPTED"),
+    "verifier": (("VERIFIED", "DISPROVEN", "UNVERIFIABLE"), states_verdict, "verifier output must state VERIFIED, DISPROVEN or UNVERIFIABLE per claim"),
+}
 
 
 def evaluate(hook_input):
@@ -26,9 +36,9 @@ def evaluate(hook_input):
     verdict = VERDICTS.get(hook_input.get("agent_type"))
     if verdict is None:
         return None
-    tokens, failure = verdict
+    tokens, states, failure = verdict
     message = hook_input.get("last_assistant_message")
-    if isinstance(message, str) and states_verdict(message, tokens):
+    if isinstance(message, str) and states(message, tokens):
         return None
     return failure
 

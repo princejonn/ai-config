@@ -4,10 +4,13 @@ Source of truth for Claude Code configuration under `~/.claude`, shared with Cod
 
 ```
 apply.sh                     symlinks claude/ into ~/.claude and ~/.agents/skills, renders ~/.codex/AGENTS.md, merges hooks into settings.json
+apply-ts.sh                  symlinks claude/rulesets/typescript/ into <folder>/.claude/rules
+lib/links.sh                 link classification, pruning and foreign-entry reporting shared by both apply scripts
 claude/CLAUDE.md             global instructions
 claude/hooks.json            hook manifest: event -> [{matcher, script, timeout}]
 claude/hooks/                hook scripts
 claude/skills/ agents/ rules/
+claude/rulesets/typescript/  rules for TypeScript roots, linked per folder
 scripts/merge_settings.py    settings.json merge
 scripts/render_agents_md.py  AGENTS.md render
 tests/
@@ -25,9 +28,19 @@ and an absent `~/.codex` is skipped. `CLAUDE_CONFIG_DIR`, `AGENTS_SKILLS_DIR` an
 override the target paths.
 
 Hooks: `git-guard.py` and `write-guard.py` run on `PreToolUse`; `verdict-guard.py` runs on
-`SubagentStop` and sends a `reviewer` back once when its message states neither `ACCEPTED` nor
-`NOT ACCEPTED`, and a `verifier` once when it states none of `VERIFIED`, `DISPROVEN`, `UNVERIFIABLE`.
+`SubagentStop` and sends a `reviewer` back once when its final line is neither `ACCEPTED` nor
+`NOT ACCEPTED`, and a `verifier` once when its message states none of `VERIFIED`, `DISPROVEN`,
+`UNVERIFIABLE`.
 
 `./apply.sh --check` mutates nothing and exits 0 only when everything is already in place.
 
-Tests: `python3 -m unittest discover -s tests -v` and `bash tests/test_apply.sh`.
+`claude/rulesets/typescript/` holds the rules that apply only where TypeScript is written;
+each carries a `paths` frontmatter, so Claude Code loads it for matching files only. Claude
+Code reads a root's `.claude/rules` from every repo beneath it. `./apply-ts.sh <folder>` links
+the set into `<folder>/.claude/rules` with the same `ok`, `link`, `adopt` and `CONFLICT` rules
+as `apply.sh`, prunes links to removed set files and lists foreign entries;
+`./apply-ts.sh --check <folder>` mutates nothing and exits 0 only when the folder is already
+in place.
+
+Tests: `python3 -m unittest discover -s tests -v`, `bash tests/test_apply.sh` and
+`bash tests/test_apply_ts.sh`.

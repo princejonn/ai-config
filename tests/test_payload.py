@@ -8,6 +8,7 @@ CLAUDE = REPO / "claude"
 SKILLS = CLAUDE / "skills"
 AGENTS = CLAUDE / "agents"
 RULES = CLAUDE / "rules"
+RULESETS = CLAUDE / "rulesets"
 HOOKS = CLAUDE / "hooks"
 
 SKILL_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
@@ -139,8 +140,12 @@ def rule_files():
     return sorted(p for p in RULES.iterdir() if p.name != ".DS_Store")
 
 
+def ruleset_files():
+    return sorted(RULESETS.glob("*/*.md"))
+
+
 def payload_files():
-    return [CLAUDE / "CLAUDE.md", *rule_files(), *(d / "SKILL.md" for d in skill_dirs()), *agent_files()]
+    return [CLAUDE / "CLAUDE.md", *rule_files(), *ruleset_files(), *(d / "SKILL.md" for d in skill_dirs()), *agent_files()]
 
 
 def skill_docs():
@@ -274,17 +279,36 @@ class AgentsTest(unittest.TestCase):
 
 
 class RulesTest(unittest.TestCase):
-    def test_code_style_is_scoped_to_typescript(self):
-        fields, _ = parse_frontmatter(read(RULES / "code-style.md"))
-        self.assertIn("**/*.ts", fields["paths"])
+    def test_global_rule_set_is_exactly_git_and_writing(self):
+        self.assertEqual({p.name for p in rule_files()}, {"git.md", "writing.md"})
 
-    def test_other_rules_have_no_frontmatter(self):
+    def test_ruleset_set_is_exactly_typescript_code_style(self):
+        self.assertEqual({str(p.relative_to(RULESETS)) for p in ruleset_files()}, {"typescript/code-style.md"})
+
+    def test_every_global_rule_has_no_frontmatter(self):
         for p in rule_files():
-            if p.name == "code-style.md":
-                continue
             with self.subTest(rule=p.name):
                 fields, _ = parse_frontmatter(read(p))
                 self.assertIsNone(fields)
+
+    def test_every_ruleset_rule_lists_at_least_one_paths_glob(self):
+        for p in ruleset_files():
+            with self.subTest(rule=p.relative_to(RULESETS).as_posix()):
+                fields, _ = parse_frontmatter(read(p))
+                self.assertIsNotNone(fields)
+                paths = fields.get("paths")
+                self.assertIsInstance(paths, list)
+                self.assertTrue(paths)
+                for pattern in paths:
+                    self.assertIsInstance(pattern, str)
+                    self.assertTrue(pattern)
+
+    def test_every_rule_body_opens_with_a_heading(self):
+        for p in [*rule_files(), *ruleset_files()]:
+            with self.subTest(rule=p.relative_to(CLAUDE).as_posix()):
+                _, body = parse_frontmatter(read(p))
+                opening = next((line for line in body.splitlines() if line.strip()), "")
+                self.assertTrue(opening.startswith("# "), opening)
 
 
 class HooksTest(unittest.TestCase):
