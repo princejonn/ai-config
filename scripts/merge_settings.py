@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge the manifest's hook handlers into a Claude Code settings.json."""
+"""Merge the manifest's hook handlers and add-when-absent defaults into a Claude Code settings.json."""
 
 from __future__ import annotations
 
@@ -12,7 +12,8 @@ import sys
 import tempfile
 from typing import Any
 
-Manifest = dict[str, list[dict[str, Any]]]
+HooksManifest = dict[str, list[dict[str, Any]]]
+MANIFEST_KEYS = {"hooks", "defaults"}
 
 
 def parse_args() -> argparse.Namespace:
@@ -73,7 +74,7 @@ def owned_group(entry: dict[str, Any], hooks_dir: Path) -> dict[str, Any]:
     }
 
 
-def merge(document: dict[str, Any], manifest: Manifest, hooks_dir: Path) -> dict[str, Any]:
+def merge_hooks(document: dict[str, Any], manifest: HooksManifest, hooks_dir: Path) -> None:
     hooks = document.setdefault("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError("settings field 'hooks' must be an object")
@@ -92,6 +93,32 @@ def merge(document: dict[str, Any], manifest: Manifest, hooks_dir: Path) -> dict
         groups.extend(owned_group(entry, hooks_dir) for entry in entries)
     for event in [e for e, groups in hooks.items() if groups == [] and e not in preexisting_empty]:
         del hooks[event]
+
+
+def add_defaults(document: dict[str, Any], defaults: dict[str, Any]) -> None:
+    for dotted_path, value in defaults.items():
+        *parents, leaf = dotted_path.split(".")
+        node = document
+        for depth, segment in enumerate(parents, start=1):
+            node = node.setdefault(segment, {})
+            if not isinstance(node, dict):
+                raise ValueError(f"settings field '{'.'.join(parents[:depth])}' must be an object")
+        node.setdefault(leaf, value)
+
+
+def merge(document: dict[str, Any], manifest: dict[str, Any], hooks_dir: Path) -> dict[str, Any]:
+    if not MANIFEST_KEYS & set(manifest):
+        raise ValueError("manifest must carry 'hooks' or 'defaults'")
+    unknown = set(manifest) - MANIFEST_KEYS
+    if unknown:
+        raise ValueError(f"manifest has unknown keys: {', '.join(sorted(unknown))}")
+    for key, section in manifest.items():
+        if not isinstance(section, dict):
+            raise ValueError(f"manifest field '{key}' must be an object")
+    if "hooks" in manifest:
+        merge_hooks(document, manifest["hooks"], hooks_dir)
+    if "defaults" in manifest:
+        add_defaults(document, manifest["defaults"])
     return document
 
 

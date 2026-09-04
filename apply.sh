@@ -68,14 +68,14 @@ generate_agents_md
 settings_status=0
 if [ "$CHECK" = 1 ]; then
   python3 "$REPO/scripts/merge_settings.py" --settings "$CLAUDE_HOME/settings.json" \
-    --hooks-dir "$CLAUDE_HOME/hooks" --manifest "$REPO/claude/hooks.json" --check \
+    --hooks-dir "$CLAUDE_HOME/hooks" --manifest "$REPO/claude/settings.json" --check \
     || settings_status=$?
   if [ "$pending" = 0 ] && [ "$conflicts" = 0 ] && [ "$settings_status" = 0 ]; then exit 0; fi
   exit 1
 fi
 
 python3 "$REPO/scripts/merge_settings.py" --settings "$CLAUDE_HOME/settings.json" \
-  --hooks-dir "$CLAUDE_HOME/hooks" --manifest "$REPO/claude/hooks.json" || settings_status=$?
+  --hooks-dir "$CLAUDE_HOME/hooks" --manifest "$REPO/claude/settings.json" || settings_status=$?
 if [ "$conflicts" = 0 ] && [ "$settings_status" = 0 ]; then
   echo "Applied. Restart Claude Code sessions to pick up changes."
   exit 0

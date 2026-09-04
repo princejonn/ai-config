@@ -7,7 +7,7 @@ apply.sh                     symlinks claude/ into ~/.claude and ~/.agents/skill
 apply-ts.sh                  symlinks claude/rulesets/typescript/ into <folder>/.claude/rules
 lib/links.sh                 link classification, pruning and foreign-entry reporting shared by both apply scripts
 claude/CLAUDE.md             global instructions
-claude/hooks.json            hook manifest: event -> [{matcher, script, timeout}]
+claude/settings.json         manifest: hooks (event -> [{matcher, script, timeout}]) and add-when-absent defaults
 claude/hooks/                hook scripts
 claude/skills/ agents/ rules/
 claude/rulesets/typescript/  rules for TypeScript roots, linked per folder
@@ -17,20 +17,25 @@ tests/
 ```
 
 `./apply.sh` links every owned path, prunes dangling links into this repo, merges the manifest
-hooks into `~/.claude/settings.json` and lists foreign entries in the owned dirs. It refuses to
+hooks into `~/.claude/settings.json`, adds its defaults where absent and lists foreign entries in
+the owned dirs. The defaults turn off commit and PR attribution and allow `git commit`, `rm`,
+`find` and `mv` without a prompt; `git-guard.py` guards the first three, so the permission layer is
+not a second gate. A present key, even partial, is left as it is. `apply.sh` refuses to
 overwrite a file it does not own: a differing file is reported as `CONFLICT` and must be moved
 aside by hand. A byte-identical file is adopted as a symlink.
 
 Codex reads the same skills through `~/.agents/skills/<name>` links and the same instructions
 through `~/.codex/AGENTS.md`, rendered from `claude/CLAUDE.md` followed by `claude/rules/*.md`
-with their frontmatter removed. The first line is a marker; a file without it is a `CONFLICT`,
-and an absent `~/.codex` is skipped. `CLAUDE_CONFIG_DIR`, `AGENTS_SKILLS_DIR` and `CODEX_HOME`
-override the target paths.
+with their frontmatter removed. Blocks between `<!-- claude-only -->` and
+`<!-- /claude-only -->` describe Claude's machinery and are left out of the render. The first
+line is a marker; a file without it is a `CONFLICT`, and an absent `~/.codex` is skipped.
+`CLAUDE_CONFIG_DIR`, `AGENTS_SKILLS_DIR` and `CODEX_HOME` override the target paths.
 
 Hooks: `git-guard.py` and `write-guard.py` run on `PreToolUse`; `verdict-guard.py` runs on
-`SubagentStop` and sends a `reviewer` back once when its final line is neither `ACCEPTED` nor
-`NOT ACCEPTED`, and a `verifier` once when its message states none of `VERIFIED`, `DISPROVEN`,
-`UNVERIFIABLE`.
+`SubagentStop` and sends a `reviewer` back once when its final line is none of `ACCEPTED`,
+`NOT ACCEPTED`, `BLOCKED`, and a `verifier` once when its message states none of `VERIFIED`,
+`DISPROVEN`, `UNVERIFIABLE`. A hook denies or stays silent; it never asks, so a run reaches
+its report without a prompt from a hook.
 
 `./apply.sh --check` mutates nothing and exits 0 only when everything is already in place.
 
