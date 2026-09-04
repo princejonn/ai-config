@@ -13,7 +13,7 @@ HOOKS = CLAUDE / "hooks"
 SKILL_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
 DESCRIPTION_MAX = 1024
 BODY_MAX_LINES = 200
-CLAUDE_MD_MAX_BYTES = 3400
+CLAUDE_MD_MAX_BYTES = 3800
 MODELS = {"fable", "sonnet"}
 
 SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
@@ -26,16 +26,22 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "implement": {},
     "test": {},
     "deliver": {},
+    "debug": {},
+    "second-opinion": {},
+    "author-skill": {},
 }
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
-EXPECTED_AGENT_SKILLS = {"developer": ["implement", "test"], "tester": ["test"]}
+EXPECTED_AGENT_SKILLS = {"developer": ["implement", "test", "debug"], "tester": ["test"]}
 EXPECTED_AGENTS = {"developer", "researcher", "reviewer", "tester", "verifier"}
 
-ONE_HOME_PHRASES = (
-    "never pipe through",
-    "enumerating the population",
-    "copy it aside",
-)
+ONE_HOME_PHRASES = {
+    "never pipe through": "claude/CLAUDE.md",
+    "enumerating the population": "claude/CLAUDE.md",
+    "copy it aside": "claude/skills/test/SKILL.md",
+    "root cause": "claude/skills/debug/SKILL.md",
+    "decorrelation": "claude/skills/second-opinion/SKILL.md",
+}
+COMMIT_SIDECAR = SKILLS / "commit" / "agents" / "openai.yaml"
 ABSENT_PHRASES = (
     "exhaustive over intent",
     "The tree is not yours",
@@ -84,6 +90,37 @@ def parse_frontmatter(text):
             raise ValueError(f"duplicate key: {key.strip()!r}")
         fields[key.strip()] = parse_value(raw.strip())
     return fields, text[end + len("\n---\n"):]
+
+
+def parse_sidecar(text):
+    fields = {}
+    parent = None
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        key, sep, raw = line.partition(":")
+        if not sep:
+            raise ValueError(f"not a key: value line: {line!r}")
+        key = key.strip()
+        if "\t" in line:
+            raise ValueError(f"tab indentation: {line!r}")
+        if line[0].isspace():
+            if parent is None:
+                raise ValueError(f"nested value without parent: {line!r}")
+            target = fields[parent]
+        else:
+            target = fields
+        if key in target:
+            raise ValueError(f"duplicate key: {key!r}")
+        if line[0].isspace():
+            target[key] = parse_value(raw.strip())
+        elif raw.strip():
+            target[key] = parse_value(raw.strip())
+            parent = None
+        else:
+            target[key] = {}
+            parent = key
+    return fields
 
 
 def read(path):
@@ -148,8 +185,33 @@ class FrontmatterParserTest(unittest.TestCase):
             parse_frontmatter('---\na: [one, "two]\n---\n')
 
 
+class SidecarParserTest(unittest.TestCase):
+    def test_one_level_of_nesting(self):
+        self.assertEqual(parse_sidecar("a:\n  b: false\n  c: one\nd: two\n"), {"a": {"b": False, "c": "one"}, "d": "two"})
+
+    def test_indented_line_without_parent_raises(self):
+        with self.assertRaises(ValueError):
+            parse_sidecar("  b: false\n")
+
+    def test_duplicate_nested_key_raises(self):
+        with self.assertRaises(ValueError):
+            parse_sidecar("a:\n  b: true\n  b: false\n")
+
+    def test_duplicate_top_level_key_raises(self):
+        with self.assertRaises(ValueError):
+            parse_sidecar("a: one\na: two\n")
+
+    def test_tab_indentation_raises(self):
+        with self.assertRaises(ValueError):
+            parse_sidecar("a:\n\tb: false\n")
+
+    def test_top_level_scalar_closes_the_nested_block(self):
+        with self.assertRaises(ValueError):
+            parse_sidecar("a:\n  b: false\nd: two\n  e: one\n")
+
+
 class SkillsTest(unittest.TestCase):
-    def test_skill_set_is_exactly_the_nine(self):
+    def test_skill_set_is_exactly_the_twelve(self):
         self.assertEqual({d.name for d in skill_dirs()}, set(SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION))
         for d in skill_dirs():
             self.assertTrue(d.is_dir(), d)
@@ -179,6 +241,13 @@ class SkillsTest(unittest.TestCase):
                 expected = SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION[name]
                 self.assertEqual(set(fields), {"name", "description", *expected})
                 self.assertEqual({key: fields[key] for key in expected}, expected)
+
+    def test_commit_sidecar_denies_implicit_invocation(self):
+        self.assertTrue(COMMIT_SIDECAR.is_file(), COMMIT_SIDECAR)
+        fields = parse_sidecar(read(COMMIT_SIDECAR))
+        self.assertEqual(set(fields), {"policy"})
+        self.assertEqual(set(fields["policy"]), {"allow_implicit_invocation"})
+        self.assertIs(fields["policy"]["allow_implicit_invocation"], False)
 
 
 class AgentsTest(unittest.TestCase):
@@ -228,20 +297,28 @@ class HooksTest(unittest.TestCase):
 
 
 class ClaudeMdTest(unittest.TestCase):
-    def test_at_most_3400_bytes(self):
+    def test_at_most_3800_bytes(self):
         self.assertLessEqual((CLAUDE / "CLAUDE.md").stat().st_size, CLAUDE_MD_MAX_BYTES)
 
 
 class OneHomeTest(unittest.TestCase):
-    def test_each_one_home_phrase_occurs_exactly_once_across_payload(self):
-        for phrase in ONE_HOME_PHRASES:
+    def test_each_one_home_phrase_lives_only_in_its_home(self):
+        for phrase, home in ONE_HOME_PHRASES.items():
             with self.subTest(phrase=phrase):
-                self.assertEqual(sum(phrase_homes(phrase).values()), 1, phrase_homes(phrase))
+                self.assertEqual(phrase_homes(phrase), {home})
 
     def test_each_absent_phrase_occurs_nowhere_in_payload(self):
         for phrase in ABSENT_PHRASES:
             with self.subTest(phrase=phrase):
-                self.assertEqual(phrase_homes(phrase), {})
+                self.assertEqual(phrase_homes(phrase), set())
+
+
+class DescriptionsTest(unittest.TestCase):
+    def test_no_description_narrates_with_an_arrow(self):
+        for kind, docs in (("skill", skill_docs()), ("agent", agent_docs())):
+            for name, (fields, _) in docs.items():
+                with self.subTest(kind=kind, name=name):
+                    self.assertNotIn("\u2192", fields["description"])
 
 
 class SkillPassagesTest(unittest.TestCase):
@@ -270,7 +347,7 @@ class SkillPassagesTest(unittest.TestCase):
 
 
 def phrase_homes(phrase):
-    return {str(p.relative_to(REPO)): read(p).count(phrase) for p in payload_files() if phrase in read(p)}
+    return {str(p.relative_to(REPO)) for p in payload_files() if phrase in read(p)}
 
 
 def assert_description(case, description):

@@ -35,6 +35,9 @@ a raw log. When capacity is limited, narrow scope, never method.
 | `design` | a public surface or its meaning changes — with the user, before code |
 | `plan` | the item touches an invariant, state boundary, security or several packages |
 | `implement` | any code change, inline for a one-off, otherwise in `developer` |
+| `debug` | behaviour is wrong and the cause is unknown — before implement |
+| `second-opinion` | a diff or a plan needs a different model family's attack — Codex, read-only |
+| `author-skill` | a skill, rule or agent in the config repo changes |
 | `test` | tests are the deliverable (`tester`) or need their red-before-green proof |
 | `review` | a change-set awaits acceptance — forks into `reviewer` |
 | `deliver` | agreed work: developer → review rounds → tester → review delta → docs → commit |

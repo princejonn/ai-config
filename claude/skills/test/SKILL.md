@@ -1,6 +1,6 @@
 ---
 name: test
-description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, flaky-test diagnosis — and carries the red-before-green proof: pinning test fails on the tree as found, or the mechanism is copied aside, reverted, the named test fails, and the restore is verified by content. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement) or reviewing it (review)."
+description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, flaky-test diagnosis — including the red-before-green proof. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement) or reviewing it (review)."
 ---
 
 # Test
@@ -34,7 +34,7 @@ A test that cannot fail reports coverage it does not have. Over-broad mocks, tau
 
 ## Verification
 
-Run the new or changed tests first, then the surrounding suite for the package you touched, then the project's full gate. Report the command and the runner's own printed counts.
+Done requires the new or changed tests green, then the surrounding suite for the package you touched, then the project's full gate, each reported with its command and the runner's own printed counts.
 
 - **Never hide a red test.** No skipping, commenting out, deleting, or narrowing an assertion until it passes. If a test is genuinely wrong, change it deliberately and report the change as a finding with its evidence.
 - If tests you did not write fail, report that explicitly — never hide it.

@@ -1,6 +1,6 @@
 ---
 name: commit
-description: "Commits the reviewed change by pathspec: lists the staged paths, composes a stand-alone Conventional Commits message stating mechanism and reason, commits with `git commit -F - -- <paths>`, and confirms with `git show --name-only`. Use only when the user runs /commit."
+description: "Commits the reviewed change by pathspec with a stand-alone Conventional Commits message. Use only when the user runs /commit."
 disable-model-invocation: true
 ---
 

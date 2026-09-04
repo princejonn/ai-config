@@ -20,7 +20,7 @@ A brief carries: the problem, the binding constraints (scale, consistency, opera
 ## Method
 
 1. **Constraints first.** Establish requirements, scale, consistency needs, operational reality, and what already exists.
-2. **Design at the right altitude.** Components, responsibilities, interfaces, data flow, state ownership, failure modes — concrete enough that a developer can implement it without re-deriving decisions.
+2. Components, responsibilities, interfaces, data flow, state ownership, failure modes — concrete enough that a developer can implement it without re-deriving decisions.
 3. **Trade-offs explicitly.** When several valid approaches exist, present the top two or three with costs and benefits, then commit to one recommendation with reasons. Never leave a decision hanging.
 4. **Simplicity is the default.** The simplest design that meets the stated requirements wins. Complexity must be justified by a named requirement, not an anticipated one. Flag over-engineering in existing proposals as readily as gaps. **Remove the thing generating the ambiguity; do not add a rule to resolve it.** When two settings can disagree or one name means two things, delete the second source.
 5. **Stress the design before finalizing.** Single points of failure, ordering and race conditions, partial-failure behaviour, migration/rollout path, observability, and how the design bends under the next likely requirement.

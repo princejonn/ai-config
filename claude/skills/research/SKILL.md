@@ -17,6 +17,8 @@ The brief arrives as `$ARGUMENTS`. It carries: the question, the lane's scope (w
 2. **Open what you cite.** Never cite a source you did not fetch; prefer primary sources over aggregators.
 3. Stay inside the lane. If the trail leads somewhere material but out of scope, record it as a lead instead of following it.
 
+The sweep is done when the sources the brief names are exhausted and further queries return only sources already read.
+
 ## Memo
 
 The memo is compact, structured, and complete enough to be used without re-fetching:

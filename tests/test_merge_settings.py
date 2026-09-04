@@ -14,7 +14,8 @@ MANIFEST = {
     "PreToolUse": [
         {"matcher": "Bash", "script": "git-guard.py", "timeout": 10},
         {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "script": "write-guard.py", "timeout": 10},
-    ]
+    ],
+    "SubagentStop": [{"matcher": "*", "script": "verdict-guard.py", "timeout": 5}],
 }
 
 LIVE_HOOKS_DIR = "/Users/jonn/.claude/hooks"
@@ -32,7 +33,15 @@ LIVE_HOOKS = {
                 {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/write-guard.py", "timeout": 10}
             ],
         },
-    ]
+    ],
+    "SubagentStop": [
+        {
+            "matcher": "*",
+            "hooks": [
+                {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/verdict-guard.py", "timeout": 5}
+            ],
+        },
+    ],
 }
 
 FOREIGN_HANDLER = {"type": "command", "command": "/usr/local/bin/other-hook", "timeout": 5}
@@ -86,7 +95,7 @@ class MergeSettingsTest(unittest.TestCase):
         proc = self.run_merge(manifest=LIVE_MANIFEST)
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(proc.stdout, "  settings: unchanged\n")
-        self.assertEqual(self.read()["hooks"]["PreToolUse"], LIVE_HOOKS["PreToolUse"])
+        self.assertEqual(self.read()["hooks"], LIVE_HOOKS)
 
     def test_foreign_groups_and_shared_group_handlers_survive(self):
         document = {
@@ -267,7 +276,7 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(result["permissions"], {"allow": ["Bash(ls:*)"]})
         self.assertEqual(result["model"], "opus")
         self.assertEqual(result["env"], {"FOO": "bar"})
-        self.assertEqual(list(result["hooks"].keys()), ["Stop", "PreToolUse"])
+        self.assertEqual(list(result["hooks"].keys()), ["Stop", "PreToolUse", "SubagentStop"])
 
     def test_command_uses_bare_python3_and_quotes_path(self):
         proc = self.run_merge(hooks_dir="/tmp/with space/hooks")

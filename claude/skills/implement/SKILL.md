@@ -1,6 +1,6 @@
 ---
 name: implement
-description: "Implements one defined code change in any language — feature, refactor, bug fix, scaffolding — to production quality: complete work, tests via the test skill with red-before-green proof, the project's full gate green, and a report of what changed with verification evidence. Use for any code change, inline or in the developer agent; when the brief carries a plan, its stop conditions bind. Not for tests as the deliverable (test) or design (design)."
+description: "Implements one defined code change in any language — feature, refactor, bug fix, scaffolding — to production quality with its tests and the project's full gate. Use for any code change, inline for a one-off, otherwise in the developer agent; when the brief carries a plan, its stop conditions bind. Not for tests as the deliverable (test), finding a cause (debug) or design (design)."
 ---
 
 # Implement

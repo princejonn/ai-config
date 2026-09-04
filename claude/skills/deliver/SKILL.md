@@ -1,6 +1,6 @@
 ---
 name: deliver
-description: "Runs an agreed item to committable code through agents: intake and tiering (plan first for invariant, state-boundary, security or multi-package items), one living brief with the invariant and adjudication ledgers, developer → review rounds with a fresh reviewer each round → tester → review of the delta → docs → commit, with the circuit breaker and parallel-agent contention rules. Use once work is agreed; questions belong to design or plan."
+description: "Runs an agreed item to committable code through agents: tiering, one living brief with its ledgers, review rounds to acceptance, a circuit breaker. Use once work is agreed; questions belong to design or plan."
 ---
 
 # Deliver
@@ -36,6 +36,8 @@ Two consecutive rounds each surfacing a defect the previous round's fixes introd
 ## Parallel dispatch
 
 **Parallel agents are disjoint in what they contend for**, not just the files they edit: one writer per package, one heavy test run at a time, and confirm an agent's work still exists before trusting its green.
+
+Parallel developers run in separate git worktrees (`isolation: worktree` on the Agent tool), so one writer per package is a property of the tree, not a request.
 
 ## Before commit
 

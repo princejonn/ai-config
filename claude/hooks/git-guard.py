@@ -9,8 +9,9 @@ import sys
 
 HOOK = "git-guard.py"
 SERVICES_CWD_PREFIX = "/Users/jonn/Projects/lindorm/lindorm-services"
-CASE_INSENSITIVE_MARKERS = ("Co-Authored-By", "Claude-Session", "Generated with")
-CASE_SENSITIVE_MARKERS = ("Anthropic", "Claude")
+ATTRIBUTION_TRAILER_KEYS = ("co-authored-by:", "claude-session:")
+ATTRIBUTION_PHRASE = "generated with"
+ATTRIBUTION_GLYPH = "🤖"
 SAFE_RM_PREFIXES = ("$TMPDIR", "${TMPDIR}", "/tmp/claude", "/private/tmp/claude")
 TMPDIR_VARIABLE = re.compile(r"^\$(\{TMPDIR\}|TMPDIR)(?=/|$)")
 UNRESOLVABLE_TARGET = re.compile(r"\$\(|`|\$\{(?!TMPDIR\})")
@@ -264,8 +265,8 @@ def commit_option_value(args, index):
     return None
 
 
-def message_source(args):
-    """Returns the flag whose message text the guard cannot read: a file, another commit, a template, or a shell-expanded -m."""
+def commit_options(args):
+    """Yields (flag, letter, value) for each value-taking commit option before the pathspec separator."""
     index = 0
     while index < len(args) and args[index] != "--":
         option = commit_option_value(args, index)
@@ -274,6 +275,12 @@ def message_source(args):
             continue
         flag, letter, value, consumed = option
         index += consumed
+        yield flag, letter, value
+
+
+def message_source(args):
+    """Returns the flag whose message text the guard cannot read: a file, another commit, a template, or a shell-expanded -m."""
+    for flag, letter, value in commit_options(args):
         if letter == "m":
             if "$" in value or "`" in value:
                 return flag
@@ -412,14 +419,28 @@ def check_find(tokens):
     return rm_targets_decision(find_start_paths(tokens[1:]))
 
 
+def commit_text_lines(command):
+    """Yields each -m value's lines, then the command's own lines (a heredoc body), so the reported line is the message line."""
+    for tokens in segments(command):
+        invocation = git_invocation(tokens)
+        if invocation is not None and invocation[0] == "commit":
+            for _, letter, value in commit_options(invocation[1]):
+                if letter == "m":
+                    yield from value.split("\n")
+    yield from command.split("\n")
+
+
+def is_attribution(line):
+    lowered = line.lower()
+    return lowered.startswith(ATTRIBUTION_TRAILER_KEYS) or ATTRIBUTION_PHRASE in lowered or ATTRIBUTION_GLYPH in line
+
+
 def attribution_marker(command):
-    lowered = command.lower()
-    for marker in CASE_INSENSITIVE_MARKERS:
-        if marker.lower() in lowered:
-            return marker
-    for marker in CASE_SENSITIVE_MARKERS:
-        if marker in command:
-            return marker
+    """Returns the first attribution line of the commit text, else None."""
+    for line in commit_text_lines(command):
+        stripped = line.strip()
+        if is_attribution(stripped):
+            return stripped
     return None
 
 

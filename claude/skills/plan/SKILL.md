@@ -20,11 +20,12 @@ A brief carries: the goal or design, the files or subsystems in scope, decisions
 
 1. **Map reality first.** What exists, who depends on it, what breaks if it changes. Cite files and call sites, not hunches.
 2. **Phase the work.** Each phase is independently verifiable and leaves the tree green. Prefer more small phases over few large ones.
-3. **Order by dependency and risk.** Front-load the riskiest unknowns so the plan fails fast; leave mechanical follow-through for late phases.
-4. **Define verification per phase.** Name the exact command that proves the phase landed. A phase without an exit check is not a phase.
-5. **State invariants and stop conditions.** Name what must hold tree-wide after each phase, and which assumption, if broken, means the developer stops and returns rather than works around.
-6. **Name the unknowns.** Decisions needing user input, assumptions you could not verify, and external dependencies go in their own section — never buried inside a phase.
-7. **Plan migration and rollback** whenever the work touches persisted data, published contracts, or live systems.
+3. **Wide refactors** that no vertical slice keeps green run expand → migrate → contract: add the new form beside the old, move callers in batches that each leave the tree green, remove the old form last.
+4. **Order by dependency and risk.** Front-load the riskiest unknowns so the plan fails fast; leave mechanical follow-through for late phases.
+5. **Define verification per phase.** Name the exact command that proves the phase landed. A phase without an exit check is not a phase.
+6. **State invariants and stop conditions.** Name what must hold tree-wide after each phase, and which assumption, if broken, means the developer stops and returns rather than works around.
+7. **Name the unknowns.** Decisions needing user input, assumptions you could not verify, and external dependencies go in their own section — never buried inside a phase.
+8. **Plan migration and rollback** whenever the work touches persisted data, published contracts, or live systems.
 
 ## Output
 

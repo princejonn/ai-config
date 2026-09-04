@@ -88,6 +88,7 @@ PERMITTED = (
     "npm test && tail out.txt",
     "npm --version",
     'git commit -m "docs: RFC 6749 §3.1.1" -- a',
+    'git commit -m "feat: source-of-truth repo for Claude Code configuration" -- a',
     "if git diff --quiet; then echo clean; fi",
     'for f in a b; do git add -- "$f"; done',
     'echo "git stash"',
@@ -313,18 +314,37 @@ class GitCommitMessageSourceTests(unittest.TestCase):
 
 
 class GitCommitAttributionTests(unittest.TestCase):
-    def test_denies_each_marker(self):
-        for marker in ("Co-Authored-By: X", "Claude-Session: url", "Generated with tool", "Anthropic", "Claude"):
-            with self.subTest(marker=marker):
-                self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{marker}" -- packages/aegis')), "deny")
+    def test_denies_each_attribution_line(self):
+        for line in (
+            "Co-Authored-By: Claude <noreply@anthropic.com>",
+            "Claude-Session: url",
+            "Generated with tool",
+            "generated with tool",
+            "🤖 Generated with Claude Code",
+            "🤖 robot only",
+        ):
+            with self.subTest(line=line):
+                self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{line}" -- packages/aegis')), "deny")
 
-    def test_denies_trailer_markers_case_insensitively(self):
-        for marker in ("co-authored-by: X", "CO-AUTHORED-BY: X", "claude-session: url", "generated with tool"):
-            with self.subTest(marker=marker):
-                self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{marker}" -- packages/aegis')), "deny")
+    def test_denies_trailer_keys_case_insensitively_and_indented(self):
+        for line in ("co-authored-by: X", "CO-AUTHORED-BY: X", "claude-session: url", "  co-authored-by: x"):
+            with self.subTest(line=line):
+                self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{line}" -- packages/aegis')), "deny")
 
-    def test_name_markers_stay_case_sensitive(self):
+    def test_deny_reason_names_the_offending_line(self):
+        result = evaluate('git commit -m "fix: thing\n\n  co-authored-by: x" -- packages/aegis')
+        self.assertIn("'co-authored-by: x'", result["hookSpecificOutput"]["permissionDecisionReason"])
+
+    def test_product_names_are_not_attribution(self):
+        self.assertIsNone(evaluate('git commit -m "feat: source-of-truth repo for Claude Code configuration" -- a'))
+        self.assertIsNone(evaluate('git commit -m "fix: thing\n\nAnthropic docs describe this" -- a'))
         self.assertIsNone(evaluate('git commit -m "docs: mention claude code and anthropic" -- a'))
+
+    def test_trailer_key_inside_a_sentence_is_not_attribution(self):
+        self.assertIsNone(evaluate('git commit -m "fix: thing\n\nthe hook denies Co-Authored-By: trailers" -- a'))
+
+    def test_denies_single_line_message_that_is_a_trailer(self):
+        self.assertEqual(decision(evaluate('git commit -m "Co-Authored-By: x" -- a')), "deny")
 
     def test_denies_marker_in_heredoc_body(self):
         command = "git commit -F - -- packages/aegis <<'EOF'\nfix: thing\n\nCo-Authored-By: Someone\nEOF"
