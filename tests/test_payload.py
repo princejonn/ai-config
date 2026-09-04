@@ -10,18 +10,19 @@ AGENTS = CLAUDE / "agents"
 RULES = CLAUDE / "rules"
 RULESETS = CLAUDE / "rulesets"
 HOOKS = CLAUDE / "hooks"
+MANIFEST = CLAUDE / "settings.json"
 
 SKILL_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
 DESCRIPTION_MAX = 1024
 BODY_MAX_LINES = 200
 CLAUDE_MD_MAX_BYTES = 3800
-MODELS = {"fable", "sonnet"}
+MODELS = {"fable", "opus", "sonnet"}
 
 SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "research": {"context": "fork", "agent": "researcher"},
     "verify": {"context": "fork", "agent": "verifier"},
     "review": {"context": "fork", "agent": "reviewer"},
-    "commit": {"disable-model-invocation": True},
+    "commit": {},
     "design": {},
     "plan": {},
     "implement": {},
@@ -31,18 +32,31 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "second-opinion": {},
     "author-skill": {},
 }
+SKILLS_WITH_INPUT = {"design", "implement", "plan", "research", "review", "test", "verify"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
-EXPECTED_AGENT_SKILLS = {"developer": ["implement", "test", "debug"], "tester": ["test"]}
-EXPECTED_AGENTS = {"developer", "researcher", "reviewer", "tester", "verifier"}
+DEVELOPER_MODELS = {"developer-trivial": ("sonnet", "high"), "developer-standard": ("opus", "xhigh"), "developer-complex": ("fable", "xhigh")}
+EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "debug"] for name in DEVELOPER_MODELS}, "tester": ["test"]}
+EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher", "reviewer", "tester", "verifier"}
 
 ONE_HOME_PHRASES = {
     "never pipe through": "claude/CLAUDE.md",
+    "three tool calls": "claude/CLAUDE.md",
     "enumerating the population": "claude/CLAUDE.md",
+    "a decision not made": "claude/rules/brief.md",
+    "Unclear in the brief": "claude/rules/brief.md",
     "copy it aside": "claude/skills/test/SKILL.md",
     "root cause": "claude/skills/debug/SKILL.md",
     "decorrelation": "claude/skills/second-opinion/SKILL.md",
+    "the brief is incomplete and the question is above": "claude/skills/review/SKILL.md",
+    "it is not a round": "claude/skills/deliver/SKILL.md",
+    "tier of the code it touches": "claude/skills/deliver/references/tiers.md",
+    "unique output": "claude/skills/deliver/references/review-loop.md",
+    "reviewed baseline": "claude/skills/deliver/references/review-loop.md",
+    "fix delta plus the": "claude/skills/review/SKILL.md",
+    "wearing a review's clothes": "claude/skills/deliver/references/review-loop.md",
+    "needs no ask": "claude/rules/git.md",
+    "never a brief line": "claude/rules/git.md",
 }
-COMMIT_SIDECAR = SKILLS / "commit" / "agents" / "openai.yaml"
 ABSENT_PHRASES = (
     "exhaustive over intent",
     "The tree is not yours",
@@ -55,6 +69,7 @@ PINNING_TEST_FIRST = "Write the test, run it against the tree with no source fil
 COPY_ASIDE_ONLY_WHEN_FIX_PRESENT = "only when the fix is already in the tree"
 STAGED_FAILURE_WARNING = "A failure staged afterwards by reverting does not count: the helpers and structure the fix introduced stay standing, so what fails is one line's sensitivity, not the defect."
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
+BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 
 
 def parse_value(raw):
@@ -93,37 +108,6 @@ def parse_frontmatter(text):
     return fields, text[end + len("\n---\n"):]
 
 
-def parse_sidecar(text):
-    fields = {}
-    parent = None
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        key, sep, raw = line.partition(":")
-        if not sep:
-            raise ValueError(f"not a key: value line: {line!r}")
-        key = key.strip()
-        if "\t" in line:
-            raise ValueError(f"tab indentation: {line!r}")
-        if line[0].isspace():
-            if parent is None:
-                raise ValueError(f"nested value without parent: {line!r}")
-            target = fields[parent]
-        else:
-            target = fields
-        if key in target:
-            raise ValueError(f"duplicate key: {key!r}")
-        if line[0].isspace():
-            target[key] = parse_value(raw.strip())
-        elif raw.strip():
-            target[key] = parse_value(raw.strip())
-            parent = None
-        else:
-            target[key] = {}
-            parent = key
-    return fields
-
-
 def read(path):
     return path.read_text(encoding="utf-8")
 
@@ -144,8 +128,12 @@ def ruleset_files():
     return sorted(RULESETS.glob("*/*.md"))
 
 
+def reference_files():
+    return sorted(SKILLS.glob("*/references/*.md"))
+
+
 def payload_files():
-    return [CLAUDE / "CLAUDE.md", *rule_files(), *ruleset_files(), *(d / "SKILL.md" for d in skill_dirs()), *agent_files()]
+    return [CLAUDE / "CLAUDE.md", *rule_files(), *ruleset_files(), *(d / "SKILL.md" for d in skill_dirs()), *reference_files(), *agent_files()]
 
 
 def skill_docs():
@@ -190,31 +178,6 @@ class FrontmatterParserTest(unittest.TestCase):
             parse_frontmatter('---\na: [one, "two]\n---\n')
 
 
-class SidecarParserTest(unittest.TestCase):
-    def test_one_level_of_nesting(self):
-        self.assertEqual(parse_sidecar("a:\n  b: false\n  c: one\nd: two\n"), {"a": {"b": False, "c": "one"}, "d": "two"})
-
-    def test_indented_line_without_parent_raises(self):
-        with self.assertRaises(ValueError):
-            parse_sidecar("  b: false\n")
-
-    def test_duplicate_nested_key_raises(self):
-        with self.assertRaises(ValueError):
-            parse_sidecar("a:\n  b: true\n  b: false\n")
-
-    def test_duplicate_top_level_key_raises(self):
-        with self.assertRaises(ValueError):
-            parse_sidecar("a: one\na: two\n")
-
-    def test_tab_indentation_raises(self):
-        with self.assertRaises(ValueError):
-            parse_sidecar("a:\n\tb: false\n")
-
-    def test_top_level_scalar_closes_the_nested_block(self):
-        with self.assertRaises(ValueError):
-            parse_sidecar("a:\n  b: false\nd: two\n  e: one\n")
-
-
 class SkillsTest(unittest.TestCase):
     def test_skill_set_is_exactly_the_twelve(self):
         self.assertEqual({d.name for d in skill_dirs()}, set(SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION))
@@ -247,16 +210,9 @@ class SkillsTest(unittest.TestCase):
                 self.assertEqual(set(fields), {"name", "description", *expected})
                 self.assertEqual({key: fields[key] for key in expected}, expected)
 
-    def test_commit_sidecar_denies_implicit_invocation(self):
-        self.assertTrue(COMMIT_SIDECAR.is_file(), COMMIT_SIDECAR)
-        fields = parse_sidecar(read(COMMIT_SIDECAR))
-        self.assertEqual(set(fields), {"policy"})
-        self.assertEqual(set(fields["policy"]), {"allow_implicit_invocation"})
-        self.assertIs(fields["policy"]["allow_implicit_invocation"], False)
-
 
 class AgentsTest(unittest.TestCase):
-    def test_agent_set_is_exactly_the_five(self):
+    def test_agent_set_is_exactly_the_seven(self):
         for p in agent_files():
             self.assertEqual(p.suffix, ".md", p)
         self.assertEqual({p.stem for p in agent_files()}, EXPECTED_AGENTS)
@@ -273,14 +229,19 @@ class AgentsTest(unittest.TestCase):
                 if stem in EXPECTED_AGENT_SKILLS:
                     self.assertEqual(fields["skills"], EXPECTED_AGENT_SKILLS[stem])
 
-    def test_developer_effort_is_xhigh(self):
-        fields, _ = agent_docs()["developer"]
-        self.assertEqual(fields["effort"], "xhigh")
+    def test_each_developer_pins_its_tier_model_and_effort(self):
+        docs = agent_docs()
+        for stem, (model, effort) in DEVELOPER_MODELS.items():
+            with self.subTest(agent=stem):
+                fields, _ = docs[stem]
+                self.assertEqual((fields["model"], fields["effort"]), (model, effort))
+                self.assertIn(model, fields["description"].lower())
+                self.assertIn(f"| `{stem}` | `{model}` | `{effort}` |", read(SKILLS / "deliver" / "references" / "tiers.md"))
 
 
 class RulesTest(unittest.TestCase):
-    def test_global_rule_set_is_exactly_git_and_writing(self):
-        self.assertEqual({p.name for p in rule_files()}, {"git.md", "writing.md"})
+    def test_global_rule_set_is_exactly_brief_git_and_writing(self):
+        self.assertEqual({p.name for p in rule_files()}, {"brief.md", "git.md", "writing.md"})
 
     def test_ruleset_set_is_exactly_typescript_code_style(self):
         self.assertEqual({str(p.relative_to(RULESETS)) for p in ruleset_files()}, {"typescript/code-style.md"})
@@ -311,10 +272,21 @@ class RulesTest(unittest.TestCase):
                 self.assertTrue(opening.startswith("# "), opening)
 
 
+class BriefRuleTest(unittest.TestCase):
+    def test_each_field_label_appears_exactly_once(self):
+        text = read(RULES / "brief.md")
+        for label in BRIEF_FIELD_LABELS:
+            with self.subTest(label=label):
+                self.assertEqual(text.count(label), 1)
+
+
 class HooksTest(unittest.TestCase):
+    def test_manifest_top_level_keys_are_exactly_hooks_and_defaults(self):
+        self.assertEqual(set(json.loads(read(MANIFEST))), {"hooks", "defaults"})
+
     def test_every_manifest_script_exists(self):
-        manifest = json.loads(read(CLAUDE / "hooks.json"))
-        for event, entries in manifest.items():
+        manifest = json.loads(read(MANIFEST))
+        for event, entries in manifest["hooks"].items():
             for entry in entries:
                 with self.subTest(event=event, script=entry["script"]):
                     self.assertTrue((HOOKS / entry["script"]).is_file())
@@ -368,6 +340,22 @@ class SkillPassagesTest(unittest.TestCase):
     def test_implement_method_puts_correctness_before_speed(self):
         _, body = skill_docs()["implement"]
         self.assertIn(CORRECTNESS_FIRST, section(body, "Method"))
+
+    def test_every_skill_input_section_references_the_brief_rule(self):
+        docs = skill_docs()
+        self.assertEqual({name for name, (_, body) in docs.items() if "\n## Input\n" in body}, SKILLS_WITH_INPUT)
+        for name in SKILLS_WITH_INPUT:
+            with self.subTest(skill=name):
+                self.assertIn("rules/brief.md", section(docs[name][1], "Input"))
+
+
+class DeliverReferencesTest(unittest.TestCase):
+    def test_deliver_carries_tiers_and_review_loop(self):
+        _, body = skill_docs()["deliver"]
+        for name in ("tiers.md", "review-loop.md"):
+            with self.subTest(reference=name):
+                self.assertTrue((SKILLS / "deliver" / "references" / name).is_file())
+                self.assertIn(f"references/{name}", body)
 
 
 def phrase_homes(phrase):

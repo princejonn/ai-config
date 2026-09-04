@@ -21,8 +21,9 @@ description: "Writes or revises a skill, rule or agent in the ai-config repo —
 ## Body
 
 - Under 200 lines.
+- A skill may carry `references/*.md` for protocol its body only names, read on demand; the 200-line rule applies to `SKILL.md`.
 - Input, method, output, and a done-condition; a stop rule wherever the procedure can loop.
-- A fork skill states that its brief arrives as `$ARGUMENTS` and carries everything it needs cold.
+- A fork skill states that its brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines.
 
 ## One home
 
@@ -35,7 +36,7 @@ A sentence lives in exactly one file. `tests/test_payload.py` pins the shared ph
 
 ## Portability
 
-Only `name` and `description` reach Codex; Claude-only keys are ignored there. A skill that must stay user-only in Codex ships `agents/openai.yaml` beside its SKILL.md; `claude/skills/commit/agents/openai.yaml` is the pinned example.
+Only `name` and `description` reach Codex; Claude-only keys are ignored there. A skill that must stay user-only in Codex ships `agents/openai.yaml` beside its SKILL.md, with a `policy` block setting `allow_implicit_invocation: false`.
 
 ## Output
 
