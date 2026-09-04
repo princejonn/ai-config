@@ -9,7 +9,7 @@ agent: verifier
 
 ## Input
 
-The brief arrives as `$ARGUMENTS`. It carries: each claim verbatim, its role (what decision rests on it), and where to start looking. When the claim is ambiguous enough to be true under one reading and false under another, stop and return with the readings.
+The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and adds each claim verbatim, its role (what decision rests on it) and where to start looking. When the claim is true under one reading and false under another, the verdict is `UNVERIFIABLE` and the missing artefact is the choice between the readings — list them.
 
 ## What counts as a claim
 

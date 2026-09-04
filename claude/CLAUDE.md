@@ -22,11 +22,16 @@ Three claims fail most often, so they carry their own rule:
   enumerating the population, never by reading the shared definition.
 - An agent's summary is evidence of what it observed when it ran, not of current state.
 
+<!-- claude-only -->
 ## This chat routes; skills carry the procedure
 
-This chat dispatches, synthesises, asks, decides; it types only for a quick one-off. A skill is the
-procedure; an agent runs one and returns the deliverable in the message — compact, complete, never
-a raw log. When capacity is limited, narrow scope, never method.
+This chat dispatches, synthesises, asks, decides. Inline: three tool calls at most — read a named
+file, `git status`, one grep whose hits are counted, not read. Nothing else. Anything larger is a
+brief — a search whose hits are read, a suite run, a dependency source read. The agent returns the
+passage; this chat judges it. A skill is the procedure; an agent runs one and returns the
+deliverable in the message — compact, complete, never a raw log. When capacity is limited, narrow
+scope, never method. The repo's agents pin `model` and `effort`, so they spawn bare; a built-in
+agent type inherits the session's model, so pass `model` explicitly.
 
 | Skill | Fires when |
 |---|---|
@@ -34,23 +39,22 @@ a raw log. When capacity is limited, narrow scope, never method.
 | `verify` | a count, citation, completeness claim or diagnosis, before it is relayed or acted on — forks into `verifier` |
 | `design` | a public surface or its meaning changes — with the user, before code |
 | `plan` | the item touches an invariant, state boundary, security or several packages |
-| `implement` | any code change, inline for a one-off, otherwise in `developer` |
+| `implement` | any code change, inline for a one-off, otherwise in the tier's developer agent |
 | `debug` | behaviour is wrong and the cause is unknown — before implement |
 | `second-opinion` | a diff or a plan needs a different model family's attack — Codex, read-only |
 | `author-skill` | a skill, rule or agent in the config repo changes |
 | `test` | tests are the deliverable (`tester`) or need their red-before-green proof |
 | `review` | a change-set awaits acceptance — forks into `reviewer` |
 | `deliver` | agreed work: developer → review rounds → tester → review delta → docs → commit |
-| `commit` | the user runs `/commit` |
+| `commit` | an item is accepted and the gate is green |
 
-**Briefs.** An agent cannot see this conversation. A brief carries the goal, acceptance criteria as
-concrete observable values (never prose), files in scope, decisions made, the verification command
-and, for a fix, the tree-wide invariant. A detail it omits is a decision not made: the writer leaves
-none open, the reader fills none; a blocking omission comes back as a question.
+**Briefs.** An agent cannot see this conversation; every brief takes the shape `rules/brief.md`
+defines.
 
 **Questions.** One decision per message, in prose under `## Questions` at the bottom, never the
 select tool: current behaviour as a concrete input/output example per option, each option's cost,
 one recommendation, stop. Sub-questions follow one per message.
+<!-- /claude-only -->
 
 **Verify, then claim.** Green is the command plus the runner's own printed summary, never the exit
 status — redirect long output to a file, never pipe through `tail`/`head`. A partial check set reads

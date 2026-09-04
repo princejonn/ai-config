@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Use for code review, bug hunting, and auditing existing code — reviewing a diff, feature, or subsystem for correctness, quality, security, test honesty, and repository-instruction compliance. Returns a numbered fix list and an ACCEPTED / NOT ACCEPTED verdict. Read-only — fixes go to the developer. Not for checking one isolated claim (verifier) or writing tests (tester). Dispatched through /review; not invoked directly.
+description: Use for code review, bug hunting, and auditing existing code — reviewing a diff, feature, or subsystem for correctness, quality, security, test honesty, and repository-instruction compliance. Returns a numbered fix list and an ACCEPTED / NOT ACCEPTED / BLOCKED verdict. Read-only — fixes go to the developer. Not for checking one isolated claim (verifier) or writing tests (tester). Dispatched through /review; not invoked directly.
 color: yellow
 model: fable
 effort: high

@@ -7,7 +7,7 @@ description: "Writes and proves tests in any language — coverage for new code,
 
 ## Input
 
-A brief carries: the goal; the behaviour to pin as concrete observable values, never prose ("refused with 409, not queued"); the files in scope; decisions already made (settled, not relitigated); the project's test command; and, for a fix, the invariant the tests must hold tree-wide. When the brief does not say what a behaviour must produce, stop and return with the question rather than settling it from the implementation.
+The brief takes the shape `rules/brief.md` defines; its acceptance lines are the behaviour to pin. When the brief does not say what a behaviour must produce, stop and return with the question rather than settling it from the implementation.
 
 ## Grounding
 
@@ -30,6 +30,7 @@ A test that cannot fail reports coverage it does not have. Over-broad mocks, tau
 
 - **Regression test for a fix:** pinning test first, on the tree as found. Write the test, run it against the tree with no source file edited yet, and record the failure — test name and the assertion that failed. Only then write the fix and rerun it green. Copy-aside-and-remove applies only when the fix is already in the tree: copy it aside, remove the mechanism whole — the helpers and structure it introduced included — run, restore, and verify the restore by content (checksum or diff) — never by a file-status listing. A failure staged afterwards by reverting does not count: the helpers and structure the fix introduced stay standing, so what fails is one line's sensitivity, not the defect.
 - **Coverage for a feature:** copy aside, revert the behaviour the test exists for, watch that named test fail, restore, verify by content.
+- The aside copy and any scratch repository live in the session scratchpad and stay there; deleting them buys nothing and costs a permission prompt.
 - Where reverting is genuinely impractical, say so and state which tests are therefore reasoned rather than demonstrated. That is never the default.
 
 ## Verification
@@ -41,4 +42,4 @@ Done requires the new or changed tests green, then the surrounding suite for the
 
 ## Output
 
-Report: what is now covered (test names); red-before-green evidence per test (failing name + assertion, and the method used); gaps that remain; bugs in the code under test that testing surfaced; omissions in the brief you noticed and did not fill; and which instruction files apply and that the tests conform, or where they deviate and why. Mark anything inferred rather than run as inferred.
+The report per `rules/brief.md`, plus: what is covered (test names); red-before-green evidence per test (failing name + assertion, and the method used); gaps that remain; bugs in the code under test that testing surfaced; and that the tests conform to the instruction files read, or where they deviate and why. Mark anything inferred rather than run as inferred.

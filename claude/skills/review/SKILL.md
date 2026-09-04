@@ -1,6 +1,6 @@
 ---
 name: review
-description: "Reviews one change-set against the brief it was built to on two axes, standards and spec, each with its own disposition. Returns a numbered fix list and ACCEPTED / NOT ACCEPTED. Use when a change-set awaits acceptance or a re-review with a ledger. Read-only; fixes go to the developer."
+description: "Reviews one change-set against the brief it was built to on two axes, standards and spec, each with its own disposition. Returns a numbered fix list and ACCEPTED / NOT ACCEPTED, or BLOCKED when the brief is incomplete. Use when a change-set awaits acceptance or a re-review with a ledger. Read-only; fixes go to the developer."
 context: fork
 agent: reviewer
 ---
@@ -9,7 +9,7 @@ agent: reviewer
 
 ## Input
 
-The brief arrives as `$ARGUMENTS`. It carries: the change-set to review (files, diff, or range), the goal and acceptance criteria it was built against, the decisions already made (settled — a review does not relitigate them), and for a re-review the adjudication ledger and invariant ledger.
+The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and adds the change-set to review (files, diff, or range) and, for a re-review, the adjudication ledger and invariant ledger. Without the change-set or the acceptance lines there is nothing to accept: put the question under `## Questions` and end `BLOCKED`.
 
 ## Grounding
 
@@ -63,4 +63,4 @@ The brief arrives as `$ARGUMENTS`. It carries: the change-set to review (files, 
 - Then a disposition for **every** item you were asked to cover, including repository-instruction compliance. A scope item passed over in silence reads as reviewed-and-clean; say explicitly when you found nothing.
 - Then what you could **not** cover, and which claims you verified by execution versus by reading.
 - Then `Standards: ACCEPTED` or `Standards: NOT ACCEPTED`, and `Spec: ACCEPTED` or `Spec: NOT ACCEPTED` — each `NOT ACCEPTED` when that axis holds a finding at Blocker or Fix severity.
-- End with one line: `ACCEPTED` only when both axes are `ACCEPTED`, otherwise `NOT ACCEPTED`. `Prose` findings never make a review `NOT ACCEPTED`.
+- End with the bare token alone on the last line — `BLOCKED` when the brief is incomplete and the question is above; `ACCEPTED` only when both axes are `ACCEPTED`; `NOT ACCEPTED` otherwise. `Prose` findings never make a review `NOT ACCEPTED`.

@@ -9,7 +9,7 @@ Read-only: this skill writes nothing but the design.
 
 ## Input
 
-A brief carries: the problem, the binding constraints (scale, consistency, operational reality), the files or subsystems in scope, decisions already made (settled, not relitigated), and the deliverable wanted — a design or a comparison.
+The brief takes the shape `rules/brief.md` defines, and adds the binding constraints (scale, consistency, operational reality) and the deliverable wanted — a design or a comparison.
 
 ## Grounding
 
@@ -34,8 +34,8 @@ Talk interfaces, not internals; concrete type/signature sketches every round. Lo
 - **Recommended design** — components, interfaces, data flow, failure handling; names, types, signatures, test names. ASCII diagrams where they clarify.
 - **Alternatives considered** — what you rejected and why.
 - **Risks and open questions** — what could invalidate the design, and what needs a user decision.
-- **Unclear in the brief** — omissions you noticed and did not fill.
+- The report per `rules/brief.md`.
 
 ## Exit
 
-When the surface is locked, write it to the project's plan location, point the work queue at it, then hand it to `deliver` — internals are Claude's to decide.
+When the surface is locked, write it to the project's plan location, point the work queue at it, then hand it to `deliver` — internals are Claude's to decide. The hand-off's guard is the deviation ledger in `skills/deliver/SKILL.md`.

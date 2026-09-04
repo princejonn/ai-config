@@ -9,7 +9,7 @@ Read-only: this skill writes nothing but the plan.
 
 ## Input
 
-A brief carries: the goal or design, the files or subsystems in scope, decisions already made (settled, not relitigated), the project's verification commands if known, and the deliverable wanted — a phased plan.
+The brief takes the shape `rules/brief.md` defines, and adds the design when there is one and the deliverable wanted — a phased plan.
 
 ## Grounding
 
@@ -34,4 +34,4 @@ A brief carries: the goal or design, the files or subsystems in scope, decisions
 - **Phases** — for each: scope, files touched, dependencies on earlier phases, invariants, stop conditions, and the verification command.
 - **Risks and unknowns** — with the question each one needs answered.
 - **Deferred** — what is deliberately out of scope and why.
-- **Unclear in the brief** — omissions you noticed and did not fill.
+- The report per `rules/brief.md`.

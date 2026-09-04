@@ -9,7 +9,7 @@ agent: researcher
 
 ## Input
 
-The brief arrives as `$ARGUMENTS`. It carries: the question, the lane's scope (what is in and out), source hints, and what freshness matters.
+The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and adds the question, the sources to sweep and what freshness matters.
 
 ## Sweep
 

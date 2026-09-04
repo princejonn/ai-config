@@ -1,13 +1,13 @@
 ---
 name: implement
-description: "Implements one defined code change in any language — feature, refactor, bug fix, scaffolding — to production quality with its tests and the project's full gate. Use for any code change, inline for a one-off, otherwise in the developer agent; when the brief carries a plan, its stop conditions bind. Not for tests as the deliverable (test), finding a cause (debug) or design (design)."
+description: "Implements one defined code change in any language — feature, refactor, bug fix, scaffolding — to production quality with its tests and the project's full gate. Use for any code change, inline for a one-off, otherwise in a developer agent; when the brief carries a plan, its stop conditions bind. Not for tests as the deliverable (test), finding a cause (debug) or design (design)."
 ---
 
 # Implement
 
 ## Input
 
-A brief carries: the goal; acceptance criteria as concrete observable values, never prose ("refused with 409, not queued"); the files in scope; decisions already made (settled, not relitigated); the project's verification command; and, for a fix, the invariant the fix must hold tree-wide. Add no restriction, validation, contract, or capability beyond what the brief, the repository's instruction files, or the language and its libraries require.
+The brief takes the shape `rules/brief.md` defines. Add no restriction, validation, contract, or capability beyond what the brief, the repository's instruction files, or the language and its libraries require.
 
 When the brief carries a plan, its stop conditions bind: a broken plan assumption means stop and return with what you found, never an improvised workaround. A complex-tier brief without a plan is a blocking omission.
 
@@ -47,12 +47,11 @@ Run the narrowest relevant check first, then the project's full gate for everyth
 
 ## Output
 
-Report:
+The report per `rules/brief.md`, plus:
 
-- What changed (files and why) and any adjacent problem noticed and left alone.
-- Verification evidence: commands and the runner's printed counts.
+- Why each file changed, and any adjacent problem noticed and left alone.
 - Red-before-green evidence per test: the failing test name and assertion, with the fix-first or revert-after method used.
-- Omissions in the brief you noticed and did not fill; any stop condition tripped and what you found.
-- **Compliance:** which instruction files apply (by path) and that the change conforms, or exactly where it deviates and why.
+- Any stop condition tripped and what you found.
+- **Compliance:** that the change conforms to the instruction files read, or exactly where it deviates and why.
 
 **Report only what you actually did.** Never describe an action you did not perform or a result you did not measure; mark anything inferred rather than run as inferred.
