@@ -5,7 +5,7 @@
       {"matcher": "Edit|Write|NotebookEdit", "script": "write-guard.py", "timeout": 10}
     ],
     "SubagentStop": [
-      {"matcher": "*", "script": "verdict-guard.py", "timeout": 5}
+      {"matcher": "reviewer|verifier", "script": "verdict-guard.py", "timeout": 5}
     ],
     "SessionStart": [
       {"matcher": "*", "script": "announce-instructions.py", "timeout": 5},

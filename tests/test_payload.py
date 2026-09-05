@@ -1,3 +1,4 @@
+import importlib.util
 import json
 import re
 import unittest
@@ -12,11 +13,17 @@ RULESETS = CLAUDE / "rulesets"
 HOOKS = CLAUDE / "hooks"
 MANIFEST = CLAUDE / "settings.json"
 
+SPEC = importlib.util.spec_from_file_location("verdict_guard", HOOKS / "verdict-guard.py")
+verdict_guard = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(verdict_guard)
+
 SKILL_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
 DESCRIPTION_MAX = 1024
 BODY_MAX_LINES = 200
 CLAUDE_MD_MAX_BYTES = 8600
 MODELS = {"fable", "opus", "sonnet"}
+COLORS = {"red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan"}
+EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
 SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "research": {"context": "fork", "agent": "researcher-trivial"},
@@ -42,6 +49,7 @@ DEVELOPER_MODELS = {"developer-trivial": ("sonnet", "high"), "developer-standard
 RESEARCHER_MODELS = {"researcher-trivial": ("sonnet", "high"), "researcher-complex": ("fable", "high")}
 EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "debug"] for name in DEVELOPER_MODELS}, "tester": ["test"]}
 EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "tester", "verifier"}
+FORK_ONLY_AGENTS = {"researcher-trivial", "researcher-complex", "reviewer", "verifier"}
 RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
 
 ONE_HOME_PHRASES = {
@@ -190,6 +198,10 @@ def section(body, heading):
     return body[start:] if end == -1 else body[start:end]
 
 
+def sentence_count(text):
+    return len(re.findall(r'[.!?]["\u201d)]*(?=\s|$)', text.strip()))
+
+
 class FrontmatterParserTest(unittest.TestCase):
     def test_flat_forms(self):
         fields, body = parse_frontmatter('---\na: "x: y"\nb: bare words, with comma\nc: true\nd: false\ne: [one, two]\nf: []\n---\n\nbody\n')
@@ -264,10 +276,25 @@ class AgentsTest(unittest.TestCase):
                 self.assertEqual(set(fields), expected_keys)
                 self.assertEqual(fields["name"], stem)
                 self.assertIn(fields["model"], MODELS)
+                self.assertIn(fields["color"], COLORS)
+                self.assertIn(fields["effort"], EFFORTS)
                 self.assertTrue(fields["tools"])
                 assert_description(self, fields["description"])
                 if stem in EXPECTED_AGENT_SKILLS:
                     self.assertEqual(fields["skills"], EXPECTED_AGENT_SKILLS[stem])
+
+    def test_fork_only_agent_description_is_one_sentence_under_200_characters(self):
+        docs = agent_docs()
+        for stem in FORK_ONLY_AGENTS:
+            with self.subTest(agent=stem):
+                description = docs[stem][0]["description"]
+                self.assertLess(len(description), 200)
+                self.assertEqual(sentence_count(description), 1)
+
+    def test_every_agent_body_is_exactly_two_sentences(self):
+        for stem, (_, body) in agent_docs().items():
+            with self.subTest(agent=stem):
+                self.assertEqual(sentence_count(body), 2)
 
     def test_each_developer_pins_its_tier_model_and_effort(self):
         docs = agent_docs()
@@ -343,6 +370,11 @@ class HooksTest(unittest.TestCase):
             for entry in entries:
                 with self.subTest(event=event, script=entry["script"]):
                     self.assertTrue((HOOKS / entry["script"]).is_file())
+
+    def test_subagent_stop_matcher_names_exactly_the_agents_verdict_guard_judges(self):
+        manifest = json.loads(read(MANIFEST))
+        entry = next(e for e in manifest["hooks"]["SubagentStop"] if e["script"] == "verdict-guard.py")
+        self.assertEqual(set(entry["matcher"].split("|")), set(verdict_guard.VERDICTS))
 
 
 class ClaudeMdTest(unittest.TestCase):
