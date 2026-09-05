@@ -11,18 +11,21 @@ None, or a repository: `--repo <owner/name>` then rides on every `gh` call below
 
 ## Order
 
-`gh issue list --state open --limit 100 --json number,title,labels,body`, then sort:
+`gh issue list --state open --limit 100 --json number,title,labels,body`, then sort by the vocabulary `skills/issue-write/SKILL.md` § Labels defines:
 
 1. Priority label: high, then medium, then low, then unlabelled.
-2. Within a priority: bug before enhancement before neither.
+2. Within a priority, type label: bug, feature, enhancement, documentation, then no type.
 3. Within that: the lowest number.
 
-Two labels from one set: the item takes the more demanding one — the higher priority, `bug` over `enhancement`, the higher tier.
+Two labels from one set: the item takes the more demanding one — the higher priority, the earlier type in bug, feature, enhancement, documentation, the higher tier.
+
+A `story` label changes no position: the item orders by its type.
 
 Walk the sorted list from the top and stop at the first item § Skip lets through. When every item is skipped, report the list and stop.
 
 ## Skip
 
+- An open item carrying `question`, `duplicate`, `invalid` or `wontfix` is out of the queue: skipped and reported with the label that skipped it, before any dependency is checked.
 - An item whose § Related carries a dependency line in the form `issue-write` § Shape gives: check each number it names with `gh issue view <N> --json state`. One still open skips the item, reported with the number that skipped it; a closed one does not block, and a note line is not a dependency. A number the view cannot resolve (exit 1, `Could not resolve`) does not block either: it is reported beside the winner as a malformed dependency line.
 - The item that survives, when it carries no § Acceptance section: return `BLOCKED` with the sentence `issue-write` would need — the scenario and the exact result it must produce — and stop. The item is repaired before anything is dispatched.
 
@@ -38,4 +41,4 @@ Tier:          the tier label, or standard with a note that the item carries non
 Out of scope:  what § Related says the item does not cover, or none
 ```
 
-Then the items skipped above it, each with the open number that skipped it, and any malformed dependency line the winner carries. Nothing is dispatched here.
+Then the items skipped above it, each with the open number or the label that skipped it, and any malformed dependency line the winner carries. Nothing is dispatched here.

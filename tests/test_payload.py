@@ -64,7 +64,8 @@ ONE_HOME_PHRASES = {
     "Goal or Acceptance cannot be written": "claude/skills/issue-write/SKILL.md",
     "Depends on #N": "claude/skills/issue-write/SKILL.md",
     "have to be weighed for": "claude/skills/deliver/references/tiers.md",
-    "bug before enhancement": "claude/skills/issue-next/SKILL.md",
+    "bug, feature, enhancement, documentation": "claude/skills/issue-next/SKILL.md",
+    "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
 }
 ABSENT_PHRASES = (
     "exhaustive over intent",
@@ -80,6 +81,26 @@ STAGED_FAILURE_WARNING = "A failure staged afterwards by reverting does not coun
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
+REPOSITORY_LABELS = (
+    "bug",
+    "feature",
+    "enhancement",
+    "documentation",
+    "story",
+    "priority: high",
+    "priority: medium",
+    "priority: low",
+    "tier: trivial",
+    "tier: standard",
+    "tier: complex",
+    "question",
+    "duplicate",
+    "invalid",
+    "wontfix",
+    "accessibility",
+    "good first issue",
+    "help wanted",
+)
 ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Tier:", "Out of scope:")
 
 
@@ -366,6 +387,13 @@ class SkillPassagesTest(unittest.TestCase):
         for heading in ISSUE_BODY_HEADINGS:
             with self.subTest(heading=heading):
                 self.assertEqual(body.count(heading), 1)
+
+    def test_issue_write_labels_section_names_every_repository_label_once(self):
+        _, body = skill_docs()["issue-write"]
+        labels = section(body, "Labels")
+        for label in REPOSITORY_LABELS:
+            with self.subTest(label=label):
+                self.assertEqual(len(re.findall(rf"(?<![\w-]){re.escape(label)}(?![\w-])", labels)), 1)
 
     def test_issue_next_output_names_every_brief_field_it_fills(self):
         _, body = skill_docs()["issue-next"]
