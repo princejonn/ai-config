@@ -4,12 +4,15 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   gate:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
-      - run: git ls-files '*.sh' bin/* | xargs bash -n
+      - run: git ls-files '*.sh' bin/* | xargs -n1 bash -n
       - run: python3 -m unittest discover -s tests -v
       - run: bash tests/test_apply.sh
       - run: bash tests/test_apply_ts.sh
