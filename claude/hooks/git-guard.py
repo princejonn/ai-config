@@ -7,6 +7,7 @@ import re
 import shlex
 import subprocess
 import sys
+import time
 from collections import namedtuple
 
 HOOK = "git-guard.py"
@@ -72,6 +73,7 @@ FIND_TYPES = {"d", "f"}
 FIND_DEPTH_PRIMARIES = {"-maxdepth", "-mindepth"}
 FIND_BARE_PRIMARIES = {"-prune", "-print", "-print0"}
 GIT_TIMEOUT_SECONDS = 2
+BUDGET_SECONDS = 8
 MAX_DEPTH = 3
 Span = namedtuple("Span", "kind start end closed")
 WORD, ESCAPE, COMMENT, OPERATOR, REDIRECTION, HEREDOC_OPERATOR = "word", "escape", "comment", "operator", "redirection", "heredoc"
@@ -698,58 +700,61 @@ def under_safe_prefix(target):
     return any(under_prefix(target, prefix) for prefix in prefixes) or (os.path.isabs(target) and "scratchpad" in target.split("/"))
 
 
-def git_ignores(directory, path):
+class BudgetExhausted(Exception):
+    pass
+
+
+def run_git(arguments, deadline, stdin):
+    """None when git is absent or one call outran its own timeout with budget left; a timeout at the deadline is exhaustion."""
+    remaining = deadline - time.monotonic()
+    if remaining <= 0:
+        raise BudgetExhausted
     try:
-        code = subprocess.run(
-            ["git", "-C", directory, "check-ignore", "-q", "--", path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=GIT_TIMEOUT_SECONDS,
-        ).returncode
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return code == 0
-
-
-def ignoring_pattern(directory, path):
-    """The pattern check-ignore -v reports for path, else None."""
-    try:
-        completed = subprocess.run(
-            ["git", "-C", directory, "check-ignore", "-v", "--", path],
-            capture_output=True,
-            text=True,
-            timeout=GIT_TIMEOUT_SECONDS,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+        return subprocess.run(arguments, input=stdin, capture_output=True, timeout=min(remaining, GIT_TIMEOUT_SECONDS))
+    except subprocess.TimeoutExpired:
+        if time.monotonic() >= deadline:
+            raise BudgetExhausted
         return None
-    if completed.returncode != 0:
+    except OSError:
         return None
-    source, _, _ = completed.stdout.rstrip("\n").rpartition("\t")
-    return source.split(":", 2)[2] if source.count(":") >= 2 else None
 
 
-def git_ignored_path(target, cwd):
-    root = repo_root(cwd)
-    if root is None:
-        return False
-    root = os.path.normpath(root)
+def ignoring_patterns(root, paths, deadline):
+    """Path to the pattern check-ignore -v reports for it; a path it reports nothing for is absent."""
+    stdin = b"".join(os.fsencode(path) + b"\0" for path in paths if "\0" not in path)
+    completed = run_git(["git", "-C", root, "check-ignore", "-v", "-z", "--stdin", "--"], deadline, stdin)
+    if completed is None or completed.returncode != 0:
+        return {}
+    # check-ignore -v -z writes source NUL line NUL pattern NUL path NUL per match.
+    fields = completed.stdout.split(b"\0")[:-1]
+    return {os.fsdecode(fields[index + 3]): os.fsdecode(fields[index + 2]) for index in range(0, len(fields) - 3, 4)}
+
+
+def repository_path(target, cwd, root):
     resolved = os.path.normpath(os.path.join(cwd, target))
     if resolved == root or not under_prefix(resolved, root) or os.path.islink(resolved):
-        return False
-    return git_ignores(root, os.path.relpath(resolved, root))
-
-
-def deletable(target, cwd):
-    resolved = resolve_rm_target(target)
-    return under_safe_prefix(resolved) or git_ignored_path(resolved, cwd)
+        return None
+    return os.path.relpath(resolved, root)
 
 
 def unresolvable_delete(targets):
     return any(UNRESOLVABLE_TARGET.search(target) for target in targets)
 
 
-def deletable_targets(targets, cwd):
-    return all(deletable(target, cwd) for target in targets)
+def deletable_targets(targets, cwd, deadline):
+    resolved = [target for target in map(resolve_rm_target, targets) if not under_safe_prefix(target)]
+    if not resolved:
+        return True
+    root = repo_root(cwd)
+    if root is None:
+        return False
+    root = os.path.normpath(root)
+    paths = [repository_path(target, cwd, root) for target in resolved]
+    if None in paths:
+        return False
+    patterns = ignoring_patterns(root, paths, deadline)
+    # A negated match is not ignored: test_a_negated_pattern_does_not_make_a_path_deletable.
+    return all(path in patterns and not patterns[path].startswith("!") for path in paths)
 
 
 def deny_unresolvable_delete():
@@ -763,6 +768,13 @@ def deny_rm():
     )
 
 
+def deny_budget():
+    return deny(
+        f"the guard's {BUDGET_SECONDS} s budget ran out before every delete target was judged.",
+        "fewer delete targets or segments per command; a git-ignored path inside the repository may be deleted in place.",
+    )
+
+
 def rm_targets(args):
     if "--" in args:
         separator = args.index("--")
@@ -770,13 +782,13 @@ def rm_targets(args):
     return [arg for arg in args if not arg.startswith("-")]
 
 
-def check_rm(wrappers, tokens, cwd):
+def check_rm(wrappers, tokens, cwd, deadline):
     if program(tokens) != "rm":
         return None
     targets = rm_targets(tokens[1:])
     if "xargs" in wrappers or unresolvable_delete(targets):
         return deny_unresolvable_delete()
-    if deletable_targets(targets, cwd):
+    if deletable_targets(targets, cwd, deadline):
         return None
     return deny_rm()
 
@@ -844,10 +856,10 @@ def find_action_git_decision(tokens, cwd):
     return None
 
 
-def find_action_rm_decision(action, wrappers, tokens, cwd):
+def find_action_rm_decision(action, wrappers, tokens, cwd, deadline):
     if program(tokens) != "rm":
         return None
-    decision = check_rm(wrappers, [token for token in tokens if token != FIND_MATCH], cwd)
+    decision = check_rm(wrappers, [token for token in tokens if token != FIND_MATCH], cwd, deadline)
     if decision is not None:
         return decision
     targets = [target for target in rm_targets(tokens[1:]) if target != FIND_MATCH]
@@ -856,9 +868,9 @@ def find_action_rm_decision(action, wrappers, tokens, cwd):
     return None
 
 
-def find_action_decision(args, cwd):
+def find_action_decision(args, cwd, deadline):
     for action, wrappers, tokens in find_action_segments(args):
-        decision = find_action_git_decision(tokens, cwd) or find_action_rm_decision(action, wrappers, tokens, cwd) or check_find(tokens, cwd)
+        decision = find_action_git_decision(tokens, cwd) or find_action_rm_decision(action, wrappers, tokens, cwd, deadline) or check_find(tokens, cwd, deadline)
         if decision is not None:
             return decision
     return None
@@ -898,24 +910,24 @@ def unanchored(pattern):
     return not pattern.startswith("!") and "/" not in body[:-1]
 
 
-def ignored_name(root, name, directory):
+def exempt_names(root, names, directory, deadline):
     """A dir/ pattern matches an absent name only with the trailing slash."""
-    pattern = ignoring_pattern(root, name)
-    if pattern is None and directory and not name.endswith("/"):
-        pattern = ignoring_pattern(root, name + "/")
-    return pattern is not None and unanchored(pattern)
+    retries = {name: name + "/" for name in names if directory and not name.endswith("/")}
+    patterns = ignoring_patterns(root, names + list(retries.values()), deadline)
+    found = [patterns.get(name) if name in patterns or name not in retries else patterns.get(retries[name]) for name in names]
+    return all(pattern is not None and unanchored(pattern) for pattern in found)
 
 
-def exempt_find(starts, names, directory, cwd):
+def exempt_find(starts, names, directory, cwd, deadline):
     root = repo_root(cwd)
-    return root is not None and all(inside_repository(start, cwd, root) for start in starts) and all(ignored_name(root, name, directory) for name in names)
+    return root is not None and all(inside_repository(start, cwd, root) for start in starts) and exempt_names(root, names, directory, deadline)
 
 
-def check_find(tokens, cwd):
+def check_find(tokens, cwd, deadline):
     if program(tokens) != "find":
         return None
     args = tokens[1:]
-    decision = find_action_decision(args, cwd)
+    decision = find_action_decision(args, cwd, deadline)
     if decision is not None or not find_deletes(args):
         return decision
     flags, starts, expression = find_parts(args)
@@ -923,7 +935,7 @@ def check_find(tokens, cwd):
         return deny_unresolvable_delete()
     if not FIND_FOLLOW_FLAGS.isdisjoint(flags):
         return deny_rm()
-    if deletable_targets(starts, cwd):
+    if deletable_targets(starts, cwd, deadline):
         return None
     shape = find_shape(expression)
     if shape is None:
@@ -931,7 +943,7 @@ def check_find(tokens, cwd):
     names, directory = shape
     if any(UNRESOLVABLE_NAME.search(name) for name in names):
         return deny_unresolvable_delete()
-    return None if exempt_find(starts, names, directory, cwd) else deny_rm()
+    return None if exempt_find(starts, names, directory, cwd, deadline) else deny_rm()
 
 
 def without_version(name):
@@ -1051,6 +1063,7 @@ def evaluate(hook_input):
         return None
     cwd = hook_input.get("cwd") or ""
     commits = False
+    deadline = time.monotonic() + BUDGET_SECONDS
 
     for wrappers, tokens, segment, remainder in located_segments(command):
         invocation = git_invocation(tokens)
@@ -1075,7 +1088,10 @@ def evaluate(hook_input):
                 decision = check_commit_message(args, remainder)
                 if decision is not None:
                     return decision
-        decision = check_rm(wrappers, tokens, cwd) or check_find(tokens, cwd)
+        try:
+            decision = check_rm(wrappers, tokens, cwd, deadline) or check_find(tokens, cwd, deadline)
+        except BudgetExhausted:
+            return deny_budget()
         if decision is not None:
             return decision
 

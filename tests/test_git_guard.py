@@ -1,11 +1,13 @@
 import importlib.util
 import io
+import itertools
 import json
 import os
 import random
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stdout
 from unittest import mock
@@ -20,6 +22,7 @@ TMPDIR = "/private/tmp/claude-501/abc"
 IGNORED = "node_modules/\ndist/\ncoverage/\n*.pyc\n__pycache__/\nlink\n/build/\n*.log\n!keep.log\n**/cache/\n/**/staging/\n**/**/twice/\n"
 RM_RULE = "rm outside $TMPDIR, the scratchpad or a git-ignored path deletes work the tree cannot regenerate."
 SUBSTITUTION_RULE = "delete target carries a shell substitution the guard cannot resolve."
+BUDGET_RULE = "the guard's 8 s budget ran out before every delete target was judged."
 SUBJECT_RULE = "commit subjects follow Conventional Commits: <type>(<scope>): <description>."
 SUBJECT_PERMITTED = "types build chore ci docs feat fix perf refactor revert style test."
 SECTION_RULE = "a bare § is an internal reference; commit messages stand alone."
@@ -29,6 +32,13 @@ PAGER_PERMITTED = 'redirect: <command> > "$TMPDIR/out.txt" 2>&1, then read the f
 STASH_RULE = "git stash silently destroys uncommitted work in a shared tree."
 CLEAN_RULE = "git clean deletes untracked work in a shared tree."
 STDIN_RULE = "git commit -F - takes the message from a pipe or stdin the guard cannot read."
+FAKE_GIT = f"""#!{sys.executable}
+import os, sys, time
+time.sleep(float(os.environ["FAKE_GIT_SLEEP"]))
+paths = sys.stdin.buffer.read().split(b"\\0")[:-1]
+sys.stdout.buffer.write(b"".join(b"fake\\x001\\x00*\\x00" + path + b"\\x00" for path in paths))
+sys.exit(0 if paths else 1)
+"""
 
 DENIED = (
     "git stash",
@@ -1292,17 +1302,71 @@ class RmTests(IgnoreRepoTests):
         self.assertIsNone(self.in_repo("ls | xargs -I {} echo {}"))
 
     def test_git_absent_timed_out_or_failing_means_not_ignored(self):
-        for outcome in (FileNotFoundError(2, "git"), subprocess.TimeoutExpired(["git"], 5), mock.Mock(returncode=128)):
+        for outcome in (FileNotFoundError(2, "git"), subprocess.TimeoutExpired(["git"], 5), mock.Mock(returncode=128, stdout=b".gitignore\x001\x00node_modules/\x00node_modules\x00")):
             with self.subTest(outcome=outcome):
                 patch = {"side_effect": outcome} if isinstance(outcome, BaseException) else {"return_value": outcome}
                 with mock.patch.object(git_guard.subprocess, "run", **patch):
                     self.assertEqual(rule(self.in_repo("rm -rf node_modules")), RM_RULE)
 
     def test_check_ignore_runs_once_from_the_repository_root(self):
-        with mock.patch.object(git_guard.subprocess, "run", return_value=mock.Mock(returncode=1)) as run:
+        with mock.patch.object(git_guard.subprocess, "run", return_value=mock.Mock(returncode=1, stdout=b"")) as run:
             self.assertEqual(rule(self.in_repo("rm -rf dist", "packages/aegis")), RM_RULE)
-        self.assertEqual([call.args[0] for call in run.call_args_list], [["git", "-C", self.root, "check-ignore", "-q", "--", "packages/aegis/dist"]])
+        self.assertEqual([call.args[0] for call in run.call_args_list], [["git", "-C", self.root, "check-ignore", "-v", "-z", "--stdin", "--"]])
+        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"packages/aegis/dist\0"])
         self.assertEqual({call.kwargs["timeout"] for call in run.call_args_list}, {2})
+
+    def test_one_check_ignore_call_judges_every_target_of_a_segment(self):
+        targets = "node_modules dist packages/aegis/dist dist/out.js node_modules/pkg foo.log"
+        with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
+            self.assertIsNone(self.in_repo(f"rm -rf {targets}"))
+        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"node_modules\0dist\0packages/aegis/dist\0dist/out.js\0node_modules/pkg\0foo.log\0"])
+        with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
+            result = self.in_repo(f"rm -rf {targets} src")
+        self.assertEqual(rule(result), RM_RULE)
+        self.assertTrue(permitted(result).startswith("mv "))
+        self.assertEqual(run.call_count, 1)
+
+    def test_each_segment_gets_its_own_call_inside_the_budget(self):
+        with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
+            self.assertIsNone(self.in_repo("rm -rf node_modules && rm -rf dist && rm -f dist/out.js && rm -rf packages/aegis/dist && rm foo.log"))
+        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"node_modules\0", b"dist\0", b"dist/out.js\0", b"packages/aegis/dist\0", b"foo.log\0"])
+        self.assertEqual({call.kwargs["timeout"] for call in run.call_args_list}, {2})
+
+    def test_a_non_ascii_ignored_target_passes(self):
+        for command in ("rm résumé.log", "rm -rf résumé.log", "rm 'résumé.pyc'"):
+            with self.subTest(command=command):
+                self.assertIsNone(self.in_repo(command))
+        self.assertEqual(rule(self.in_repo("rm résumé.txt")), RM_RULE)
+
+    def test_a_negated_pattern_does_not_make_a_path_deletable(self):
+        for command in ("rm keep.log", "rm -rf keep.log", "rm -f other.log keep.log"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("rm other.log"))
+
+    def test_budget_exhaustion_denies_with_the_budget_reason(self):
+        answer = mock.Mock(returncode=0, stdout=b".gitignore\x002\x00dist/\x00dist\x00")
+        with mock.patch.object(git_guard.subprocess, "run", return_value=answer) as run, mock.patch.object(git_guard.time, "monotonic", side_effect=itertools.count(0, 3)):
+            result = self.in_repo("rm -rf dist; rm -rf dist; rm -rf dist; rm -rf dist")
+        self.assertEqual(rule(result), BUDGET_RULE)
+        self.assertTrue(permitted(result).startswith("fewer"))
+        self.assertLess(run.call_count, 4)
+
+    def test_a_stalled_git_denies_inside_the_budget(self):
+        command = "; ".join(f"rm -rf dist{index}" for index in range(20))
+        with tempfile.TemporaryDirectory() as directory:
+            with open(os.path.join(directory, "git"), "w") as script:
+                script.write(FAKE_GIT)
+            os.chmod(os.path.join(directory, "git"), 0o755)
+            path = directory + os.pathsep + os.environ["PATH"]
+            with mock.patch.dict(os.environ, {"PATH": path, "FAKE_GIT_SLEEP": "1"}):
+                started = time.monotonic()
+                result = self.in_repo(command)
+                elapsed = time.monotonic() - started
+            with mock.patch.dict(os.environ, {"PATH": path, "FAKE_GIT_SLEEP": "0"}):
+                self.assertIsNone(self.in_repo(command))
+        self.assertEqual(rule(result), BUDGET_RULE)
+        self.assertLess(elapsed, 9)
 
     def test_targets_are_read_the_way_the_shell_reads_them(self):
         self.assertEqual(rule(self.in_repo("rm -rf $'src'")), RM_RULE)
@@ -1462,6 +1526,16 @@ class FindDeleteTests(IgnoreRepoTests):
                 self.assertEqual(rule(self.in_repo(command)), RM_RULE)
         self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
         self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -delete"))
+
+    def test_names_and_their_slash_forms_share_one_call(self):
+        with mock.patch.object(git_guard.subprocess, "run", return_value=mock.Mock(returncode=1, stdout=b"")) as run:
+            self.assertEqual(rule(self.in_repo("find packages -type d -name __pycache__ -name cache -delete")), RM_RULE)
+        self.assertEqual([call.args[0][3:] for call in run.call_args_list], [["check-ignore", "-v", "-z", "--stdin", "--"]] * 2)
+        self.assertEqual({os.path.normpath(call.args[0][2]) for call in run.call_args_list}, {self.root})
+        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"packages\0", b"__pycache__\0cache\0__pycache__/\0cache/\0"])
+        with mock.patch.object(git_guard.subprocess, "run", return_value=mock.Mock(returncode=1, stdout=b"")) as run:
+            self.assertEqual(rule(self.in_repo("find . -name '*.pyc' -delete")), RM_RULE)
+        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"*.pyc\0"])
 
     def test_an_anchored_pattern_does_not_exempt_a_name_that_matches_every_directory(self):
         for command in (
