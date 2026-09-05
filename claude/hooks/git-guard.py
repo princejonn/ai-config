@@ -7,6 +7,7 @@ import re
 import shlex
 import subprocess
 import sys
+from collections import namedtuple
 
 HOOK = "git-guard.py"
 ATTRIBUTION_TRAILER_KEYS = ("co-authored-by:", "claude-session:")
@@ -45,7 +46,6 @@ COMMIT_LONG_VALUE_OPTIONS = {"--message": "m", "--file": "F", "--reuse-message":
 CONVENTIONAL_SUBJECT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9./,-]*\))?: \S")
 CONVENTIONAL_TYPES = "build chore ci docs feat fix perf refactor revert style test"
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n(.*?)(?:^\s*\2\s*$|\Z)", re.MULTILINE | re.DOTALL)
-HEREDOC_OPENER = re.compile(r"^<<-?(\w*)$")
 HEREDOC_DELIMITER = re.compile(r"^\w+$")
 SPEC_BEFORE_SECTION = re.compile(r"(RFC\s?\d+|OIDC|Core|Discovery|OpenID)[^§]{0,20}$")
 SECTION_LOOKBACK = 24
@@ -73,56 +73,201 @@ FIND_DEPTH_PRIMARIES = {"-maxdepth", "-mindepth"}
 FIND_BARE_PRIMARIES = {"-prune", "-print", "-print0"}
 GIT_TIMEOUT_SECONDS = 2
 MAX_DEPTH = 3
+Span = namedtuple("Span", "kind start end closed")
+WORD, ESCAPE, COMMENT, OPERATOR, REDIRECTION, HEREDOC_OPERATOR = "word", "escape", "comment", "operator", "redirection", "heredoc"
+SINGLE, DOUBLE, ANSI, BACKTICK, SUBSTITUTION, EXPANSION, PROCESS = "single", "double", "ansi", "backtick", "substitution", "expansion", "process"
+COMMAND, QUOTED_EXPANSION = "command", "quoted expansion"
+QUOTES = {SINGLE, DOUBLE, ANSI}
+TOKEN_BOUNDARIES = {OPERATOR, REDIRECTION, HEREDOC_OPERATOR}
+BODY_OPENER = {SINGLE: 1, DOUBLE: 1, ANSI: 2, BACKTICK: 1, SUBSTITUTION: 2, EXPANSION: 2, PROCESS: 2}
+COMMAND_OPERATORS = (
+    ("<<<", REDIRECTION),
+    ("<<-", HEREDOC_OPERATOR),
+    ("<<", HEREDOC_OPERATOR),
+    ("&>>", REDIRECTION),
+    ("&>", REDIRECTION),
+    (">&", REDIRECTION),
+    ("<&", REDIRECTION),
+    (">>", REDIRECTION),
+    (">|", REDIRECTION),
+    ("<>", REDIRECTION),
+    (">", REDIRECTION),
+    ("<", REDIRECTION),
+    ("||", OPERATOR),
+    ("&&", OPERATOR),
+    ("|&", OPERATOR),
+    ("|", OPERATOR),
+    ("&", OPERATOR),
+    (";", OPERATOR),
+    ("\n", OPERATOR),
+    ("(", OPERATOR),
+    (")", OPERATOR),
+)
+WHITESPACE = " \t\n"
+WORD_HEAD = re.compile(r"[^ \t\n]*")
+BACKTICK_ESCAPE = re.compile(r"\\([$`\\])")
+ANSI_SIMPLE_ESCAPES = {"a": "\a", "b": "\b", "e": "\x1b", "E": "\x1b", "f": "\f", "n": "\n", "r": "\r", "t": "\t", "v": "\v", "\\": "\\", "'": "'", '"': '"', "?": "?"}
+ANSI_OCTAL = re.compile(r"[0-7]{1,3}")
+ANSI_HEX = re.compile(r"x([0-9A-Fa-f]{1,2})")
 
 
-def redirection_ampersand(command, index):
-    return command[index - 1 : index] in ("<", ">") or command[index + 1 : index + 2] == ">"
+def flat_span(text, index, kind, closer, escapes):
+    position = index + BODY_OPENER[kind]
+    while position < len(text):
+        if text[position] == closer:
+            return Span(kind, index, position + 1, True)
+        position += 2 if escapes and text[position] == "\\" else 1
+    return Span(kind, index, len(text), False)
 
 
-def substitution_end(text, index):
-    """Returns the index just past the $(…) opening at index, or len(text) when it never closes."""
-    end, depth = index + 2, 1
-    while end < len(text) and depth:
-        depth += {"(": 1, ")": -1}.get(text[end], 0)
-        end += 1
-    return end
+def nested_span(text, index, kind, context, closer):
+    _, end = scan(text, index + BODY_OPENER[kind], context, closer)
+    return Span(kind, index, len(text) if end is None else end, end is not None)
+
+
+def expansion_context(context):
+    return EXPANSION if context in (COMMAND, EXPANSION) else QUOTED_EXPANSION
+
+
+def construct(text, index, context, at_token_start):
+    """Returns the quote, escape, substitution, expansion, comment or operator span starting at index in this context, else None."""
+    char = text[index]
+    if context in (COMMAND, EXPANSION):
+        if char == "'":
+            return flat_span(text, index, SINGLE, "'", False)
+        if text.startswith("$'", index):
+            return flat_span(text, index, ANSI, "'", True)
+        if text.startswith(("<(", ">("), index):
+            return nested_span(text, index, PROCESS, COMMAND, ")")
+    if char == '"' and context != DOUBLE:
+        return nested_span(text, index, DOUBLE, DOUBLE, '"')
+    if char == "\\" and index + 1 < len(text):
+        return Span(ESCAPE, index, index + 2, True)
+    if text.startswith("$(", index):
+        return nested_span(text, index, SUBSTITUTION, COMMAND, ")")
+    if text.startswith("${", index):
+        return nested_span(text, index, EXPANSION, expansion_context(context), "}")
+    if char == "`":
+        return flat_span(text, index, BACKTICK, "`", True)
+    if context != COMMAND:
+        return None
+    if char == "#" and at_token_start:
+        end = text.find("\n", index)
+        return Span(COMMENT, index, len(text) if end == -1 else end, True)
+    for operator, kind in COMMAND_OPERATORS:
+        if text.startswith(operator, index):
+            return Span(kind, index, index + len(operator), True)
+    return None
+
+
+def scan(text, index, context, closer=None):
+    """Returns (spans, end): the spans from index up to the context's closer, and the index just past it; end is None when the closer never comes and len(text) when there is none to find."""
+    found, word, depth, boundary = [], index, 0, True
+    while index < len(text):
+        if text[index] == closer and depth == 0:
+            break
+        span = construct(text, index, context, text[index - 1] in WHITESPACE if word < index else boundary)
+        if span is None:
+            index += 1
+            continue
+        if word < index:
+            found.append(Span(WORD, word, index, True))
+            boundary = text[index - 1] in WHITESPACE
+        if span.kind == OPERATOR and text[index] == "(":
+            depth += 1
+        elif span.kind == OPERATOR and text[index] == ")" and depth:
+            depth -= 1
+        if span.kind in TOKEN_BOUNDARIES:
+            boundary = True
+        elif not line_continuation(text, span):
+            boundary = False
+        found.append(span)
+        index = word = span.end
+    if word < index:
+        found.append(Span(WORD, word, index, True))
+    if index < len(text):
+        return found, index + 1
+    return found, len(text) if closer is None else None
+
+
+def line_continuation(text, span):
+    return span.kind == ESCAPE and text[span.start + 1] == "\n"
+
+
+def spans(text, context=COMMAND):
+    return scan(text, 0, context)[0]
+
+
+def body(text, span):
+    return text[span.start + BODY_OPENER[span.kind] : span.end - 1 if span.closed else span.end]
+
+
+def unescaped(chunk, in_double_quotes):
+    if chunk[1] == "\n":
+        return ""
+    if in_double_quotes:
+        return chunk[1:] if chunk[1] in '\\"' else chunk
+    return chunk if chunk[1] in "$`" else chunk[1:]
+
+
+def ansi_decoded(inner):
+    """The text of a $'…' body with its escapes decoded as bash 3.2 does, ended at a NUL."""
+    out, index = [], 0
+    while index < len(inner):
+        char = inner[index]
+        if char != "\\" or index + 1 == len(inner):
+            out.append(char)
+            index += 1
+            continue
+        following, octal, hexadecimal = inner[index + 1], ANSI_OCTAL.match(inner, index + 1), ANSI_HEX.match(inner, index + 1)
+        if following in ANSI_SIMPLE_ESCAPES:
+            decoded, length = ANSI_SIMPLE_ESCAPES[following], 2
+        elif octal:
+            decoded, length = chr(int(octal.group(), 8) & 0xFF), 1 + len(octal.group())
+        elif hexadecimal:
+            decoded, length = chr(int(hexadecimal.group(1), 16)), 1 + len(hexadecimal.group())
+        elif following == "c" and index + 2 < len(inner):
+            decoded, length = chr(ord(inner[index + 2].upper()) & 0x1F), 3
+        elif following == "c":
+            decoded, length = "\\", 2
+        else:
+            decoded, length = "\\" + following, 2
+        if decoded == "\0":
+            break
+        out.append("\\" + decoded if decoded in ("$", "`") else decoded)
+        index += length
+    return "".join(out)
+
+
+def double_quote_removed(inner):
+    out = []
+    for span in spans(inner, DOUBLE):
+        chunk = inner[span.start : span.end]
+        out.append(unescaped(chunk, True) if span.kind == ESCAPE else chunk)
+    return "".join(out)
+
+
+def quote_removed(text, span):
+    inner = body(text, span)
+    if span.kind == DOUBLE:
+        return double_quote_removed(inner)
+    return ansi_decoded(inner) if span.kind == ANSI else inner
 
 
 def operator_parts(command):
-    """Returns [text, operator, text, …] split on unquoted list/pipe operators and parentheses; unterminated quotes fall back to a plain split."""
-    parts, current, quote, index = [], [], None, 0
-    while index < len(command):
-        char = command[index]
-        if quote:
-            if char == quote:
-                quote = None
-            elif char == "\\" and quote == '"' and index + 1 < len(command):
-                current.append(char)
-                index += 1
-                char = command[index]
-            current.append(char)
-        elif char in "'\"":
-            quote = char
-            current.append(char)
-        elif char == "\\" and index + 1 < len(command):
-            current.extend(command[index : index + 2])
-            index += 1
-        elif command.startswith("$(", index):
-            end = substitution_end(command, index)
-            current.extend(command[index:end])
-            index = end - 1
-        elif command.startswith(("||", "&&", "|&"), index):
-            parts.extend(("".join(current), command[index : index + 2]))
-            current = []
-            index += 1
-        elif char in ";\n()|&" and not (char == "&" and redirection_ampersand(command, index)):
-            parts.extend(("".join(current), char))
+    """Returns [text, operator, text, …] split on the list operators and parentheses outside quotes, substitutions and comments; an unterminated span falls back to a plain split."""
+    parts, current = [], []
+    for span in spans(command):
+        if not span.closed:
+            return SEGMENT_SPLIT.split(command)
+        chunk = command[span.start : span.end]
+        if span.kind == OPERATOR:
+            parts.extend(("".join(current), chunk))
             current = []
         else:
-            current.append(char)
-        index += 1
+            current.append(chunk)
     parts.append("".join(current))
-    return SEGMENT_SPLIT.split(command) if quote else parts
+    return parts
 
 
 def split_pipelines(command):
@@ -150,10 +295,28 @@ def segment_offsets(command):
 
 
 def tokenize(segment):
-    try:
-        return shlex.split(segment)
-    except ValueError:
-        return segment.split()
+    """Splits a segment into words with quotes removed and comments dropped; an unterminated quote falls back to a whitespace split."""
+    words, current = [], None
+    for span in spans(segment):
+        chunk = segment[span.start : span.end]
+        if span.kind in QUOTES and not span.closed:
+            return segment.split()
+        if span.kind == COMMENT:
+            continue
+        if span.kind == WORD or (span.kind == OPERATOR and chunk == "\n"):
+            for char in chunk:
+                if char not in WHITESPACE:
+                    current = (current or "") + char
+                elif current is not None:
+                    words.append(current)
+                    current = None
+            continue
+        piece = quote_removed(segment, span) if span.kind in QUOTES else unescaped(chunk, False) if span.kind == ESCAPE else chunk
+        if piece or span.kind in QUOTES:
+            current = (current or "") + piece
+    if current is not None:
+        words.append(current)
+    return words
 
 
 def skip_options(tokens, with_value):
@@ -193,27 +356,16 @@ def program(tokens):
     return os.path.basename(tokens[0]) if tokens else ""
 
 
-def command_substitutions(text):
-    """Yields the bodies of $(…) and `…` in text."""
-    index = 0
-    while index < len(text):
-        if text.startswith("$(", index):
-            depth, start = 1, index + 2
-            end = start
-            while end < len(text) and depth:
-                depth += {"(": 1, ")": -1}.get(text[end], 0)
-                end += 1
-            yield text[start : end - 1] if depth == 0 else text[start:]
-            index = end
-        elif text[index] == "`":
-            end = text.find("`", index + 1)
-            if end == -1:
-                yield text[index + 1 :]
-                return
-            yield text[index + 1 : end]
-            index = end + 1
-        else:
-            index += 1
+def command_substitutions(text, context=COMMAND):
+    for span in spans(text, context):
+        if span.kind == BACKTICK:
+            yield BACKTICK_ESCAPE.sub(r"\1", body(text, span))
+        elif span.kind in (SUBSTITUTION, PROCESS):
+            yield body(text, span)
+        elif span.kind == DOUBLE:
+            yield from command_substitutions(body(text, span), DOUBLE)
+        elif span.kind == EXPANSION:
+            yield from command_substitutions(body(text, span), expansion_context(context))
 
 
 def nested_commands(tokens):
@@ -236,8 +388,8 @@ def located_segments(command, depth=0):
         yield wrappers, tokens, segment, command[offset:]
         for nested in nested_commands(tokens):
             yield from located_segments(nested, depth + 1)
-    for body in command_substitutions(command):
-        yield from located_segments(body, depth + 1)
+    for substitution in command_substitutions(command):
+        yield from located_segments(substitution, depth + 1)
 
 
 def segments(command, depth=0):
@@ -256,8 +408,8 @@ def pipelines(command, depth=0):
         for _, tokens in stages:
             for nested in nested_commands(tokens):
                 yield from pipelines(nested, depth + 1)
-    for body in command_substitutions(command):
-        yield from pipelines(body, depth + 1)
+    for substitution in command_substitutions(command):
+        yield from pipelines(substitution, depth + 1)
 
 
 def git_invocation(tokens):
@@ -397,46 +549,39 @@ def message_source(args):
     return None
 
 
-def unquoted(text):
-    out, quote, index = [], None, 0
-    while index < len(text):
-        char = text[index]
-        if quote:
-            if char == quote:
-                quote = None
-                out.append("_")
-            elif char == "\\" and quote == '"' and index + 1 < len(text):
-                index += 1
-        elif char in "'\"":
-            quote = char
-        elif char == "\\" and index + 1 < len(text):
-            out.append("_")
-            index += 1
-        elif text.startswith("$(", index):
-            out.append("_")
-            index = substitution_end(text, index) - 1
-        elif char == "`":
-            out.append("_")
-            end = text.find("`", index + 1)
-            index = len(text) if end == -1 else end
-        elif char == "#" and (index == 0 or text[index - 1].isspace()):
-            break
+def heredoc_delimiter(text, following):
+    """Returns the word after a heredoc operator with its quotes removed, or None when there is none or a quote never closes."""
+    parts = []
+    for span in following:
+        chunk = text[span.start : span.end]
+        if span.kind == WORD:
+            if not parts:
+                chunk = chunk.lstrip(WHITESPACE)
+                if not chunk:
+                    continue
+            head = WORD_HEAD.match(chunk).group()
+            parts.append(head)
+            if len(head) < len(chunk):
+                break
+        elif span.kind in QUOTES:
+            if not span.closed:
+                return None
+            parts.append(quote_removed(text, span))
+        elif span.kind == ESCAPE:
+            parts.append(unescaped(chunk, False))
         else:
-            out.append(char)
-        index += 1
-    return "".join(out)
+            break
+    return "".join(parts) if parts else None
 
 
 def opens_heredoc(segment):
-    """True when the segment's unquoted text carries <<WORD, <<-WORD, or a bare << followed by its delimiter; a quoted '<<EOF' and a <<< here-string are neither."""
-    words = unquoted(segment).split()
-    for index, word in enumerate(words):
-        opener = HEREDOC_OPENER.match(word)
-        if opener is None:
-            continue
-        delimiter = opener.group(1) or (words[index + 1] if index + 1 < len(words) else "")
-        if HEREDOC_DELIMITER.match(delimiter):
-            return True
+    """True when the segment carries << or <<- followed by a delimiter word."""
+    scanned = spans(segment)
+    for position, span in enumerate(scanned):
+        if span.kind == HEREDOC_OPERATOR:
+            delimiter = heredoc_delimiter(segment, scanned[position + 1 :])
+            if delimiter is not None and HEREDOC_DELIMITER.match(delimiter):
+                return True
     return False
 
 

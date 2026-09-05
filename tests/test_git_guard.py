@@ -2,6 +2,7 @@ import importlib.util
 import io
 import json
 import os
+import random
 import subprocess
 import sys
 import tempfile
@@ -25,6 +26,9 @@ SECTION_RULE = "a bare § is an internal reference; commit messages stand alone.
 SECTION_PERMITTED = "qualify it: RFC 6749 §3.1.1, OIDC Core §3.1.2.1."
 PAGER_RULE = "piping a test or verify run through tail or head hides the runner's summary."
 PAGER_PERMITTED = 'redirect: <command> > "$TMPDIR/out.txt" 2>&1, then read the file.'
+STASH_RULE = "git stash silently destroys uncommitted work in a shared tree."
+PUSH_RULE = "git push is the user's to run manually."
+STDIN_RULE = "git commit -F - takes the message from a pipe or stdin the guard cannot read."
 
 DENIED = (
     "git stash",
@@ -97,6 +101,11 @@ DENIED = (
     "npx jest | tail",
     "bash tests/test_apply.sh | tail -3",
     "make test | tail",
+    'echo $(git stash ")")',
+    "diff <(git stash) x",
+    "git commit -F - -- a ${X:-<<EOF}",
+    "git commit -F - -- a $'<<EOF'",
+    "git commit -F - -- a $(cat <<EOF)\nfeat: x\nEOF",
 )
 PERMITTED = (
     "git log --stat",
@@ -141,6 +150,9 @@ PERMITTED = (
     "git commit -F - -- a <<'EOF'\nfeat: add thing\nEOF",
     "ls | tail",
     "git log | head",
+    "git commit -F - -- a $(echo \")\") <<'EOF'\nfeat: x\nEOF",
+    "git commit -F - -- a<<EOF\nfeat: x\nEOF",
+    "echo x # ; git stash",
 )
 
 
@@ -928,6 +940,107 @@ class ShellIndirectionTests(unittest.TestCase):
         self.assertIsNone(evaluate("eval ls"))
 
 
+class ShellReadingTests(unittest.TestCase):
+    def test_a_quoted_paren_does_not_close_a_substitution(self):
+        self.assertIsNone(evaluate("git commit -F - -- a $(echo \")\") <<'EOF'\nfeat: x\nEOF"))
+        self.assertEqual(rule(evaluate('echo $(git stash ")")')), STASH_RULE)
+        self.assertEqual(rule(evaluate("echo \"$(git stash ')')\"")), STASH_RULE)
+        self.assertEqual(rule(evaluate('echo $(echo ")"; git push)')), PUSH_RULE)
+
+    def test_a_process_substitution_is_walked_and_is_one_span_to_the_outer_command(self):
+        self.assertEqual(rule(evaluate("diff <(git stash) x")), STASH_RULE)
+        self.assertEqual(rule(evaluate("tee >(git stash) < x")), STASH_RULE)
+        self.assertEqual(rule(evaluate("git commit -F - -- a <(cat <<EOF)")), STDIN_RULE)
+        self.assertIsNone(evaluate("git commit -F - -- a <(cat) <<EOF\nfeat: x\nEOF"))
+        self.assertEqual(rule(evaluate("npm test <(true) | tail")), PAGER_RULE)
+
+    def test_a_parameter_expansion_is_one_span_to_the_opener_test(self):
+        for command in ("git commit -F - -- a ${X:-<<EOF}", "git commit -F - -- a ${X:- <<EOF }\nfeat: x\nEOF"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), STDIN_RULE)
+        self.assertIsNone(evaluate('git commit -F - -- a ${X:-"}"} <<EOF\nfeat: x\nEOF'))
+
+    def test_ansi_c_quoting_is_a_quoted_span(self):
+        self.assertEqual(rule(evaluate("git commit -F - -- a $'<<EOF'")), STDIN_RULE)
+        self.assertIsNone(evaluate("git commit -F - -- a $'\\'' <<EOF\nfeat: x\nEOF"))
+        self.assertIsNone(evaluate("git commit -m $'fix: x' -- a"))
+        self.assertIsNone(evaluate("git commit -m $'\\x66ix: x' -- a"))
+        self.assertEqual(rule(evaluate("git commit -m $'Add thing' -- a")), SUBJECT_RULE)
+        self.assertEqual(rule(evaluate("git commit -m $'Add thing\\nfix: x' -- a")), SUBJECT_RULE)
+        self.assertEqual(
+            rule(evaluate("git commit -m $'fix: x\\n\\nCo-Authored-By: x' -- a")),
+            "commit text contains 'Co-Authored-By: x'; commit messages carry no Claude attribution.",
+        )
+
+    def test_a_heredoc_opened_inside_a_substitution_belongs_to_the_inner_command(self):
+        for command in ("git commit -F - -- a $(cat <<EOF)\nfeat: x\nEOF", "git commit -F - -- a `cat <<EOF`\nfeat: x\nEOF"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), STDIN_RULE)
+        self.assertEqual(rule(evaluate("echo $(git commit -F - -- a <<'EOF'\nAdd thing\nEOF\n)")), SUBJECT_RULE)
+        self.assertEqual(rule(evaluate("echo `git commit -F - -- a <<'EOF'\nAdd thing\nEOF\n`")), SUBJECT_RULE)
+
+    def test_a_comment_starts_after_whitespace_or_an_operator_and_hides_the_rest_of_its_line(self):
+        for command in ("git commit -F - -- a ># <<EOF\nfeat: x\nEOF", "git commit -F - -- a >#<<EOF\nfeat: x\nEOF", "git commit -F - -- a;#<<EOF\nfeat: x\nEOF"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), STDIN_RULE)
+        self.assertIsNone(evaluate("echo x # ; git stash"))
+        self.assertIsNone(evaluate("echo x;# git stash"))
+        self.assertEqual(rule(evaluate("echo x # ; git stash\ngit push")), PUSH_RULE)
+
+    def test_a_hash_after_an_escaped_space_or_a_continued_word_continues_the_word(self):
+        self.assertEqual(rule(evaluate("echo \\ #; git stash")), STASH_RULE)
+        self.assertEqual(rule(evaluate("echo a\\\n#; git stash")), STASH_RULE)
+        self.assertIsNone(evaluate("echo a \\\n#; git stash"))
+
+    def test_a_process_substitution_inside_an_unquoted_expansion_is_walked(self):
+        self.assertEqual(rule(evaluate("echo ${X:-<(git stash)}")), STASH_RULE)
+        self.assertIsNone(evaluate('echo "${X:-<(git stash)}"'))
+        self.assertEqual(rule(evaluate('echo "${X:-$(git stash)}"')), STASH_RULE)
+
+    def test_a_single_quoted_substitution_is_literal(self):
+        self.assertIsNone(evaluate("echo '$(git stash)'"))
+        self.assertEqual(rule(evaluate("rm -rf '$(git stash)'")), SUBSTITUTION_RULE)
+
+    def test_a_line_continuation_is_removed(self):
+        self.assertEqual(rule(evaluate("git \\\nstash")), STASH_RULE)
+        self.assertEqual(rule(evaluate("git \\\npush")), PUSH_RULE)
+        self.assertEqual(rule(evaluate("git \\\ncommit -m 'Add thing' -- a")), SUBJECT_RULE)
+        self.assertIsNone(evaluate("git commit -F - -- a \\\n<<'EOF'\nfeat: x\nEOF"))
+        self.assertIsNone(evaluate('git commit -m "fix: x" \\\n-- a'))
+
+    def test_escaped_backticks_nest_a_substitution(self):
+        self.assertEqual(rule(evaluate("echo `echo \\`git stash\\``")), STASH_RULE)
+
+    def test_a_hash_inside_a_word_escaped_or_quoted_stays_a_word(self):
+        for command in (
+            "git commit -F - -- a#b <<EOF\nfeat: x\nEOF",
+            "git commit -F - -- a \\# <<EOF\nfeat: x\nEOF",
+            "git commit -F - -- a '#' <<EOF\nfeat: x\nEOF",
+            "git commit -F - -- a >x#<<EOF\nfeat: x\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+        for command in ("echo a#b; git stash", "echo \\#; git stash", "echo '#'; git stash"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), STASH_RULE)
+
+    def test_a_heredoc_operator_needs_no_space_before_it(self):
+        self.assertIsNone(evaluate("git commit -F - -- a<<EOF\nfeat: x\nEOF"))
+        self.assertIsNone(evaluate("git commit -F - -- a<<'EOF'\nfeat: x\nEOF"))
+        self.assertEqual(rule(evaluate("git commit -F - -- a<<'EOF'\nAdd thing\nEOF")), SUBJECT_RULE)
+        self.assertEqual(rule(evaluate("cat msg.txt | git commit -F - --trailer '<<EOF' -- a")), STDIN_RULE)
+
+    def test_an_unterminated_span_runs_to_the_end_of_the_command_and_fails_closed(self):
+        for command in ("git push $(echo", "git push ${X", "git push <(echo", "git push `echo", "git push $'x", "git push 'x", 'git push "x'):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), PUSH_RULE)
+        for command in ("echo $(git stash", "echo `git stash", "cat <(git stash", 'echo "$(git stash', "echo ${X:-$(git stash"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), STASH_RULE)
+        self.assertEqual(rule(evaluate("git commit -F - -- a <<'EOF\nfeat: x\nEOF")), STDIN_RULE)
+        self.assertEqual(rule(evaluate("git commit -F - -- a <<$'EOF\nfeat: x\nEOF")), STDIN_RULE)
+
+
 class IgnoreRepoTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -1189,6 +1302,28 @@ class RmTests(IgnoreRepoTests):
             self.assertEqual(rule(self.in_repo("rm -rf dist", "packages/aegis")), RM_RULE)
         self.assertEqual([call.args[0] for call in run.call_args_list], [["git", "-C", self.root, "check-ignore", "-q", "--", "packages/aegis/dist"]])
         self.assertEqual({call.kwargs["timeout"] for call in run.call_args_list}, {2})
+
+    def test_targets_are_read_the_way_the_shell_reads_them(self):
+        self.assertEqual(rule(self.in_repo("rm -rf $'src'")), RM_RULE)
+        self.assertIsNone(self.in_repo("rm -rf $'dist'"))
+        self.assertEqual(rule(self.in_repo('rm -rf $(echo ")")/src')), SUBSTITUTION_RULE)
+        self.assertEqual(rule(self.in_repo("rm -rf ${X:-src}")), SUBSTITUTION_RULE)
+        self.assertEqual(rule(self.in_repo("cat <(rm -rf src)")), RM_RULE)
+        self.assertIsNone(self.in_repo("rm -rf dist # src"))
+        self.assertEqual(rule(self.in_repo("rm -rf dist \\#")), RM_RULE)
+
+    def test_an_ansi_c_body_decodes_before_it_becomes_a_target(self):
+        for command in ("rm -rf $'src\\x00.log'", "rm -rf $'src\\0.log'", "rm -rf $'\\x24TMPDIR/x'", "rm -rf $'\\u0064ist'"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("rm -rf $'dist\\x00/src'"))
+        self.assertIsNone(self.in_repo("rm -rf $'\\x64ist'"))
+
+    def test_an_escaped_dollar_names_a_literal_path_not_the_temp_variable(self):
+        for command in ("rm -rf \\$TMPDIR/x", 'rm -rf "\\$TMPDIR/x"'):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("rm -rf $TMPDIR/x"))
 
 
 class FindDeleteTests(IgnoreRepoTests):
@@ -1576,6 +1711,44 @@ class CompoundCommandTests(unittest.TestCase):
 
     def test_unbalanced_quotes_still_evaluated(self):
         self.assertEqual(decision(evaluate("git push 'oops")), "deny")
+
+
+class ScannerTests(unittest.TestCase):
+    def test_control_escapes_decode_as_bash_does(self):
+        self.assertEqual(git_guard.ansi_decoded("\\c?"), "\x1f")
+        self.assertEqual(git_guard.ansi_decoded("\\cM"), "\r")
+        self.assertEqual(git_guard.ansi_decoded("a\\c"), "a\\")
+
+    def test_spans_tile_the_text(self):
+        for text in (
+            "git commit -F - -- a $(echo \")\") <<'EOF'\nfeat: x\nEOF",
+            "echo x # ; git stash",
+            'cat <(rm -rf src) > "$OUT" 2>&1 | tail',
+            "rm -rf $'src' ${X:-a} `b` \\# a\\",
+            "",
+        ):
+            with self.subTest(text=text):
+                starts, ends = [span.start for span in git_guard.spans(text)], [span.end for span in git_guard.spans(text)]
+                self.assertEqual(starts, [0] + ends[:-1] if ends else [])
+                self.assertEqual(ends[-1:], [len(text)] if text else [])
+
+    def test_random_text_scans_without_raising_and_tiles(self):
+        alphabet = "ab rm-$(){}[]'\"`\\<>|&;#\n\t~*?=:.,/x0"
+        generator = random.Random(23)
+        for _ in range(2000):
+            text = "".join(generator.choice(alphabet) for _ in range(generator.randrange(40)))
+            with self.subTest(text=text):
+                starts, ends = [span.start for span in git_guard.spans(text)], [span.end for span in git_guard.spans(text)]
+                self.assertEqual(starts, [0] + ends[:-1] if ends else [])
+                self.assertEqual(ends[-1:], [len(text)] if text else [])
+                self.assertIn(decision(evaluate(text, cwd="")), {None, "deny"})
+
+    def test_an_unterminated_span_reaches_the_end_of_the_text_without_raising(self):
+        for text in ("$(echo", "${X", "<(echo", ">(echo", "`echo", "$'a", "'a", '"a', '"$(a', "$(a '", "$(a \"", '${X:-"', "$'\\"):
+            with self.subTest(text=text):
+                spans = list(git_guard.spans(text))
+                self.assertEqual(spans[-1].end, len(text))
+                self.assertFalse(spans[-1].closed)
 
 
 class FailOpenTests(unittest.TestCase):
