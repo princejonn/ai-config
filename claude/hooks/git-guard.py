@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook (Bash): denies destructive git forms and any rm of a path the tree cannot regenerate; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
+"""PreToolUse hook (Bash): denies destructive git forms, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, and a test run piped through a pager; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
 
 import json
 import os
@@ -15,7 +15,8 @@ SAFE_RM_PREFIXES = ("$TMPDIR", "${TMPDIR}", "/tmp/claude", "/private/tmp/claude"
 TMPDIR_VARIABLE = re.compile(r"^\$(\{TMPDIR\}|TMPDIR)(?=/|$)")
 UNRESOLVABLE_TARGET = re.compile(r"^~|[*?\[]|\$(?!TMPDIR(?=/|$)|\{TMPDIR\}(?=/|$))|`")
 UNRESOLVABLE_PATHSPEC = re.compile(r"\$(?!PWD(?=/|$)|\{PWD\})|`")
-SEGMENT_SPLIT = re.compile(r"\|\||&&|;|\n|\||(?<!&)&(?!&)")
+SEGMENT_SPLIT = re.compile(r"(\|\||&&|\|&|;|\n|\||(?<![&<>])&(?![&>]))")
+PIPE_OPERATORS = {"|", "|&"}
 GIT_GLOBAL_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source"}
 WRAPPER_OPTIONS_WITH_VALUE = {
     "sudo": {"-u", "-g"},
@@ -40,6 +41,23 @@ NEGATIVE_PATHSPEC_PREFIXES = (":!", ":^")
 STASH_READ_ONLY_SUBCOMMANDS = {"list", "show"}
 COMMIT_SHORT_VALUE_LETTERS = "mFCct"
 COMMIT_LONG_VALUE_OPTIONS = {"--message": "m", "--file": "F", "--reuse-message": "C", "--reedit-message": "c", "--template": "t"}
+CONVENTIONAL_SUBJECT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9./,-]*\))?: \S")
+CONVENTIONAL_TYPES = "build chore ci docs feat fix perf refactor revert style test"
+HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n(.*?)(?:^\s*\2\s*$|\Z)", re.MULTILINE | re.DOTALL)
+HEREDOC_OPENER = re.compile(r"^<<-?(\w*)$")
+HEREDOC_DELIMITER = re.compile(r"^\w+$")
+SPEC_BEFORE_SECTION = re.compile(r"(RFC\s?\d+|OIDC|Core|Discovery|OpenID)[^§]{0,20}$")
+SECTION_LOOKBACK = 24
+PACKAGE_MANAGERS = {"npm", "yarn", "pnpm"}
+PACKAGE_MANAGER_OPTIONS_WITH_VALUE = {"--loglevel", "--prefix", "-w", "--workspace", "-C", "--userconfig", "--registry"}
+NPX_OPTIONS_WITH_VALUE = {"-p", "--package"}
+VERIFY_SCRIPT = re.compile(r"^(test.*|verify|typecheck.*|build|lint)$")
+JS_RUNNERS = {"jest", "vitest", "mocha"}
+PYTHON = re.compile(r"^python[0-9.]*$")
+PYTHON_OPTIONS_WITH_VALUE = {"-W", "-X"}
+PYTHON_TEST_MODULES = {"unittest", "pytest"}
+MAKE_VERIFY_TARGETS = {"test", "check"}
+PAGERS = {"tail", "head"}
 FIND_GLOBAL_FLAGS = {"-H", "-L", "-P", "-E", "-X", "-x", "-s", "-d"}
 FIND_NAME_PRIMARIES = {"-name", "-iname", "-path", "-ipath"}
 FIND_ACTIONS = {"-delete", "-exec", "-execdir"}
@@ -48,9 +66,22 @@ GIT_TIMEOUT_SECONDS = 2
 MAX_DEPTH = 3
 
 
-def split_segments(command):
-    """Splits on list/pipe operators and unquoted parentheses; unterminated quotes fall back to a plain split."""
-    segments, current, quote, index = [], [], None, 0
+def redirection_ampersand(command, index):
+    return command[index - 1 : index] in ("<", ">") or command[index + 1 : index + 2] == ">"
+
+
+def substitution_end(text, index):
+    """Returns the index just past the $(…) opening at index, or len(text) when it never closes."""
+    end, depth = index + 2, 1
+    while end < len(text) and depth:
+        depth += {"(": 1, ")": -1}.get(text[end], 0)
+        end += 1
+    return end
+
+
+def operator_parts(command):
+    """Returns [text, operator, text, …] split on unquoted list/pipe operators and parentheses; unterminated quotes fall back to a plain split."""
+    parts, current, quote, index = [], [], None, 0
     while index < len(command):
         char = command[index]
         if quote:
@@ -68,24 +99,45 @@ def split_segments(command):
             current.extend(command[index : index + 2])
             index += 1
         elif command.startswith("$(", index):
-            end, depth = index + 2, 1
-            while end < len(command) and depth:
-                depth += {"(": 1, ")": -1}.get(command[end], 0)
-                end += 1
+            end = substitution_end(command, index)
             current.extend(command[index:end])
             index = end - 1
-        elif char in ";\n()|&":
-            segments.append("".join(current))
+        elif command.startswith(("||", "&&", "|&"), index):
+            parts.extend(("".join(current), command[index : index + 2]))
             current = []
-            if command.startswith(("||", "&&", "|&"), index):
-                index += 1
+            index += 1
+        elif char in ";\n()|&" and not (char == "&" and redirection_ampersand(command, index)):
+            parts.extend(("".join(current), char))
+            current = []
         else:
             current.append(char)
         index += 1
-    segments.append("".join(current))
-    if quote:
-        segments = SEGMENT_SPLIT.split(command)
-    return [segment.strip() for segment in segments if segment.strip()]
+    parts.append("".join(current))
+    return SEGMENT_SPLIT.split(command) if quote else parts
+
+
+def split_pipelines(command):
+    """Groups the segments into pipelines: a segment joins the one before it when a | or |& lies between them."""
+    pipelines, piped = [], False
+    for index, part in enumerate(operator_parts(command)):
+        if index % 2:
+            piped = piped or part in PIPE_OPERATORS
+        elif part.strip():
+            if piped and pipelines:
+                pipelines[-1].append(part.strip())
+            else:
+                pipelines.append([part.strip()])
+            piped = False
+    return pipelines
+
+
+def segment_offsets(command):
+    """Yields (offset, segment): where each segment's text starts in the command."""
+    offset = 0
+    for index, part in enumerate(operator_parts(command)):
+        if index % 2 == 0 and part.strip():
+            yield offset + len(part) - len(part.lstrip()), part.strip()
+        offset += len(part)
 
 
 def tokenize(segment):
@@ -166,17 +218,37 @@ def nested_commands(tokens):
         yield " ".join(tokens[1:])
 
 
-def segments(command, depth=0):
-    """Yields (wrappers, tokens) for every segment, including shell indirection."""
+def located_segments(command, depth=0):
+    """Yields (wrappers, tokens, segment, remainder) for every segment, including shell indirection; segment is its text, remainder the enclosing command from the segment on."""
     if depth > MAX_DEPTH:
         return
-    for segment in split_segments(command):
+    for offset, segment in segment_offsets(command):
         wrappers, tokens = strip_wrappers(tokenize(segment))
-        yield wrappers, tokens
+        yield wrappers, tokens, segment, command[offset:]
         for nested in nested_commands(tokens):
-            yield from segments(nested, depth + 1)
+            yield from located_segments(nested, depth + 1)
     for body in command_substitutions(command):
-        yield from segments(body, depth + 1)
+        yield from located_segments(body, depth + 1)
+
+
+def segments(command, depth=0):
+    """Yields (wrappers, tokens) for every segment, including shell indirection."""
+    for wrappers, tokens, _, _ in located_segments(command, depth):
+        yield wrappers, tokens
+
+
+def pipelines(command, depth=0):
+    """Yields each pipeline as a list of (wrappers, tokens) stages, including shell indirection."""
+    if depth > MAX_DEPTH:
+        return
+    for pipeline in split_pipelines(command):
+        stages = [strip_wrappers(tokenize(segment)) for segment in pipeline]
+        yield stages
+        for _, tokens in stages:
+            for nested in nested_commands(tokens):
+                yield from pipelines(nested, depth + 1)
+    for body in command_substitutions(command):
+        yield from pipelines(body, depth + 1)
 
 
 def git_invocation(tokens):
@@ -316,9 +388,84 @@ def message_source(args):
     return None
 
 
-def message_from_bare_stdin(args, tokens):
+def unquoted(text):
+    out, quote, index = [], None, 0
+    while index < len(text):
+        char = text[index]
+        if quote:
+            if char == quote:
+                quote = None
+                out.append("_")
+            elif char == "\\" and quote == '"' and index + 1 < len(text):
+                index += 1
+        elif char in "'\"":
+            quote = char
+        elif char == "\\" and index + 1 < len(text):
+            out.append("_")
+            index += 1
+        elif text.startswith("$(", index):
+            out.append("_")
+            index = substitution_end(text, index) - 1
+        elif char == "`":
+            out.append("_")
+            end = text.find("`", index + 1)
+            index = len(text) if end == -1 else end
+        elif char == "#" and (index == 0 or text[index - 1].isspace()):
+            break
+        else:
+            out.append(char)
+        index += 1
+    return "".join(out)
+
+
+def opens_heredoc(segment):
+    """True when the segment's unquoted text carries <<WORD, <<-WORD, or a bare << followed by its delimiter; a quoted '<<EOF' and a <<< here-string are neither."""
+    words = unquoted(segment).split()
+    for index, word in enumerate(words):
+        opener = HEREDOC_OPENER.match(word)
+        if opener is None:
+            continue
+        delimiter = opener.group(1) or (words[index + 1] if index + 1 < len(words) else "")
+        if HEREDOC_DELIMITER.match(delimiter):
+            return True
+    return False
+
+
+def message_from_bare_stdin(args, segment):
     reads_stdin = any(letter == "F" and value == "-" for _, letter, value in commit_options(args))
-    return reads_stdin and not any(token.startswith("<<") for token in tokens)
+    return reads_stdin and not opens_heredoc(segment)
+
+
+def heredoc_body(remainder):
+    match = HEREDOC.search(remainder)
+    return match.group(3) if match else ""
+
+
+def readable_message_texts(args, remainder):
+    """Yields the message text the guard can read."""
+    for _, letter, value in commit_options(args):
+        if letter == "m":
+            yield value
+        elif letter == "F" and value == "-":
+            yield heredoc_body(remainder)
+
+
+def first_line(text):
+    return next((line for line in text.splitlines() if line.strip()), None)
+
+
+def unqualified_section_sign(text):
+    return any(SPEC_BEFORE_SECTION.search(text[max(0, index - SECTION_LOOKBACK) : index]) is None for index, char in enumerate(text) if char == "§")
+
+
+def check_commit_message(args, remainder):
+    texts = list(readable_message_texts(args, remainder))
+    subject = first_line(texts[0]) if texts else None
+    if subject is not None and not CONVENTIONAL_SUBJECT.match(subject):
+        return deny("commit subjects follow Conventional Commits: <type>(<scope>): <description>.", f"types {CONVENTIONAL_TYPES}.")
+    if any(unqualified_section_sign(text) for text in texts):
+        return deny("a bare § is an internal reference; commit messages stand alone.", "qualify it: RFC 6749 §3.1.1, OIDC Core §3.1.2.1.")
+    return None
 
 
 def check_git(subcommand, args, global_options, cwd):
@@ -530,6 +677,80 @@ def check_find(tokens, cwd):
     return deny_rm()
 
 
+def without_version(name):
+    return name if name.startswith("@") else name.split("@", 1)[0]
+
+
+def package_script(tokens):
+    """Returns the script an npm/yarn/pnpm invocation runs (test for the shorthand), else None."""
+    if program(tokens) not in PACKAGE_MANAGERS:
+        return None
+    rest = skip_options(tokens[1:], PACKAGE_MANAGER_OPTIONS_WITH_VALUE)
+    if rest and rest[0] in ("test", "t"):
+        return "test"
+    if not rest or rest[0] != "run":
+        return None
+    script = skip_options(rest[1:], PACKAGE_MANAGER_OPTIONS_WITH_VALUE)
+    return script[0] if script else None
+
+
+def npx_target(tokens):
+    rest = skip_options(tokens[1:], NPX_OPTIONS_WITH_VALUE)
+    return without_version(os.path.basename(rest[0])) if rest else None
+
+
+def python_module(tokens):
+    rest = tokens[1:]
+    while rest and rest[0].startswith("-"):
+        if rest[0] == "-m":
+            return rest[1] if len(rest) > 1 else None
+        rest = rest[2:] if rest[0] in PYTHON_OPTIONS_WITH_VALUE else rest[1:]
+    return None
+
+
+def first_argument(tokens):
+    rest = [token for token in tokens[1:] if not token.startswith("+")]
+    return rest[0] if rest else None
+
+
+def make_targets(tokens):
+    return [token for token in tokens[1:] if not token.startswith("-") and "=" not in token]
+
+
+def runs_tests_script(tokens):
+    scripts = [token for token in tokens[1:] if not token.startswith("-")]
+    return bool(scripts) and "tests" in os.path.normpath(scripts[0]).split("/")
+
+
+def is_verify_run(tokens):
+    name = program(tokens)
+    script = package_script(tokens)
+    if script is not None:
+        return VERIFY_SCRIPT.match(script) is not None
+    if name == "npx":
+        return npx_target(tokens) in JS_RUNNERS
+    if PYTHON.match(name):
+        return python_module(tokens) in PYTHON_TEST_MODULES
+    if name in ("go", "cargo"):
+        return first_argument(tokens) == "test"
+    if name == "make":
+        return any(target in MAKE_VERIFY_TARGETS for target in make_targets(tokens))
+    if name == "bash":
+        return runs_tests_script(tokens)
+    return name in JS_RUNNERS or name == "pytest"
+
+
+def verify_pipe_decision(command):
+    for stages in pipelines(command):
+        for position, (_, tokens) in enumerate(stages):
+            if is_verify_run(tokens) and any(program(later) in PAGERS for _, later in stages[position + 1 :]):
+                return deny(
+                    "piping a test or verify run through tail or head hides the runner's summary.",
+                    'redirect: <command> > "$TMPDIR/out.txt" 2>&1, then read the file.',
+                )
+    return None
+
+
 def commit_text_lines(command):
     """Yields each -m value's lines, then the command's own lines (a heredoc body)."""
     for _, tokens in segments(command):
@@ -574,7 +795,7 @@ def evaluate(hook_input):
     cwd = hook_input.get("cwd") or ""
     commits = False
 
-    for wrappers, tokens in segments(command):
+    for wrappers, tokens, segment, remainder in located_segments(command):
         invocation = git_invocation(tokens)
         if invocation is not None:
             subcommand, args, global_options = invocation
@@ -583,7 +804,7 @@ def evaluate(hook_input):
                 return decision
             if subcommand == "commit":
                 commits = True
-                if message_from_bare_stdin(args, tokens):
+                if message_from_bare_stdin(args, segment):
                     return attribution_decision(command) or deny(
                         "git commit -F - takes the message from a pipe or stdin the guard cannot read.",
                         "a heredoc in the command: git commit -F - -- <paths> <<'EOF' … EOF, or a literal -m.",
@@ -594,11 +815,14 @@ def evaluate(hook_input):
                         f"git commit {source} takes the message from outside the command.",
                         "put the message in the command: -F - with a heredoc, or a literal -m.",
                     )
+                decision = check_commit_message(args, remainder)
+                if decision is not None:
+                    return decision
         decision = check_rm(wrappers, tokens, cwd) or check_find(tokens, cwd)
         if decision is not None:
             return decision
 
-    return attribution_decision(command) if commits else None
+    return verify_pipe_decision(command) or (attribution_decision(command) if commits else None)
 
 
 def main():

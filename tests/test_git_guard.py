@@ -19,6 +19,12 @@ TMPDIR = "/private/tmp/claude-501/abc"
 IGNORED = "node_modules/\ndist/\ncoverage/\n*.pyc\n__pycache__/\nlink\nbuild/\n"
 RM_RULE = "rm outside $TMPDIR, the scratchpad or a git-ignored path deletes work the tree cannot regenerate."
 SUBSTITUTION_RULE = "delete target carries a shell substitution the guard cannot resolve."
+SUBJECT_RULE = "commit subjects follow Conventional Commits: <type>(<scope>): <description>."
+SUBJECT_PERMITTED = "types build chore ci docs feat fix perf refactor revert style test."
+SECTION_RULE = "a bare § is an internal reference; commit messages stand alone."
+SECTION_PERMITTED = "qualify it: RFC 6749 §3.1.1, OIDC Core §3.1.2.1."
+PAGER_RULE = "piping a test or verify run through tail or head hides the runner's summary."
+PAGER_PERMITTED = 'redirect: <command> > "$TMPDIR/out.txt" 2>&1, then read the file.'
 
 DENIED = (
     "git stash",
@@ -79,6 +85,18 @@ DENIED = (
     'rm -rf "$TMPDIR/$(echo ../..)"',
     "rm -rf ~/x",
     "rm -rf $HOME/x",
+    'git commit -m "add thing" -- a',
+    "git commit -F - -- a <<'EOF'\nAdd thing\nEOF",
+    'git commit -m "docs: see §3.1.1" -- a',
+    "npm test | tail -50",
+    "npm run typecheck | head",
+    "pytest | tail -20",
+    "python3 -m unittest discover -s tests | tail -5",
+    "go test ./... | tail",
+    "cargo test 2>&1 | head -40",
+    "npx jest | tail",
+    "bash tests/test_apply.sh | tail -3",
+    "make test | tail",
 )
 PERMITTED = (
     "git log --stat",
@@ -118,6 +136,11 @@ PERMITTED = (
     'git commit --allow-empty -m "chore: trigger" -- a',
     "git status",
     "ls",
+    'git commit -m "feat(aegis): add thing" -- a',
+    'git commit -m "docs: OIDC Core §3.1.2.1" -- a',
+    "git commit -F - -- a <<'EOF'\nfeat: add thing\nEOF",
+    "ls | tail",
+    "git log | head",
 )
 
 
@@ -330,7 +353,7 @@ class GitCommitFlagTests(unittest.TestCase):
     def test_message_attached_to_short_flag_is_not_read_as_flags(self):
         self.assertIsNone(evaluate('git commit -m"feat: add thing" -- packages/aegis'))
         self.assertIsNone(evaluate('git commit -qm "feat: add thing" -- packages/aegis'))
-        self.assertIsNone(evaluate("git commit -ma -- packages/aegis"))
+        self.assertEqual(rule(evaluate("git commit -ma -- packages/aegis")), SUBJECT_RULE)
         result = evaluate("git commit -Fan.txt -- a")
         self.assertEqual(decision(result), "deny")
         self.assertEqual(rule(result), "git commit -F takes the message from outside the command.")
@@ -423,6 +446,14 @@ class GitCommitMessageSourceTests(unittest.TestCase):
         self.assertIsNone(evaluate("git commit -F - -- a <<'EOF'\nfix: x\nEOF"))
         self.assertIsNone(evaluate("git commit -F - -- a << EOF\nfix: x\nEOF"))
         self.assertIsNone(evaluate("git commit -F - -- a <<EOF\nfix: x\nEOF"))
+        self.assertIsNone(evaluate("git commit -F - -- a <<-EOF\nfix: x\nEOF"))
+        self.assertIsNone(evaluate("git commit -F - -- a << 'EOF'\nfix: x\nEOF"))
+        self.assertIsNone(evaluate('git commit -F - -- a <<"EOF"\nfix: x\nEOF'))
+        self.assertIsNone(evaluate("git commit -F - -- a <<EOF # note\nfeat: x\nEOF"))
+
+    def test_unterminated_quote_never_opens_a_heredoc(self):
+        result = evaluate("git commit -F - -- a <<'EOF\nfeat: x\nEOF")
+        self.assertEqual(rule(result), "git commit -F - takes the message from a pipe or stdin the guard cannot read.")
 
     def test_denies_stdin_message_without_a_heredoc(self):
         for command in (
@@ -432,6 +463,15 @@ class GitCommitMessageSourceTests(unittest.TestCase):
             "git commit --file=- -- a",
             "git commit -F- -- a",
             "git commit -qF - -- a",
+            'git commit -F - -- a <<< "Add thing"',
+            'git commit -F - -- a <<< "feat: x"',
+            "git commit -F - -- a <<",
+            "cat msg.txt | git commit -F - --trailer '<<EOF' -- a",
+            "git commit -F - -- a '<<EOF'",
+            "git commit -F - -- a \\<<EOF",
+            "git commit -F - -- a # <<EOF\nfeat: x\nEOF",
+            "cat msg.txt | git commit -F - -- a # <<'EOF'\nfeat: x\nEOF",
+            "git commit -F - -- a $(cat <<EOF )\nfeat: x\nEOF",
         ):
             with self.subTest(command=command):
                 result = evaluate(command)
@@ -490,7 +530,11 @@ class GitCommitAttributionTests(unittest.TestCase):
         )
 
     def test_denies_single_line_message_that_is_a_trailer(self):
-        self.assertEqual(decision(evaluate('git commit -m "Co-Authored-By: x" -- a')), "deny")
+        self.assertEqual(rule(evaluate('git commit -m "Co-Authored-By: x" -- a')), SUBJECT_RULE)
+        self.assertEqual(
+            rule(evaluate('git commit -m "fix: Co-Authored-By: x" -- a')),
+            "commit text contains 'fix: Co-Authored-By: x'; commit messages carry no Claude attribution.",
+        )
 
     def test_denies_marker_in_heredoc_body(self):
         command = "git commit -F - -- packages/aegis <<'EOF'\nfix: thing\n\nCo-Authored-By: Someone\nEOF"
@@ -502,6 +546,271 @@ class GitCommitAttributionTests(unittest.TestCase):
 
     def test_marker_outside_a_commit_is_ignored(self):
         self.assertIsNone(evaluate('grep -rn "Co-Authored-By" .'))
+
+
+class GitCommitSubjectTests(unittest.TestCase):
+    def test_denies_non_conventional_subject(self):
+        for command in (
+            'git commit -m "add thing" -- a',
+            'git commit -m "Fixed the thing" -- a',
+            'git commit -m "Feat: x" -- a',
+            'git commit -m "feat:x" -- a',
+            'git commit -m "feat(Aegis): x" -- a',
+            'git commit -m "update" -- a',
+            'git commit --message="Fixed the thing" -- a',
+            'git commit --message "Fixed the thing" -- a',
+            'git commit -qm "Fixed the thing" -- a',
+            'git commit -m "Fixed the thing" -m "fix: body prose" -- a',
+            "git commit -F - -- a <<'EOF'\nAdd thing\n\nbody\nEOF",
+            "git commit --file=- -- a <<'EOF'\nAdd thing\nEOF",
+            "git -c core.pager=cat commit -m 'Fixed' -- a",
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), SUBJECT_RULE)
+                self.assertEqual(permitted(result), SUBJECT_PERMITTED)
+
+    def test_permits_conventional_subject(self):
+        for command in (
+            'git commit -m "feat(aegis): add thing" -- a',
+            'git commit -m "fix: x" -- a',
+            'git commit -m "docs: RFC 6749 §3.1.1" -- a',
+            'git commit -m "chore(repo): drop dependabot" -- a',
+            'git commit -m "refactor(proteus,iris): share the compiler" -- a',
+            'git commit -m "revert: feat(x): y" -- a',
+            'git commit -m "build(deps): bump cbor2" -- a',
+            'git commit -m "test(pylon-http): cover 409" -- a',
+            'git commit --message="ci: split lanes" -- a',
+            'git commit -qm "perf: x" -- a',
+            'git commit -m "fix(aegis): x" -m "Body prose that need not be conventional." -- a',
+            "git commit -F - -- a <<'EOF'\nfeat: add thing\nEOF",
+            "git commit -F - -- a <<'EOF'\nfix(aegis): x\n\nbody\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_subject_is_the_first_non_empty_line_of_the_readable_message(self):
+        self.assertIsNone(evaluate("git commit -F - -- a <<'EOF'\n\nstyle: x\nEOF"))
+        self.assertIsNone(evaluate('git commit -m "\nfix: x\n\nBody line" -- a'))
+        self.assertEqual(rule(evaluate("git commit -F - -- a <<'EOF'\n\nAdd thing\n\nfix: x\nEOF")), SUBJECT_RULE)
+
+    def test_heredoc_body_is_the_one_opened_by_the_commit(self):
+        for command in (
+            "cat > x <<'EOF'\nAdd thing\nEOF\ngit commit -F - -- x <<'EOF'\nfeat: x\nEOF",
+            "git commit -F - -- x <<'EOF'\nfeat: x\nEOF\ncat > x <<'EOF'\nAdd thing\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+        for command in (
+            "git commit -F - -- x <<'EOF'\nAdd thing\nEOF\ncat > x <<'EOF'\nfeat: x\nEOF",
+            "cat > x <<'EOF'\nfeat: x\nEOF\ngit commit -F - -- x <<'EOF'\nAdd thing\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), SUBJECT_RULE)
+
+    def test_each_commit_reads_its_own_heredoc_including_nested_commits(self):
+        for command, expected in (
+            ("git commit -F - -- a <<'EOF'\nfeat: x\nEOF\ngit commit -F - -- a <<'EOF'\nAdd thing\nEOF", SUBJECT_RULE),
+            ("sh -c \"git commit -F - -- a <<'EOF'\nAdd thing\nEOF\"", SUBJECT_RULE),
+            ("bash -c \"git commit -F - -- a <<'EOF'\nAdd thing\nEOF\"", SUBJECT_RULE),
+            ("eval \"git commit -F - -- a <<'EOF'\nAdd thing\nEOF\"", SUBJECT_RULE),
+            ("echo $(git commit -F - -- a <<'EOF'\nsee §3\nEOF\n)", SUBJECT_RULE),
+            ("echo $(git commit -F - -- a <<'EOF'\nfix: x\n\nsee §3\nEOF\n)", SECTION_RULE),
+            ("echo `git commit -F - -- a <<'EOF'\nfix: x\n\nsee §3\nEOF\n`", SECTION_RULE),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), expected)
+        for command in (
+            "sh -c \"git commit -F - -- a <<'EOF'\nfeat: x\nEOF\"",
+            "eval \"git commit -F - -- a <<'EOF'\nfeat: x\nEOF\"",
+            "echo $(git commit -F - -- a <<'EOF'\nfeat: x\nEOF\n)",
+            "echo `git commit -F - -- a <<'EOF'\nfeat: x\nEOF\n`",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_subject_rule_applies_only_to_message_text_the_guard_can_read(self):
+        self.assertIsNone(evaluate("git commit -- a"))
+        self.assertIsNone(evaluate("git commit --fixup=HEAD~1 -- a"))
+        for command, source_rule in (
+            ("git commit -F msg.txt -- a", "git commit -F takes the message from outside the command."),
+            ("git commit -C HEAD -- a", "git commit -C takes the message from outside the command."),
+            ('git commit -m "$MSG" -- a', "git commit -m takes the message from outside the command."),
+            ("git commit -F - -- a", "git commit -F - takes the message from a pipe or stdin the guard cannot read."),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), source_rule)
+
+    def test_flag_and_pathspec_rules_come_before_the_subject_rule(self):
+        self.assertEqual(rule(evaluate('git commit -a -m "add thing"')), "git commit -a/--all/--no-verify commits the whole tree or skips hooks.")
+        self.assertEqual(rule(evaluate('git commit -m "add thing"')), "git commit without a pathspec commits the whole index.")
+
+    def test_subject_text_outside_a_commit_is_not_judged(self):
+        self.assertIsNone(evaluate('echo "Fixed the thing"'))
+        self.assertIsNone(evaluate('git log --grep "Fixed"'))
+
+
+class GitCommitSectionSignTests(unittest.TestCase):
+    def test_denies_unqualified_section_sign(self):
+        for command in (
+            'git commit -m "docs: see §3.1.1" -- a',
+            'git commit -m "fix: per §9.4 of the plan" -- a',
+            'git commit -m "fix: x\n\nsee §2 for the shape" -- a',
+            'git commit -m "fix: x" -m "see §2" -- a',
+            "git commit -F - -- a <<'EOF'\nfix: x\n\nper §4.2\nEOF",
+            'git commit -m "fix: RFC 6749 §3.1.1 and plan §9" -- a',
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), SECTION_RULE)
+                self.assertEqual(permitted(result), SECTION_PERMITTED)
+
+    def test_permits_qualified_section_refs(self):
+        for text in ("RFC 6749 §3.1.1", "OIDC Core §3.1.2.1", "OIDC Discovery §4", "OpenID Connect §2", "RFC 9068 §2.2 and RFC 7519 §4.1.1", "RFC9052 §5.2"):
+            with self.subTest(text=text):
+                self.assertIsNone(evaluate(f'git commit -m "fix(aegis): align with {text}" -- a'))
+        self.assertIsNone(evaluate('git commit -m "docs: OIDC Core §3.1.2.1" -- a'))
+        self.assertIsNone(evaluate("git commit -F - -- a <<'EOF'\nfix: x\n\nRFC 6749 §3.1.1\nEOF"))
+
+    def test_section_sign_outside_the_readable_message_is_not_judged(self):
+        self.assertIsNone(evaluate('git commit -m "docs: x" -- "docs/§3.md"'))
+        self.assertIsNone(evaluate('echo "§3" && git commit -m "fix: x" -- a'))
+        self.assertIsNone(evaluate('grep -rn "§3" docs'))
+
+    def test_subject_rule_comes_before_the_section_rule(self):
+        self.assertEqual(rule(evaluate('git commit -m "Add §3" -- a')), SUBJECT_RULE)
+
+
+class VerifyPipeTests(unittest.TestCase):
+    def test_denies_verify_run_piped_to_a_pager(self):
+        for command in (
+            "npm test | tail -50",
+            "npm t | tail",
+            "npm test -- Aegis 2>&1 | tail -5",
+            "npm run typecheck | head",
+            "npm run test:unit | head",
+            "npm run verify 2>&1 | tail -n 30",
+            "npm run typecheck:strict | head -3",
+            "npm run build | tail",
+            "npm run lint | head",
+            "npm test | tee out.txt | tail -3",
+            "npm test |& tail",
+            "timeout 600 npm test | tail",
+            "time npm test | head",
+            "nice -n 5 npm test | tail",
+            "npm test | /usr/bin/tail",
+            "yarn test | tail",
+            "yarn t | head",
+            "yarn run typecheck | head",
+            "pnpm test | tail",
+            "pnpm t | tail",
+            "pnpm run lint | head",
+            "npx jest | tail",
+            "npx vitest run | tail",
+            "npx mocha | head",
+            "npx --yes jest | tail",
+            "npx jest@29 | tail",
+            "jest | tail",
+            "vitest run | tail",
+            "mocha | head",
+            "./node_modules/.bin/jest | tail",
+            "pytest | tail -20",
+            "pytest tests/ -q | head",
+            "python -m pytest | tail",
+            "python3 -m unittest discover -s tests | tail -5",
+            "python3 -m unittest | head",
+            "go test ./... | tail",
+            "cargo test 2>&1 | head -40",
+            "cargo test | tail",
+            "make test | tail",
+            "make check | head",
+            "make -j4 test | tail",
+            "bash tests/test_apply.sh | tail -3",
+            "bash ./tests/x.sh | tail",
+            "bash /Users/jonn/Projects/ai-config/tests/test_apply.sh | head",
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), PAGER_RULE)
+                self.assertEqual(permitted(result), PAGER_PERMITTED)
+
+    def test_npm_options_before_the_subcommand_are_skipped(self):
+        for command in (
+            "npm --silent test | tail",
+            "npm -s test | tail",
+            "npm --loglevel silent test | tail",
+            "npm --loglevel=silent test | tail",
+            "npm --prefix packages/aegis test | tail",
+            "npm -w packages/aegis test | tail",
+            "npm --workspace packages/aegis run test:unit | tail",
+            "npm run --silent test | head",
+            "npm -s run --if-present build | tail",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), PAGER_RULE)
+
+    def test_pipes_inside_a_substitution_or_shell_string_are_judged(self):
+        for command in ("echo $(npm test | tail)", 'sh -c "npm test | tail"', 'eval "npm test | head"'):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), PAGER_RULE)
+
+    def test_last_command_of_a_subshell_joins_the_outer_pipeline(self):
+        for command in ("(cd packages/aegis && npm test) | tail -5", "(npm test | tail)", "cd packages/aegis && npm test | tail -3"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), PAGER_RULE)
+
+    def test_earlier_commands_of_a_subshell_do_not_join_the_outer_pipeline(self):
+        self.assertIsNone(evaluate("(npm test; echo done) | tail"))
+
+    def test_permits_redirect_and_pager_in_a_separate_list(self):
+        for command in (
+            'npm test > "$TMPDIR/out.txt" 2>&1',
+            'npm test > "$TMPDIR/o.txt" 2>&1; tail -50 "$TMPDIR/o.txt"',
+            "npm test && tail out.txt",
+            "npm test || tail out.txt",
+            "npm test & tail out.txt",
+            "npm test &> out.txt",
+            "tail -5 cases.txt | npm test",
+            "pytest > out.txt 2>&1\ntail -20 out.txt",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_permits_non_verify_pipes(self):
+        for command in (
+            "ls | tail",
+            "git log | head",
+            "git diff --stat | head -20",
+            "npm ls | head",
+            "npm --prefix packages/aegis ls | head",
+            "npm run dev | head",
+            "npm run start | tail",
+            "yarn install | tail",
+            "pnpm run dev | head",
+            "npx tsc | head",
+            "go build ./... | tail",
+            "cargo build | head",
+            "make | tail",
+            "make build | head",
+            "python3 script.py | tail",
+            "python3 -m http.server | head",
+            "bash scripts/build.sh | tail",
+            "echo test | tail",
+            "npm test | tee out.txt",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_redirection_ampersands_do_not_split_a_pipeline(self):
+        self.assertEqual(rule(evaluate("npm test 2>&1 | tail")), PAGER_RULE)
+        self.assertEqual(rule(evaluate("npm test >out.txt 2>&1 | head")), PAGER_RULE)
+        self.assertEqual(decision(evaluate("true & git stash")), "deny")
+        self.assertEqual(rule(evaluate("true &> out.txt & git stash")), "git stash silently destroys uncommitted work in a shared tree.")
+        self.assertIsNone(evaluate("npm test &> out.txt & tail out.txt"))
+        self.assertEqual(rule(evaluate("npm test &> out.txt | tail")), PAGER_RULE)
 
 
 class GitCommitAmendTests(unittest.TestCase):
@@ -607,10 +916,11 @@ class ShellIndirectionTests(unittest.TestCase):
                 self.assertEqual(decision(evaluate(command)), "deny")
 
     def test_depth_limit_stops_recursion(self):
-        nested = "git stash"
-        for _ in range(5):
-            nested = f'sh -c "{nested.replace(chr(34), chr(92) + chr(34))}"'
-        self.assertIsNone(evaluate(nested))
+        self.assertEqual(decision(evaluate("echo $(echo $(echo $(git stash)))")), "deny")
+        self.assertIsNone(evaluate("echo $(echo $(echo $(echo $(git stash))))"))
+        self.assertIsNone(evaluate("echo $(echo $(echo $(echo $(echo $(git stash)))))"))
+        self.assertEqual(rule(evaluate("echo $(echo $(echo $(npm test | tail)))")), PAGER_RULE)
+        self.assertIsNone(evaluate("echo $(echo $(echo $(echo $(npm test | tail))))"))
 
     def test_permits_safe_indirection(self):
         self.assertIsNone(evaluate('sh -c "git status"'))
