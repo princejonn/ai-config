@@ -34,8 +34,9 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "author-skill": {},
     "issue-write": {},
     "issue-next": {},
+    "issue-triage": {},
 }
-SKILLS_WITH_INPUT = {"design", "implement", "issue-next", "issue-write", "plan", "research", "research-complex", "review", "test", "verify"}
+SKILLS_WITH_INPUT = {"design", "implement", "issue-next", "issue-triage", "issue-write", "plan", "research", "research-complex", "review", "test", "verify"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_MODELS = {"developer-trivial": ("sonnet", "high"), "developer-standard": ("opus", "xhigh"), "developer-complex": ("fable", "xhigh")}
 RESEARCHER_MODELS = {"researcher-trivial": ("sonnet", "high"), "researcher-complex": ("fable", "high")}
@@ -66,6 +67,7 @@ ONE_HOME_PHRASES = {
     "have to be weighed for": "claude/skills/deliver/references/tiers.md",
     "bug, feature, enhancement, documentation": "claude/skills/issue-next/SKILL.md",
     "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
+    "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
 }
 ABSENT_PHRASES = (
     "exhaustive over intent",
@@ -102,6 +104,7 @@ REPOSITORY_LABELS = (
     "help wanted",
 )
 ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Tier:", "Out of scope:")
+ISSUE_TRIAGE_SECTIONS = ("Input", "Select", "Draft", "Duplicate", "Done", "Parallel", "Apply", "Output")
 
 
 def parse_value(raw):
@@ -401,6 +404,14 @@ class SkillPassagesTest(unittest.TestCase):
         for label in ISSUE_NEXT_BRIEF_FIELDS:
             with self.subTest(label=label):
                 self.assertIn(label, output)
+
+    def test_issue_triage_names_each_of_its_eight_sections_once_and_in_order(self):
+        _, body = skill_docs()["issue-triage"]
+        for heading in ISSUE_TRIAGE_SECTIONS:
+            with self.subTest(heading=heading):
+                self.assertEqual(body.count(f"\n## {heading}\n"), 1)
+        offsets = [body.index(f"\n## {heading}\n") for heading in ISSUE_TRIAGE_SECTIONS]
+        self.assertEqual(offsets, sorted(offsets))
 
     def test_research_complex_points_at_research_and_restates_none_of_its_procedure(self):
         docs = skill_docs()
