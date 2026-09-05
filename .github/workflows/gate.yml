@@ -12,9 +12,4 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
-      - run: git ls-files '*.sh' bin/* | xargs -n1 bash -n
-      - run: python3 -m unittest discover -s tests -v
-      - run: bash tests/test_apply.sh
-      - run: bash tests/test_apply_ts.sh
-      - run: bash tests/test_second_opinion.sh
-      - run: bash tests/test_pressure.sh
+      - run: bash tests/gate.sh

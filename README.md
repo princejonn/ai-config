@@ -20,14 +20,12 @@ tests/
 ```
 
 `./apply.sh` links every owned path, prunes dangling links into this repo, merges the manifest
-hooks and defaults into `~/.claude/settings.json` and lists foreign entries in the owned dirs. The
-defaults turn off commit and PR attribution, allow `git commit`, `rm`, `find` and `mv` without a
-prompt and ask before `git push`; `git-guard.py` guards the first three, so the permission layer is
-not a second gate. A list default merges by union: the entries a machine lacks are appended and
-nothing is ever removed. An object default present, even partial, is left as it is. A
-`Bash(git push:*)` entry in a machine's `deny` list must be removed by hand for the ask to take
-effect. `apply.sh` refuses to overwrite a file it does not own: a differing file is reported as
-`CONFLICT` and must be moved aside by hand. A byte-identical file is adopted as a symlink.
+hooks and defaults into `~/.claude/settings.json` and lists foreign entries in the owned dirs. A
+list default merges by union: the entries a machine lacks are appended and nothing is ever removed.
+An object default present, even partial, is left as it is. A `Bash(git push:*)` entry in a machine's
+`deny` list must be removed by hand for the manifest's `git push` ask to take effect. `apply.sh`
+refuses to overwrite a file it does not own: a differing file is reported as `CONFLICT` and must be
+moved aside by hand. A byte-identical file is adopted as a symlink.
 
 Codex reads the same skills through `~/.agents/skills/<name>` links and the same instructions
 through `~/.codex/AGENTS.md`, rendered from `claude/CLAUDE.md` followed by `claude/rules/*.md`.
@@ -41,14 +39,9 @@ paths.
 that directory is not on `PATH`. The `second-opinion` skill calls it and adjudicates what it
 returns.
 
-Hooks: `git-guard.py` and `write-guard.py` run on `PreToolUse`; `verdict-guard.py` runs on
-`SubagentStop` and sends a `reviewer` back once when its final line is none of `ACCEPTED`,
-`NOT ACCEPTED`, `BLOCKED`, and a `verifier` once when its message states none of `VERIFIED`,
-`DISPROVEN`, `UNVERIFIABLE`. `announce-instructions.py` runs on `SessionStart` and prints the path
-and headings of a repository's `AGENTS.md` when the root `CLAUDE.md` does not import it.
-`drift-notice.py` runs on `SessionStart` and prints one line when `./apply.sh --check` reports the
-live tree has drifted from the repository. A hook denies or stays silent; it never asks, so a run
-reaches its report without a prompt from a hook.
+Hooks: `claude/settings.json` maps the scripts in `claude/hooks/` to `PreToolUse`, `SubagentStop`
+and `SessionStart`; each script's module docstring says what it does; a hook denies or stays silent
+per `claude/rules/writing.md`.
 
 `./apply.sh --check` mutates nothing and exits 0 only when everything is already in place.
 
@@ -60,9 +53,7 @@ as `apply.sh`, prunes links to removed set files and lists foreign entries;
 `./apply-ts.sh --check <folder>` mutates nothing and exits 0 only when the folder is already
 in place.
 
-Tests: `python3 -m unittest discover -s tests -v`, `bash tests/test_apply.sh`,
-`bash tests/test_apply_ts.sh`, `bash tests/test_second_opinion.sh` and
-`bash tests/test_pressure.sh`.
+The gate is `bash tests/gate.sh`.
 
 `bash tests/pressure.sh` checks skill triggering on demand — per skill one prompt that must fire it
 and one that must not, through `claude -p` in a scratch project — and spends tokens, so the gate
