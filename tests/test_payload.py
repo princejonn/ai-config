@@ -68,6 +68,7 @@ ONE_HOME_PHRASES = {
     "bug, feature, enhancement, documentation": "claude/skills/issue-next/SKILL.md",
     "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
+    "carries no orchestration": "claude/skills/author-skill/SKILL.md",
 }
 ABSENT_PHRASES = (
     "@lindorm",
@@ -107,7 +108,8 @@ REPOSITORY_LABELS = (
 )
 OUT_OF_QUEUE_LABELS = ("blocked", "question", "duplicate", "invalid", "wontfix")
 ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Tier:", "Out of scope:")
-ISSUE_TRIAGE_SECTIONS = ("Input", "Select", "Draft", "Duplicate", "Done", "Parallel", "Apply", "Output")
+ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
+ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")
 
 
 def parse_value(raw):
@@ -432,6 +434,19 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertEqual(body.count(f"\n## {heading}\n"), 1)
         offsets = [body.index(f"\n## {heading}\n") for heading in ISSUE_TRIAGE_SECTIONS]
         self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_triage_body_carries_no_parallel_section_and_no_dispatch_word(self):
+        _, body = skill_docs()["issue-triage"]
+        self.assertNotIn("\n## Parallel\n", body)
+        for word in ISSUE_TRIAGE_DISPATCH_WORDS:
+            with self.subTest(word=word):
+                self.assertIsNone(re.search(rf"\b{word}\b", body, re.IGNORECASE))
+
+    def test_issue_triage_views_the_named_item_and_lists_the_tracker_only_to_compare(self):
+        _, body = skill_docs()["issue-triage"]
+        self.assertIn("gh issue view", section(body, "Input"))
+        self.assertEqual(body.count("gh issue list"), 1)
+        self.assertIn("gh issue list", section(body, "Duplicate"))
 
     def test_research_complex_points_at_research_and_restates_none_of_its_procedure(self):
         docs = skill_docs()

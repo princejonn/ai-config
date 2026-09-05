@@ -41,7 +41,7 @@ pair issue-next \
   'What should I work on next?' \
   'Turn this finding into an issue: render accepts an empty name and returns an empty tag.'
 pair issue-triage \
-  'Triage the issue backlog — several items have no labels and no acceptance.' \
+  'Triage issue #15 — it reads complete but I want it challenged before we start.' \
   'Which open issue is the most urgent?'
 pair issue-write \
   'Turn this finding into an issue: render accepts an empty name and returns an empty tag.' \

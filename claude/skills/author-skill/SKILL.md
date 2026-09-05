@@ -20,6 +20,7 @@ description: "Writes or revises a skill, rule or agent in the ai-config repo —
 
 ## Body
 
+- A skill carries no orchestration: it handles the one thing named, delegating a step where it must; how many run, and in what order, is the chat's call.
 - Under 200 lines.
 - A skill may carry `references/*.md` for protocol its body only names, read on demand; the 200-line rule applies to `SKILL.md`.
 - Input, method, output, and a done-condition; a stop rule wherever the procedure can loop.
