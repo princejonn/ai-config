@@ -96,6 +96,7 @@ REPOSITORY_LABELS = (
     "tier: trivial",
     "tier: standard",
     "tier: complex",
+    "blocked",
     "question",
     "duplicate",
     "invalid",
@@ -104,6 +105,7 @@ REPOSITORY_LABELS = (
     "good first issue",
     "help wanted",
 )
+OUT_OF_QUEUE_LABELS = ("blocked", "question", "duplicate", "invalid", "wontfix")
 ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Tier:", "Out of scope:")
 ISSUE_TRIAGE_SECTIONS = ("Input", "Select", "Draft", "Duplicate", "Done", "Parallel", "Apply", "Output")
 
@@ -402,6 +404,19 @@ class SkillPassagesTest(unittest.TestCase):
         for label in REPOSITORY_LABELS:
             with self.subTest(label=label):
                 self.assertEqual(len(re.findall(rf"(?<![\w-]){re.escape(label)}(?![\w-])", labels)), 1)
+
+    def test_issue_write_labels_out_of_queue_line_names_labels_in_order(self):
+        _, body = skill_docs()["issue-write"]
+        labels = section(body, "Labels")
+        line = next(l for l in labels.splitlines() if l.startswith("- Out of the queue"))
+        offsets = [line.index(f"`{label}`") for label in OUT_OF_QUEUE_LABELS]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_next_skip_names_out_of_queue_labels_in_order(self):
+        _, body = skill_docs()["issue-next"]
+        skip = section(body, "Skip")
+        offsets = [skip.index(f"`{label}`") for label in OUT_OF_QUEUE_LABELS]
+        self.assertEqual(offsets, sorted(offsets))
 
     def test_issue_next_output_names_every_brief_field_it_fills(self):
         _, body = skill_docs()["issue-next"]
