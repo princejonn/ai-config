@@ -36,8 +36,9 @@ line is a marker; a file without it is a `CONFLICT`, and an absent `~/.codex` is
 Hooks: `git-guard.py` and `write-guard.py` run on `PreToolUse`; `verdict-guard.py` runs on
 `SubagentStop` and sends a `reviewer` back once when its final line is none of `ACCEPTED`,
 `NOT ACCEPTED`, `BLOCKED`, and a `verifier` once when its message states none of `VERIFIED`,
-`DISPROVEN`, `UNVERIFIABLE`. A hook denies or stays silent; it never asks, so a run reaches
-its report without a prompt from a hook.
+`DISPROVEN`, `UNVERIFIABLE`. `announce-instructions.py` runs on `SessionStart` and prints the path
+and headings of a repository's `AGENTS.md` when the root `CLAUDE.md` does not import it. A hook
+denies or stays silent; it never asks, so a run reaches its report without a prompt from a hook.
 
 `./apply.sh --check` mutates nothing and exits 0 only when everything is already in place.
 

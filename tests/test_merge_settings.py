@@ -16,6 +16,7 @@ MANIFEST_HOOKS = {
         {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "script": "write-guard.py", "timeout": 10},
     ],
     "SubagentStop": [{"matcher": "*", "script": "verdict-guard.py", "timeout": 5}],
+    "SessionStart": [{"matcher": "*", "script": "announce-instructions.py", "timeout": 5}],
 }
 LIVE_ATTRIBUTION = {"commit": "", "pr": "", "sessionUrl": False}
 LIVE_ALLOW = ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)", "Bash(mv:*)"]
@@ -46,6 +47,14 @@ LIVE_HOOKS = {
             "matcher": "*",
             "hooks": [
                 {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/verdict-guard.py", "timeout": 5}
+            ],
+        },
+    ],
+    "SessionStart": [
+        {
+            "matcher": "*",
+            "hooks": [
+                {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/announce-instructions.py", "timeout": 5}
             ],
         },
     ],
@@ -364,7 +373,7 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(result["model"], "opus")
         self.assertEqual(result["env"], {"FOO": "bar"})
         self.assertEqual(result["attribution"], LIVE_ATTRIBUTION)
-        self.assertEqual(list(result["hooks"].keys()), ["Stop", "PreToolUse", "SubagentStop"])
+        self.assertEqual(list(result["hooks"].keys()), ["Stop", "PreToolUse", "SubagentStop", "SessionStart"])
 
     def test_command_uses_bare_python3_and_quotes_path(self):
         proc = self.run_merge(hooks_dir="/tmp/with space/hooks")
