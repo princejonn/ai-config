@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook (Edit|Write|MultiEdit|NotebookEdit): dotenv files, the .git store, git-ignored generated directories and lerna-owned versions are read-only."""
+"""PreToolUse hook (Edit|Write|NotebookEdit): dotenv files, the .git store, git-ignored generated directories and lerna-owned versions are read-only."""
 
 import json
 import os
@@ -103,22 +103,19 @@ def version_differs(before_text, after_text):
     return before.get("version") != after.get("version")
 
 
-def replaced_text(text, edits):
-    """Applies each edit as the Edit tool would; None when an edit is malformed or its old_string is absent."""
-    for edit in edits:
-        old, new = edit.get("old_string"), edit.get("new_string")
-        if not isinstance(old, str) or not isinstance(new, str) or old not in text:
-            return None
-        text = text.replace(old, new) if edit.get("replace_all") else text.replace(old, new, 1)
-    return text
+def replaced_text(text, edit):
+    """None when the edit is malformed or its old_string is absent."""
+    old, new = edit.get("old_string"), edit.get("new_string")
+    if not isinstance(old, str) or not isinstance(new, str) or old not in text:
+        return None
+    return text.replace(old, new) if edit.get("replace_all") else text.replace(old, new, 1)
 
 
 def edit_changes_version(tool_input, path):
     on_disk = read_text(path)
-    edits = tool_input.get("edits") or [tool_input]
-    if on_disk is None or not isinstance(edits, list):
+    if on_disk is None:
         return False
-    edited = replaced_text(on_disk, edits)
+    edited = replaced_text(on_disk, tool_input)
     return edited is not None and version_differs(on_disk, edited)
 
 

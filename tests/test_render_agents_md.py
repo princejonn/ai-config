@@ -42,12 +42,12 @@ class RenderAgentsMdTest(unittest.TestCase):
         self.assertTrue(proc.stderr.startswith(f"ERROR: {path}:{line}: ".encode("utf-8")), proc.stderr)
 
     def test_marker_blank_line_claude_md_verbatim_then_rule_bodies_in_name_order(self):
-        self.rule("b-style.md", '---\npaths: ["**/*.ts"]\n---\n\n# Style\n\nBody b.\n')
+        self.rule("b-style.md", "# Style\n\nBody b.\n")
         self.rule("a-git.md", "# Git\n\nBody a.\n")
         self.rule("notes.txt", "not a rule\n")
         proc = self.render()
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        expected = MARKER + "\n\n" + CLAUDE_MD + "\n# Git\n\nBody a.\n" + "\n\n# Style\n\nBody b.\n"
+        expected = MARKER + "\n\n" + CLAUDE_MD + "\n# Git\n\nBody a.\n" + "\n# Style\n\nBody b.\n"
         self.assertEqual(proc.stdout, expected.encode("utf-8"))
 
     def test_marker_is_the_first_line(self):
@@ -56,14 +56,14 @@ class RenderAgentsMdTest(unittest.TestCase):
     def test_empty_rules_dir_renders_claude_md_alone(self):
         self.assertEqual(self.render().stdout, (MARKER + "\n\n" + CLAUDE_MD).encode("utf-8"))
 
-    def test_rule_body_is_unchanged_with_or_without_frontmatter(self):
+    def test_rule_body_render_is_byte_identical_to_the_input(self):
         self.rule("a.md", "# Git\n\nBody a.\n")
-        self.rule("b.md", "---\nother: true\n---\n# Notes\n\nBody b.\n")
+        self.rule("b.md", "# Notes\n\nBody b.\n")
         expected = MARKER + "\n\n" + CLAUDE_MD + "\n# Git\n\nBody a.\n" + "\n# Notes\n\nBody b.\n"
         self.assertEqual(self.render().stdout, expected.encode("utf-8"))
 
-    def test_frontmatter_is_removed_only_as_a_leading_fenced_block(self):
-        self.rule("a.md", "---\nother: true\n---\nbody a\n")
+    def test_body_lines_that_look_like_a_fence_are_left_alone(self):
+        self.rule("a.md", "body a\n")
         self.rule("b.md", "# Title\n---\nnot frontmatter\n---\nbody b\n")
         self.rule("c.md", "---\nunterminated: true\nbody c\n")
         self.rule("d.md", "body d\n")
@@ -99,7 +99,7 @@ class RenderAgentsMdTest(unittest.TestCase):
         self.assertEqual(proc.stdout, (MARKER + "\n\n# Global\n\nbefore\nafter\n").encode("utf-8"))
 
     def test_claude_only_block_in_a_rule_file_is_dropped_too(self):
-        self.rule("a.md", f"---\nother: true\n---\n# Rule\n{OPEN}\nclaude only\n{CLOSE}\nkept\n")
+        self.rule("a.md", f"# Rule\n{OPEN}\nclaude only\n{CLOSE}\nkept\n")
         proc = self.render()
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(proc.stdout, (MARKER + "\n\n" + CLAUDE_MD + "\n# Rule\nkept\n").encode("utf-8"))

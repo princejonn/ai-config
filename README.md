@@ -30,10 +30,10 @@ effect. `apply.sh` refuses to overwrite a file it does not own: a differing file
 `CONFLICT` and must be moved aside by hand. A byte-identical file is adopted as a symlink.
 
 Codex reads the same skills through `~/.agents/skills/<name>` links and the same instructions
-through `~/.codex/AGENTS.md`, rendered from `claude/CLAUDE.md` followed by `claude/rules/*.md`
-with their frontmatter removed. Blocks between `<!-- claude-only -->` and
-`<!-- /claude-only -->` describe Claude's machinery and are left out of the render. The first
-line is a marker; a file without it is a `CONFLICT`, and an absent `~/.codex` is skipped.
+through `~/.codex/AGENTS.md`, rendered from `claude/CLAUDE.md` followed by `claude/rules/*.md`.
+Blocks between `<!-- claude-only -->` and `<!-- /claude-only -->` describe Claude's machinery and
+are left out of the render. The first line is a marker; a file without it is a `CONFLICT`, and an
+absent `~/.codex` is skipped.
 `CLAUDE_CONFIG_DIR`, `AGENTS_SKILLS_DIR`, `CODEX_HOME` and `CLAUDE_LOCAL_BIN` override the target
 paths.
 

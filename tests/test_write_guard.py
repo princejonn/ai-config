@@ -40,6 +40,10 @@ def edit(path, cwd=CWD):
     return write_guard.evaluate(call("Edit", {"file_path": path, "old_string": "a", "new_string": "b"}, cwd))
 
 
+def write_tool(path, cwd=CWD):
+    return write_guard.evaluate(call("Write", {"file_path": path, "content": ""}, cwd))
+
+
 class PackageJsonCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR"))
@@ -55,9 +59,6 @@ class PackageJsonCase(unittest.TestCase):
         if replace_all:
             tool_input["replace_all"] = True
         return decision(write_guard.evaluate(call("Edit", tool_input)))
-
-    def multi_edit(self, edits):
-        return decision(write_guard.evaluate(call("MultiEdit", {"file_path": self.path, "edits": edits})))
 
 
 class RepositoryCase(unittest.TestCase):
@@ -95,6 +96,9 @@ class RepositoryCase(unittest.TestCase):
     def edit(self, relative):
         return edit(os.path.join(self.repo, relative), self.repo)
 
+    def write_tool(self, relative):
+        return write_tool(os.path.join(self.repo, relative), self.repo)
+
 
 class EnvFileTests(unittest.TestCase):
     def test_denies_env_and_env_variants(self):
@@ -102,6 +106,9 @@ class EnvFileTests(unittest.TestCase):
             with self.subTest(name=name):
                 result = write_guard.evaluate(call("Write", {"file_path": f"{CWD}/{name}", "content": "A=1"}))
                 self.assertEqual(decision(result), "deny")
+
+    def test_denies_edit_of_env_file(self):
+        self.assertEqual(decision(edit(f"{CWD}/.env")), "deny")
 
     def test_permits_env_example(self):
         self.assertIsNone(edit(f"{CWD}/.env.example"))
@@ -122,6 +129,11 @@ class GeneratedDirectoryTests(RepositoryCase):
                 result = self.edit(relative)
                 self.assertEqual(decision(result), "deny")
                 self.assertEqual(rule(result), f"write-guard.py: '{name}' is a git-ignored generated directory and is read-only.")
+
+    def test_denies_write_tool_into_a_git_ignored_directory(self):
+        result = self.write_tool("dist/index.js")
+        self.assertEqual(decision(result), "deny")
+        self.assertEqual(rule(result), "write-guard.py: 'dist' is a git-ignored generated directory and is read-only.")
 
     def test_denies_a_git_ignored_directory_absent_from_disk(self):
         self.assertFalse(os.path.exists(os.path.join(self.repo, "dist")))
@@ -249,10 +261,6 @@ class PackageJsonEditTests(PackageJsonCase):
     def test_denies_edit_removing_version_key(self):
         self.assertEqual(self.edit('  "version": "0.1.0",\n', ""), "deny")
 
-    def test_denies_multiedit_with_version_in_any_edit(self):
-        edits = [{"old_string": '"private": true', "new_string": '"private": false'}, {"old_string": '"version": "0.1.0"', "new_string": '"version": "0.1.1"'}]
-        self.assertEqual(self.multi_edit(edits), "deny")
-
     def test_denies_edit_changing_version_among_other_lines(self):
         old = '  "name": "x",\n  "version": "0.1.0",\n  "private": true'
         new = '  "name": "x",\n  "version": "0.1.1",\n  "private": true'
@@ -268,7 +276,6 @@ class PackageJsonEditTests(PackageJsonCase):
 
     def test_permits_edit_of_other_fields(self):
         self.assertIsNone(self.edit('"private": true', '"private": false'))
-        self.assertIsNone(self.multi_edit([{"old_string": '"name": "x"', "new_string": '"name": "y"'}]))
 
     def test_permits_dependency_range_matching_the_version_value(self):
         self.assertIsNone(self.edit('"a": "0.1.0"', '"a": "0.2.0"'))
@@ -277,7 +284,6 @@ class PackageJsonEditTests(PackageJsonCase):
         old = '  "name": "x",\n  "version": "0.1.0",\n  "private": true'
         new = '  "name": "y",\n  "version": "0.1.0",\n  "private": false'
         self.assertIsNone(self.edit(old, new))
-        self.assertIsNone(self.multi_edit([{"old_string": old, "new_string": new}]))
 
     def test_nested_version_keys_are_ignored(self):
         self.assertIsNone(self.edit('"version": "1"', '"version": "2"'))
@@ -301,7 +307,6 @@ class PackageJsonEditTests(PackageJsonCase):
 
     def test_fails_open_when_edit_fields_are_malformed(self):
         self.assertIsNone(write_guard.evaluate(call("Edit", {"file_path": self.path, "old_string": None, "new_string": '"version": "0.2.0"'})))
-        self.assertIsNone(write_guard.evaluate(call("MultiEdit", {"file_path": self.path, "edits": "nope"})))
 
 
 class PackageJsonWriteTests(PackageJsonCase):

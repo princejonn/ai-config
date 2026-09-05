@@ -13,7 +13,7 @@ LIVE_MANIFEST = REPO / "claude" / "settings.json"
 MANIFEST_HOOKS = {
     "PreToolUse": [
         {"matcher": "Bash", "script": "git-guard.py", "timeout": 10},
-        {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "script": "write-guard.py", "timeout": 10},
+        {"matcher": "Edit|Write|NotebookEdit", "script": "write-guard.py", "timeout": 10},
     ],
     "SubagentStop": [{"matcher": "*", "script": "verdict-guard.py", "timeout": 5}],
     "SessionStart": [
@@ -44,7 +44,7 @@ LIVE_HOOKS = {
             ],
         },
         {
-            "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+            "matcher": "Edit|Write|NotebookEdit",
             "hooks": [
                 {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/write-guard.py", "timeout": 10}
             ],
