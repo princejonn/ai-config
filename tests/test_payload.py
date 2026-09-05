@@ -70,6 +70,7 @@ ONE_HOME_PHRASES = {
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
 }
 ABSENT_PHRASES = (
+    "@lindorm",
     "exhaustive over intent",
     "The tree is not yours",
     "returned to the orchestrator verbatim",
@@ -307,6 +308,10 @@ class RulesTest(unittest.TestCase):
                 for pattern in paths:
                     self.assertIsInstance(pattern, str)
                     self.assertTrue(pattern)
+
+    def test_code_style_names_the_root_heading_that_answers_it(self):
+        _, body = parse_frontmatter(read(RULESETS / "typescript" / "code-style.md"))
+        self.assertIn("Anchors for code-style.md", section(body, "Anchors a root supplies"))
 
     def test_every_rule_body_opens_with_a_heading(self):
         for p in [*rule_files(), *ruleset_files()]:

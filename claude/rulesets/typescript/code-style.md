@@ -26,3 +26,9 @@ Defaults for code the user owns; in someone else's repo its established idiom wi
 - **No dead code lands.** TypeScript never flags an unused export, orphan file or unused dep: before a
   commit, grep `src/` for importers of each new export and classify — dead → delete; not-yet-consumed
   public API → keep; ambiguous → report, don't touch.
+
+## Anchors a root supplies
+
+Two rules take their answer from the root: the type-guard library behind "No runtime `typeof`", and
+the expiry predicates behind "Never negate a comparison predicate". The root's `CLAUDE.md` names both
+under the heading "Anchors for code-style.md".
