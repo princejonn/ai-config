@@ -19,7 +19,8 @@ CLAUDE_MD_MAX_BYTES = 3800
 MODELS = {"fable", "opus", "sonnet"}
 
 SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
-    "research": {"context": "fork", "agent": "researcher"},
+    "research": {"context": "fork", "agent": "researcher-trivial"},
+    "research-complex": {"context": "fork", "agent": "researcher-complex"},
     "verify": {"context": "fork", "agent": "verifier"},
     "review": {"context": "fork", "agent": "reviewer"},
     "commit": {},
@@ -34,11 +35,13 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "issue-write": {},
     "issue-next": {},
 }
-SKILLS_WITH_INPUT = {"design", "implement", "issue-next", "issue-write", "plan", "research", "review", "test", "verify"}
+SKILLS_WITH_INPUT = {"design", "implement", "issue-next", "issue-write", "plan", "research", "research-complex", "review", "test", "verify"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_MODELS = {"developer-trivial": ("sonnet", "high"), "developer-standard": ("opus", "xhigh"), "developer-complex": ("fable", "xhigh")}
+RESEARCHER_MODELS = {"researcher-trivial": ("sonnet", "high"), "researcher-complex": ("fable", "high")}
 EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "debug"] for name in DEVELOPER_MODELS}, "tester": ["test"]}
-EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher", "reviewer", "tester", "verifier"}
+EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "tester", "verifier"}
+RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
 
 ONE_HOME_PHRASES = {
     "never pipe through": "claude/CLAUDE.md",
@@ -60,6 +63,7 @@ ONE_HOME_PHRASES = {
     "never a brief line": "claude/rules/git.md",
     "Goal or Acceptance cannot be written": "claude/skills/issue-write/SKILL.md",
     "Depends on #N": "claude/skills/issue-write/SKILL.md",
+    "have to be weighed for": "claude/skills/deliver/references/tiers.md",
     "bug before enhancement": "claude/skills/issue-next/SKILL.md",
 }
 ABSENT_PHRASES = (
@@ -219,7 +223,7 @@ class SkillsTest(unittest.TestCase):
 
 
 class AgentsTest(unittest.TestCase):
-    def test_agent_set_is_exactly_the_seven(self):
+    def test_agent_set_is_exactly_the_expected_table(self):
         for p in agent_files():
             self.assertEqual(p.suffix, ".md", p)
         self.assertEqual({p.stem for p in agent_files()}, EXPECTED_AGENTS)
@@ -239,6 +243,15 @@ class AgentsTest(unittest.TestCase):
     def test_each_developer_pins_its_tier_model_and_effort(self):
         docs = agent_docs()
         for stem, (model, effort) in DEVELOPER_MODELS.items():
+            with self.subTest(agent=stem):
+                fields, _ = docs[stem]
+                self.assertEqual((fields["model"], fields["effort"]), (model, effort))
+                self.assertIn(model, fields["description"].lower())
+                self.assertIn(f"| `{stem}` | `{model}` | `{effort}` |", read(SKILLS / "deliver" / "references" / "tiers.md"))
+
+    def test_each_researcher_pins_its_lane_model_and_effort(self):
+        docs = agent_docs()
+        for stem, (model, effort) in RESEARCHER_MODELS.items():
             with self.subTest(agent=stem):
                 fields, _ = docs[stem]
                 self.assertEqual((fields["model"], fields["effort"]), (model, effort))
@@ -360,6 +373,16 @@ class SkillPassagesTest(unittest.TestCase):
         for label in ISSUE_NEXT_BRIEF_FIELDS:
             with self.subTest(label=label):
                 self.assertIn(label, output)
+
+    def test_research_complex_points_at_research_and_restates_none_of_its_procedure(self):
+        docs = skill_docs()
+        _, research = docs["research"]
+        _, interpreting = docs["research-complex"]
+        self.assertIn("skills/research/SKILL.md", interpreting)
+        for heading in RESEARCH_PROCEDURE_HEADINGS:
+            with self.subTest(heading=heading):
+                self.assertIn(heading, research)
+                self.assertNotIn(heading, interpreting)
 
     def test_every_skill_input_section_references_the_brief_rule(self):
         docs = skill_docs()

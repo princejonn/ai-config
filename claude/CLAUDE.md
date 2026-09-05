@@ -35,7 +35,8 @@ agent type inherits the session's model, so pass `model` explicitly.
 
 | Skill | Fires when |
 |---|---|
-| `research` | files, call sites, sources, bulk reading — forks into `researcher` |
+| `research` | enumerate: files, call sites — `researcher-trivial` |
+| `research-complex` | interpret: a specification — `researcher-complex` |
 | `verify` | a count, citation, completeness claim or diagnosis, before it is relayed or acted on — forks into `verifier` |
 | `design` | a public surface or its meaning changes — with the user, before code |
 | `plan` | the item touches an invariant, state boundary, security or several packages |

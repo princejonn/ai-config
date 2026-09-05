@@ -25,7 +25,7 @@ Explore → plan → implement → verify. Code is committable when a reviewer a
 
 - Once the work is agreed, run it to the end and report; questions belong to `design` or `plan`.
 - Every spawn runs in the background: the orchestrator ends its turn and resumes on the completion notification, so steering arrives mid-run and folds into the running item or the next brief. Steering that changes the nature of the work re-tiers its item as if dispatched fresh.
-- A load-bearing claim goes through `/verify` before it enters a brief or a verdict. Bulk reading goes through `/research`, and the memo, not the material, enters the brief.
+- A load-bearing claim goes through `/verify` before it enters a brief or a verdict. Bulk reading goes through `/research`, an interpreting read goes through `/research-complex`, and the memo, not the material, enters the brief.
 - A fresh reviewer each round: `/review` with the living brief as its arguments; the developer works the fixes it returns.
 - A `BLOCKED` review names what the brief lacks: complete the brief and re-dispatch; it is not a round and does not count toward the circuit breaker.
 - A `NOT ACCEPTED` review opens a round run per `references/review-loop.md`.

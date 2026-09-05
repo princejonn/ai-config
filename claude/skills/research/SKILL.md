@@ -1,8 +1,8 @@
 ---
 name: research
-description: "Runs one bounded retrieval lane — a web sweep, source fetch, specification or corpus skim, or repository survey for files, call sites and consumers — and returns a compact evidence memo with citations. Use when the orchestrator needs conclusions without the page or file content landing in its context. Not for checking one specific claim (verify) or reviewing code (review)."
+description: "Runs one bounded research lane that enumerates — a repository survey for files, call sites, consumers and occurrences, or a web sweep for what exists — and returns a compact evidence memo with citations. Use when the orchestrator needs the findings without the page or file content landing in its context. Not for a lane that interprets what the sources mean (research-complex), checking one specific claim (verify) or reviewing code (review)."
 context: fork
-agent: researcher
+agent: researcher-trivial
 ---
 
 # Research

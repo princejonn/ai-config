@@ -30,4 +30,13 @@ A fix inherits the tier of the code it touches, runs in a fresh agent window wit
 | `standard` | `developer-standard` | `opus` | `xhigh` |
 | `complex` | `developer-complex` | `fable` | `xhigh` |
 
-The name says the tier, never the model; `max` is deliberately unused.
+## Research routing (Claude Code)
+
+A lane enumerates when its answer is a list the sources already contain, and interprets when its answer is a reading those sources have to be weighed for; a lane that does both is complex.
+
+| Tier | Lane | Agent | Model | Effort |
+|---|---|---|---|---|
+| `trivial` | enumerates | `researcher-trivial` | `sonnet` | `high` |
+| `complex` | interprets | `researcher-complex` | `fable` | `high` |
+
+An agent's name says its tier, never its model; `max` is deliberately unused.
