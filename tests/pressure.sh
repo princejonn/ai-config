@@ -22,16 +22,13 @@ pair() {
 pair author-skill \
   'Add a new skill to my ai-config repo for summarising a changelog and word its description so it fires on the right prompts.' \
   'Rename the render function in widget.py to draw.'
-pair commit \
-  '/commit' \
+pair commit-item \
+  '/commit-item' \
   'show me the git status'
-pair debug \
-  'render returns the wrong string for an empty name and the cause is not known — find it.' \
-  'Add a docstring to render in widget.py.'
 pair deliver \
   'We agreed on adding a slugify helper to widget.py — take it all the way to committable code.' \
   'Draft a plan for adding a slugify helper to widget.py; write no code.'
-pair design \
+pair design-surface \
   'Compare the option shapes and error contracts for a strict mode on render before we change the surface.' \
   'Implement the strict mode on render exactly as agreed: an empty name raises ValueError.'
 pair implement \
@@ -46,7 +43,7 @@ pair issue-triage \
 pair issue-write \
   'Turn this finding into an issue: render accepts an empty name and returns an empty tag.' \
   'Triage issue #15 before we start on it — challenge its proposal.'
-pair plan \
+pair plan-phases \
   'Give me a phased execution plan for splitting widget.py into a package, with invariants and an exit check per phase.' \
   'Rename widget.py to renderer.py and update the README.'
 pair research \
@@ -55,16 +52,19 @@ pair research \
 pair research-complex \
   'Work out what RFC 3986 section 2.3 requires of unreserved characters; the design rests on the answer.' \
   'List every Python file in this repository.'
-pair review \
+pair review-change \
   'Review the staged change-set against its brief and give me ACCEPTED or NOT ACCEPTED.' \
   'Get Codex to look at this diff.'
+pair root-cause \
+  'render returns the wrong string for an empty name and the cause is not known — find it.' \
+  'Add a docstring to render in widget.py.'
 pair second-opinion \
   'Get Codex to attack the premises of this plan before we accept it.' \
   'Review this change-set against its brief and tell me whether it is acceptable.'
 pair test \
   'Write tests for render covering the empty-name edge case, with the red-before-green proof.' \
   'Add the empty-name guard to render in widget.py.'
-pair verify \
+pair verify-claim \
   'Before I rely on it: is it true that nothing else calls render? Check that claim.' \
   'Find every function defined in this repository.'
 

@@ -1,6 +1,6 @@
 ---
 name: research-complex
-description: "Runs one bounded research lane that interprets — what a specification section requires, what a dependency behaviour actually is, which reading a corpus supports — and returns a compact evidence memo with citations. Use when a design or a verdict will rest on the answer. Not for a lane that enumerates files, call sites or occurrences (research), checking one specific claim (verify) or reviewing code (review)."
+description: "Runs one bounded research lane that interprets — what a specification section requires, what a dependency behaviour actually is, which reading a corpus supports — and returns a compact evidence memo with citations. Use when a design or a verdict will rest on the answer. Not for a lane that enumerates files, call sites or occurrences (research), checking one specific claim (verify-claim) or reviewing code (review-change)."
 context: fork
 agent: researcher-complex
 ---

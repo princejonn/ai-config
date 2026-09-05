@@ -1,5 +1,5 @@
 ---
-name: commit
+name: commit-item
 description: "Commits one accepted item by pathspec with a stand-alone Conventional Commits message and closes its GitHub issue. Use as soon as a review has ended ACCEPTED, the gate is green and the item carries a tracker reference; with no reference, only on the user's word."
 ---
 

@@ -18,6 +18,26 @@ verdict_guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(verdict_guard)
 
 SKILL_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
+RESERVED_SKILL_NAMES = {
+    "verify",
+    "debug",
+    "design",
+    "plan",
+    "review",
+    "commit",
+    "code-review",
+    "artifact-components",
+    "batch",
+    "claude-api",
+    "claude-in-chrome",
+    "design-sync",
+    "plan-artifact",
+    "pr",
+    "run",
+    "run-skill-generator",
+    "simplify",
+    "update-config",
+}
 DESCRIPTION_MAX = 1024
 BODY_MAX_LINES = 200
 CLAUDE_MD_MAX_BYTES = 8600
@@ -28,26 +48,26 @@ EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "research": {"context": "fork", "agent": "researcher-trivial"},
     "research-complex": {"context": "fork", "agent": "researcher-complex"},
-    "verify": {"context": "fork", "agent": "verifier"},
-    "review": {"context": "fork", "agent": "reviewer"},
-    "commit": {},
-    "design": {},
-    "plan": {},
+    "verify-claim": {"context": "fork", "agent": "verifier"},
+    "review-change": {"context": "fork", "agent": "reviewer"},
+    "commit-item": {},
+    "design-surface": {},
+    "plan-phases": {},
     "implement": {},
     "test": {},
     "deliver": {},
-    "debug": {},
+    "root-cause": {},
     "second-opinion": {},
     "author-skill": {},
     "issue-write": {},
     "issue-next": {},
     "issue-triage": {},
 }
-SKILLS_WITH_INPUT = {"design", "implement", "issue-next", "issue-triage", "issue-write", "plan", "research", "research-complex", "review", "test", "verify"}
+SKILLS_WITH_INPUT = {"design-surface", "implement", "issue-next", "issue-triage", "issue-write", "plan-phases", "research", "research-complex", "review-change", "test", "verify-claim"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_MODELS = {"developer-trivial": ("sonnet", "high"), "developer-standard": ("opus", "xhigh"), "developer-complex": ("fable", "xhigh")}
 RESEARCHER_MODELS = {"researcher-trivial": ("sonnet", "high"), "researcher-complex": ("fable", "high")}
-EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "debug"] for name in DEVELOPER_MODELS}, "tester": ["test"]}
+EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "root-cause"] for name in DEVELOPER_MODELS}, "tester": ["test"]}
 EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "tester", "verifier"}
 FORK_ONLY_AGENTS = {"researcher-trivial", "researcher-complex", "reviewer", "verifier"}
 RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
@@ -59,14 +79,14 @@ ONE_HOME_PHRASES = {
     "a decision not made": "claude/rules/brief.md",
     "Unclear in the brief": "claude/rules/brief.md",
     "copy it aside": "claude/skills/test/SKILL.md",
-    "root cause": "claude/skills/debug/SKILL.md",
+    "root cause": "claude/skills/root-cause/SKILL.md",
     "decorrelation": "claude/skills/second-opinion/SKILL.md",
-    "the brief is incomplete and the question is above": "claude/skills/review/SKILL.md",
+    "the brief is incomplete and the question is above": "claude/skills/review-change/SKILL.md",
     "it is not a round": "claude/skills/deliver/SKILL.md",
     "tier of the code it touches": "claude/skills/deliver/references/tiers.md",
     "unique output": "claude/skills/deliver/references/review-loop.md",
     "reviewed baseline": "claude/skills/deliver/references/review-loop.md",
-    "fix delta plus the": "claude/skills/review/SKILL.md",
+    "fix delta plus the": "claude/skills/review-change/SKILL.md",
     "wearing a review's clothes": "claude/skills/deliver/references/review-loop.md",
     "needs no ask": "claude/rules/git.md",
     "never a brief line": "claude/rules/git.md",
@@ -237,6 +257,9 @@ class SkillsTest(unittest.TestCase):
             self.assertTrue(d.is_dir(), d)
             self.assertTrue((d / "SKILL.md").is_file(), d)
 
+    def test_no_skill_takes_a_name_claude_code_reserves(self):
+        self.assertEqual({d.name for d in skill_dirs()} & RESERVED_SKILL_NAMES, set())
+
     def test_name_matches_dir_and_pattern(self):
         for name, (fields, _) in skill_docs().items():
             with self.subTest(skill=name):
@@ -381,6 +404,12 @@ class ClaudeMdTest(unittest.TestCase):
     def test_at_most_8600_bytes(self):
         self.assertLessEqual((CLAUDE / "CLAUDE.md").stat().st_size, CLAUDE_MD_MAX_BYTES)
 
+    def test_routing_table_names_every_skill_once(self):
+        body = (CLAUDE / "CLAUDE.md").read_text(encoding="utf-8")
+        for skill in skill_dirs():
+            with self.subTest(skill=skill.name):
+                self.assertEqual(body.count(f"| `{skill.name}` |"), 1)
+
 
 class OneHomeTest(unittest.TestCase):
     def test_each_one_home_phrase_lives_only_in_its_home(self):
@@ -404,7 +433,7 @@ class DescriptionsTest(unittest.TestCase):
 
 class SkillPassagesTest(unittest.TestCase):
     def test_design_description_names_the_meaning_change_examples(self):
-        fields, _ = skill_docs()["design"]
+        fields, _ = skill_docs()["design-surface"]
         self.assertIn(MEANING_CHANGE_EXAMPLES, fields["description"])
 
     def test_test_principles_say_why_expected_values_come_from_the_spec(self):

@@ -1,6 +1,6 @@
 ---
-name: verify
-description: "Checks one load-bearing claim, or a small coupled set, before it is ratified into a design, plan or review verdict or relayed to the user as fact — 'nothing else calls this', 'the RFC requires X', 'the dependency is at version Y', 'all N sites were fixed', a bug diagnosis, a TODO premise. Returns VERIFIED, DISPROVEN or UNVERIFIABLE with falsification-grade evidence. Not for reviewing a change-set (review) or broad source gathering (research)."
+name: verify-claim
+description: "Checks one load-bearing claim, or a small coupled set, before it is ratified into a design, plan or review verdict or relayed to the user as fact — 'nothing else calls this', 'the RFC requires X', 'the dependency is at version Y', 'all N sites were fixed', a bug diagnosis, a TODO premise. Returns VERIFIED, DISPROVEN or UNVERIFIABLE with falsification-grade evidence. Not for reviewing a change-set (review-change) or broad source gathering (research)."
 context: fork
 agent: verifier
 ---

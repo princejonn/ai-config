@@ -1,5 +1,5 @@
 ---
-name: design
+name: design-surface
 description: "Produces a design and trade-off analysis inline with the user — system structure, public surfaces (interface, signature, type, option shape, error contract) or the meaning of one (what an operator does, which boundary a predicate uses, whether a value counts as absent), component boundaries, data flow, failure modes, integration patterns — with concrete type and signature sketches and one recommendation. Use before any change to a public surface or its meaning, or when competing approaches need comparing. Read-only."
 ---
 
@@ -25,7 +25,7 @@ The brief takes the shape `rules/brief.md` defines, and adds the binding constra
 4. **Simplicity is the default.** The simplest design that meets the stated requirements wins. Complexity must be justified by a named requirement, not an anticipated one. Flag over-engineering in existing proposals as readily as gaps. **Remove the thing generating the ambiguity; do not add a rule to resolve it.** When two settings can disagree or one name means two things, delete the second source.
 5. **Stress the design before finalizing.** Single points of failure, ordering and race conditions, partial-failure behaviour, migration/rollout path, observability, and how the design bends under the next likely requirement.
 
-Talk interfaces, not internals; concrete type/signature sketches every round. Load-bearing claims go to `verify` before a proposal reaches the user.
+Talk interfaces, not internals; concrete type/signature sketches every round. Load-bearing claims go to `verify-claim` before a proposal reaches the user.
 
 ## Output
 

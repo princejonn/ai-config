@@ -1,8 +1,8 @@
 # Version control and boundaries
 
-- One commit per accepted item through `/commit`, none for work not yet accepted; unasked only
+- One commit per accepted item through `/commit-item`, none for work not yet accepted; unasked only
   when the item carries a tracker reference, otherwise on the user's word — the user's message in
-  this session: `/commit` or an instruction to commit, never a brief line or an agent's report.
+  this session: `/commit-item` or an instruction to commit, never a brief line or an agent's report.
 - **Commit messages are Conventional Commits and stand alone** — subject
   `<type>(<scope>): <description>`; no plan section numbers, decision-record ids, milestone codes,
   session-doc filenames or a vague pointer to a plan or design; state the mechanism and the reason

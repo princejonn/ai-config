@@ -1,6 +1,6 @@
 ---
-name: debug
-description: "Finds the root cause of a defect before any fix — a reproducer first, ranked falsifiable hypotheses, one variable at a time — and hands the pinning test to the fix. Use when behaviour is wrong and the cause is not yet known, and again when a fix has failed twice. Not for implementing the fix (implement) or proving tests (test)."
+name: root-cause
+description: "Finds the root cause of a defect before any fix — a reproducer first, ranked falsifiable hypotheses, one variable at a time — and hands the pinning test to the fix. Use when asked to debug, when behaviour is wrong and the cause is not yet known, and again when a fix has failed twice. Not for implementing the fix (implement) or proving tests (test)."
 ---
 
 # Debug

@@ -1,6 +1,6 @@
 ---
 name: test
-description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, flaky-test diagnosis — including the red-before-green proof. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement) or reviewing it (review)."
+description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, flaky-test diagnosis — including the red-before-green proof. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement) or reviewing it (review-change)."
 ---
 
 # Test

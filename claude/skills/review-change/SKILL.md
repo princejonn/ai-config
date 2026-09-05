@@ -1,5 +1,5 @@
 ---
-name: review
+name: review-change
 description: "Reviews one change-set against the brief it was built to on two axes, standards and spec, each with its own disposition. Returns a numbered fix list and ACCEPTED / NOT ACCEPTED, or BLOCKED when the brief is incomplete. Use when a change-set awaits acceptance or a re-review with a ledger. Read-only; fixes go to the developer."
 context: fork
 agent: reviewer

@@ -1,6 +1,6 @@
 ---
 name: second-opinion
-description: "Gets a review of a diff, or a challenge of a plan's premises, from a different model family through the read-only `second-opinion-codex` command, and adjudicates every finding before relaying it. Use before acceptance when author and reviewer share the assumptions that shaped the change, or when a design needs an outside attack. It complements review, never replaces it."
+description: "Gets a review of a diff, or a challenge of a plan's premises, from a different model family through the read-only `second-opinion-codex` command, and adjudicates every finding before relaying it. Use before acceptance when author and reviewer share the assumptions that shaped the change, or when a design needs an outside attack. It complements review-change, never replaces it."
 ---
 
 # Second opinion
@@ -39,7 +39,7 @@ Give the Bash tool `timeout: 600000`, its maximum in milliseconds; the script bo
 
 ## Adjudicate
 
-- Every finding is checked before it reaches the user or a brief: read the code it names, or run `/verify` for a load-bearing one.
+- Every finding is checked before it reaches the user or a brief: read the code it names, or run `/verify-claim` for a load-bearing one.
 - Drop what is disproved, keep what is confirmed, and say which is which.
 - You own the verdict, not Codex.
 

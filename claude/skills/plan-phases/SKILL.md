@@ -1,5 +1,5 @@
 ---
-name: plan
+name: plan-phases
 description: "Turns a design, feature request or refactor into a phased, verifiable execution plan — dependency ordering, blast radius, invariants and stop conditions per phase, migration and rollback, exit check per phase using the project's real commands. Use when an item touches an invariant, state boundary, security-sensitive code or several packages, before implement. Read-only."
 ---
 

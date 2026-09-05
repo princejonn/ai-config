@@ -35,7 +35,7 @@ Two Goals are the same outcome when reading both says so — never by scoring th
 
 ## Critique
 
-The item goes to `/review` as this brief, in the shape `rules/brief.md` defines:
+The item goes to `/review-change` as this brief, in the shape `rules/brief.md` defines:
 
 ```text
 Goal:            judge item #N — the right change, at a stated cost, observable when done
@@ -68,7 +68,7 @@ Findings come back in the reviewer's fix-list form, and the verdict is the rulin
 
 ## Done
 
-Each acceptance line of the item or its draft goes to `/verify` as one claim against the tree and `git log`. `VERIFIED` for every line is done: on the user's word the item closes with a comment carrying the commit the verdicts cite, and the closed twin too when § Duplicate handed one over. One `DISPROVEN` or `UNVERIFIABLE` line is not: the item stays open. An item with no acceptance line, in body or draft, has no § Done.
+Each acceptance line of the item or its draft goes to `/verify-claim` as one claim against the tree and `git log`. `VERIFIED` for every line is done: on the user's word the item closes with a comment carrying the commit the verdicts cite, and the closed twin too when § Duplicate handed one over. One `DISPROVEN` or `UNVERIFIABLE` line is not: the item stays open. An item with no acceptance line, in body or draft, has no § Done.
 
 ## Apply
 
