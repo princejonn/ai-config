@@ -16,7 +16,10 @@ MANIFEST_HOOKS = {
         {"matcher": "Edit|Write|MultiEdit|NotebookEdit", "script": "write-guard.py", "timeout": 10},
     ],
     "SubagentStop": [{"matcher": "*", "script": "verdict-guard.py", "timeout": 5}],
-    "SessionStart": [{"matcher": "*", "script": "announce-instructions.py", "timeout": 5}],
+    "SessionStart": [
+        {"matcher": "*", "script": "announce-instructions.py", "timeout": 5},
+        {"matcher": "*", "script": "drift-notice.py", "timeout": 10},
+    ],
 }
 LIVE_ATTRIBUTION = {"commit": "", "pr": "", "sessionUrl": False}
 LIVE_ALLOW = ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)", "Bash(mv:*)"]
@@ -55,6 +58,12 @@ LIVE_HOOKS = {
             "matcher": "*",
             "hooks": [
                 {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/announce-instructions.py", "timeout": 5}
+            ],
+        },
+        {
+            "matcher": "*",
+            "hooks": [
+                {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/drift-notice.py", "timeout": 10}
             ],
         },
     ],

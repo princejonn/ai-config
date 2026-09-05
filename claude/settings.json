@@ -8,7 +8,8 @@
       {"matcher": "*", "script": "verdict-guard.py", "timeout": 5}
     ],
     "SessionStart": [
-      {"matcher": "*", "script": "announce-instructions.py", "timeout": 5}
+      {"matcher": "*", "script": "announce-instructions.py", "timeout": 5},
+      {"matcher": "*", "script": "drift-notice.py", "timeout": 10}
     ]
   },
   "defaults": {
