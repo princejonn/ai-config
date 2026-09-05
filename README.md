@@ -56,3 +56,7 @@ in place.
 
 Tests: `python3 -m unittest discover -s tests -v`, `bash tests/test_apply.sh` and
 `bash tests/test_apply_ts.sh`.
+
+`bash tests/pressure.sh` checks skill triggering on demand — per skill one prompt that must fire it
+and one that must not, through `claude -p` in a scratch project — and spends tokens, so the gate
+leaves it out.

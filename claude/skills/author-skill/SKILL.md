@@ -31,7 +31,7 @@ A sentence lives in exactly one file. `tests/test_payload.py` pins the shared ph
 
 ## Prove it
 
-- `python3 -m unittest discover -s tests`, then a pressure run: a fresh `claude -p` in a scratch project with one prompt that should fire the skill and one that should not. Record both.
+- `python3 -m unittest discover -s tests`, then the pressure run: `bash tests/pressure.sh --only <skill>` runs one prompt that should fire the skill and one that should not through a fresh `claude -p` in a scratch project; add the skill's pair to the script first. Record both lines.
 - When triggering is wrong, change the description, not the body.
 
 ## Portability
