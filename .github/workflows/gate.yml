@@ -14,3 +14,4 @@ jobs:
       - run: bash tests/test_apply.sh
       - run: bash tests/test_apply_ts.sh
       - run: bash tests/test_second_opinion.sh
+      - run: bash tests/test_pressure.sh

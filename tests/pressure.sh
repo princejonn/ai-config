@@ -1,6 +1,6 @@
 #!/bin/bash
 # Pressure-tests skill triggering: per skill one prompt that must fire it and one that must not, run
-# through `claude -p` in a fresh scratch project. Spends tokens; on demand, never in the gate.
+# through `claude -p` in a fresh scratch project. Spends tokens; on demand.
 # A `/name` prompt the CLI expands emits no Skill event, so its proxy is the session transcript entry.
 set -euo pipefail
 
@@ -69,12 +69,16 @@ pair verify \
   'Find every function defined in this repository.'
 
 usage() {
-  echo "usage: $(basename "$0") [--only <skill>] [--dry-run]" >&2
+  echo "usage: $(basename "$0") [--only <skill>] [--dry-run] [--verdict <stream> <skill> <prompt>]" >&2
   exit 2
 }
 
 only=""
 dry_run=false
+verdict=false
+verdict_stream=""
+verdict_skill=""
+verdict_prompt=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --only)
@@ -86,11 +90,17 @@ while [ $# -gt 0 ]; do
       dry_run=true
       shift
       ;;
+    --verdict)
+      [ $# -ge 4 ] || usage
+      verdict=true
+      verdict_stream="$2"
+      verdict_skill="$3"
+      verdict_prompt="$4"
+      shift 4
+      ;;
     *) usage ;;
   esac
 done
-
-command -v claude >/dev/null 2>&1 || { echo "pressure: claude is not on PATH" >&2; exit 2; }
 
 index_of() {
   local wanted="$1" i=0
@@ -150,18 +160,6 @@ if $dry_run; then
   exit 0
 fi
 
-ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ai-config-pressure.XXXXXX")"
-ROOT="$(cd "$ROOT" && pwd -P)"
-# The streams stay outside the project: a log inside it is a file the prompt under test reads.
-PROJECT="$ROOT/project"
-STREAMS="$ROOT/streams"
-mkdir "$PROJECT" "$STREAMS"
-printf '%s\n' '# widget' '' 'A small widget library.' > "$PROJECT/README.md"
-printf '%s\n' 'def render(name):' '    return "<" + name + ">"' > "$PROJECT/widget.py"
-git -C "$PROJECT" init -q
-git -C "$PROJECT" add -A
-echo "scratch $ROOT"
-
 run_prompt() {
   local stream="$1" prompt="$2" pid waited
   # exec, so $! is claude itself: killing the subshell around it would leave claude orphaned.
@@ -212,6 +210,40 @@ for line in open(stream, encoding="utf-8", errors="replace"):
             continue
         argument = block.get("input")
         if isinstance(argument, dict) and argument.get("skill") == skill:
+            sys.exit(0)
+sys.exit(1)
+PY
+}
+
+other_skill_used() {
+  python3 - "$1" "$2" <<'PY'
+import json
+import sys
+
+stream, skill = sys.argv[1], sys.argv[2]
+for line in open(stream, encoding="utf-8", errors="replace"):
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        event = json.loads(line)
+    except ValueError:
+        continue
+    if event.get("type") != "assistant":
+        continue
+    content = event.get("message", {}).get("content")
+    if not isinstance(content, list):
+        continue
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") != "tool_use":
+            continue
+        if block.get("name") != "Skill":
+            continue
+        argument = block.get("input")
+        if not isinstance(argument, dict):
+            continue
+        chosen = argument.get("skill")
+        if isinstance(chosen, str) and chosen != skill:
             sys.exit(0)
 sys.exit(1)
 PY
@@ -273,6 +305,39 @@ fired() {
   esac
 }
 
+nofire_verdict() {
+  local stream="$1" skill="$2" prompt="$3"
+  if fired "$stream" "$skill" "$prompt"; then
+    echo yes
+  elif other_skill_used "$stream" "$skill"; then
+    echo no
+  elif [ "$(result_subtype "$stream")" = success ]; then
+    echo no
+  else
+    echo cut
+  fi
+}
+
+if $verdict; then
+  [ -f "$verdict_stream" ] || { echo "pressure: no stream at $verdict_stream" >&2; exit 2; }
+  nofire_verdict "$verdict_stream" "$verdict_skill" "$verdict_prompt"
+  exit 0
+fi
+
+command -v claude >/dev/null 2>&1 || { echo "pressure: claude is not on PATH" >&2; exit 2; }
+
+ROOT="$(mktemp -d "${TMPDIR:-/tmp}/ai-config-pressure.XXXXXX")"
+ROOT="$(cd "$ROOT" && pwd -P)"
+# The streams stay outside the project: a log inside it is a file the prompt under test reads.
+PROJECT="$ROOT/project"
+STREAMS="$ROOT/streams"
+mkdir "$PROJECT" "$STREAMS"
+printf '%s\n' '# widget' '' 'A small widget library.' > "$PROJECT/README.md"
+printf '%s\n' 'def render(name):' '    return "<" + name + ">"' > "$PROJECT/widget.py"
+git -C "$PROJECT" init -q
+git -C "$PROJECT" add -A
+echo "scratch $ROOT"
+
 passed=0
 failed=0
 for i in "${selected[@]}"; do
@@ -282,13 +347,7 @@ for i in "${selected[@]}"; do
   if fired "$STREAMS/$skill.fire.jsonl" "$skill" "${FIRE[$i]}"; then fire=yes; else fire=no; fi
   run_prompt "$STREAMS/$skill.nofire.jsonl" "${NOFIRE[$i]}"
   nofire_result="$(result_subtype "$STREAMS/$skill.nofire.jsonl")"
-  if fired "$STREAMS/$skill.nofire.jsonl" "$skill" "${NOFIRE[$i]}"; then
-    nofire=yes
-  elif [ "$nofire_result" != success ]; then
-    nofire=cut
-  else
-    nofire=no
-  fi
+  nofire="$(nofire_verdict "$STREAMS/$skill.nofire.jsonl" "$skill" "${NOFIRE[$i]}")"
   unfinished=""
   [ -n "$fire_result" ] || unfinished="$unfinished $STREAMS/$skill.fire.jsonl.err"
   [ -n "$nofire_result" ] || unfinished="$unfinished $STREAMS/$skill.nofire.jsonl.err"
