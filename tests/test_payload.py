@@ -31,8 +31,10 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "debug": {},
     "second-opinion": {},
     "author-skill": {},
+    "issue-write": {},
+    "issue-next": {},
 }
-SKILLS_WITH_INPUT = {"design", "implement", "plan", "research", "review", "test", "verify"}
+SKILLS_WITH_INPUT = {"design", "implement", "issue-next", "issue-write", "plan", "research", "review", "test", "verify"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_MODELS = {"developer-trivial": ("sonnet", "high"), "developer-standard": ("opus", "xhigh"), "developer-complex": ("fable", "xhigh")}
 EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "debug"] for name in DEVELOPER_MODELS}, "tester": ["test"]}
@@ -56,6 +58,9 @@ ONE_HOME_PHRASES = {
     "wearing a review's clothes": "claude/skills/deliver/references/review-loop.md",
     "needs no ask": "claude/rules/git.md",
     "never a brief line": "claude/rules/git.md",
+    "Goal or Acceptance cannot be written": "claude/skills/issue-write/SKILL.md",
+    "Depends on #N": "claude/skills/issue-write/SKILL.md",
+    "bug before enhancement": "claude/skills/issue-next/SKILL.md",
 }
 ABSENT_PHRASES = (
     "exhaustive over intent",
@@ -70,6 +75,8 @@ COPY_ASIDE_ONLY_WHEN_FIX_PRESENT = "only when the fix is already in the tree"
 STAGED_FAILURE_WARNING = "A failure staged afterwards by reverting does not count: the helpers and structure the fix introduced stay standing, so what fails is one line's sensitivity, not the defect."
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
+ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
+ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Tier:", "Out of scope:")
 
 
 def parse_value(raw):
@@ -179,7 +186,7 @@ class FrontmatterParserTest(unittest.TestCase):
 
 
 class SkillsTest(unittest.TestCase):
-    def test_skill_set_is_exactly_the_twelve(self):
+    def test_skill_set_is_exactly_the_expected_table(self):
         self.assertEqual({d.name for d in skill_dirs()}, set(SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION))
         for d in skill_dirs():
             self.assertTrue(d.is_dir(), d)
@@ -340,6 +347,19 @@ class SkillPassagesTest(unittest.TestCase):
     def test_implement_method_puts_correctness_before_speed(self):
         _, body = skill_docs()["implement"]
         self.assertIn(CORRECTNESS_FIRST, section(body, "Method"))
+
+    def test_issue_write_gives_each_issue_body_heading_once(self):
+        _, body = skill_docs()["issue-write"]
+        for heading in ISSUE_BODY_HEADINGS:
+            with self.subTest(heading=heading):
+                self.assertEqual(body.count(heading), 1)
+
+    def test_issue_next_output_names_every_brief_field_it_fills(self):
+        _, body = skill_docs()["issue-next"]
+        output = section(body, "Output")
+        for label in ISSUE_NEXT_BRIEF_FIELDS:
+            with self.subTest(label=label):
+                self.assertIn(label, output)
 
     def test_every_skill_input_section_references_the_brief_rule(self):
         docs = skill_docs()
