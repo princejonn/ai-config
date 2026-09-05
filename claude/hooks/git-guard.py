@@ -668,8 +668,6 @@ def check_git(subcommand, args, global_options, cwd):
                 "git switch <branch> or git switch -c <branch>.",
             )
         return None
-    if subcommand == "push":
-        return deny("git push is the user's to run manually.", "leave the branch unpushed and say so in the report.")
     if subcommand == "commit":
         if "--all" in args or "--no-verify" in args or any(short_flag_has(arg, "an", COMMIT_SHORT_VALUE_LETTERS) for arg in args):
             return deny(

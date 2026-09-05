@@ -27,7 +27,7 @@ SECTION_PERMITTED = "qualify it: RFC 6749 §3.1.1, OIDC Core §3.1.2.1."
 PAGER_RULE = "piping a test or verify run through tail or head hides the runner's summary."
 PAGER_PERMITTED = 'redirect: <command> > "$TMPDIR/out.txt" 2>&1, then read the file.'
 STASH_RULE = "git stash silently destroys uncommitted work in a shared tree."
-PUSH_RULE = "git push is the user's to run manually."
+CLEAN_RULE = "git clean deletes untracked work in a shared tree."
 STDIN_RULE = "git commit -F - takes the message from a pipe or stdin the guard cannot read."
 
 DENIED = (
@@ -42,7 +42,6 @@ DENIED = (
     "git restore .",
     "git restore --staged -- :/",
     "git switch -f main",
-    "git push",
     'git commit -a -m "x"',
     'git commit --no-verify -m "x"',
     'git commit -m "fix: x\n\nCo-Authored-By: X" -- a',
@@ -115,6 +114,7 @@ PERMITTED = (
     "git restore --staged -- src/",
     "git restore --staged -- file",
     "git switch main",
+    "git push",
     'git commit -m "fix: x" -- packages/aegis',
     'git commit -m"feat: add thing" -- packages/aegis',
     "git commit -F - -- a <<'EOF'\nfix: x\nEOF",
@@ -317,9 +317,10 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
 
 
 class GitPushTests(unittest.TestCase):
-    def test_denies_any_push(self):
-        self.assertEqual(decision(evaluate("git push")), "deny")
-        self.assertEqual(decision(evaluate("git push --force-with-lease origin HEAD")), "deny")
+    def test_permits_push_the_permission_layer_asks(self):
+        for command in ("git push", "git push --force-with-lease origin HEAD", "git push origin main"):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
 
     def test_permits_fetch_pull_log_diff(self):
         self.assertIsNone(evaluate("git fetch origin"))
@@ -897,7 +898,7 @@ class ProgramPositionTests(unittest.TestCase):
         for command, expected in (
             ("/usr/bin/sudo git stash", "git stash silently destroys uncommitted work in a shared tree."),
             ("/usr/bin/env -i git stash", "git stash silently destroys uncommitted work in a shared tree."),
-            ("/usr/bin/timeout 5 git push", "git push is the user's to run manually."),
+            ("/usr/bin/timeout 5 git clean -fdx", CLEAN_RULE),
             ("/usr/bin/xargs rm -rf", SUBSTITUTION_RULE),
             ("/usr/bin/sudo -u root /usr/bin/xargs -0 rm -f", SUBSTITUTION_RULE),
         ):
@@ -921,7 +922,7 @@ class ShellIndirectionTests(unittest.TestCase):
             'dash -c "git stash"',
             "$(git stash)",
             "echo `git stash`",
-            'echo "$(git push)"',
+            'echo "$(git stash)"',
             'sh -c "eval \\"git stash\\""',
         ):
             with self.subTest(command=command):
@@ -945,7 +946,7 @@ class ShellReadingTests(unittest.TestCase):
         self.assertIsNone(evaluate("git commit -F - -- a $(echo \")\") <<'EOF'\nfeat: x\nEOF"))
         self.assertEqual(rule(evaluate('echo $(git stash ")")')), STASH_RULE)
         self.assertEqual(rule(evaluate("echo \"$(git stash ')')\"")), STASH_RULE)
-        self.assertEqual(rule(evaluate('echo $(echo ")"; git push)')), PUSH_RULE)
+        self.assertEqual(rule(evaluate('echo $(echo ")"; git stash)')), STASH_RULE)
 
     def test_a_process_substitution_is_walked_and_is_one_span_to_the_outer_command(self):
         self.assertEqual(rule(evaluate("diff <(git stash) x")), STASH_RULE)
@@ -985,7 +986,7 @@ class ShellReadingTests(unittest.TestCase):
                 self.assertEqual(rule(evaluate(command)), STDIN_RULE)
         self.assertIsNone(evaluate("echo x # ; git stash"))
         self.assertIsNone(evaluate("echo x;# git stash"))
-        self.assertEqual(rule(evaluate("echo x # ; git stash\ngit push")), PUSH_RULE)
+        self.assertEqual(rule(evaluate("echo x # ; git stash\ngit clean -fdx")), CLEAN_RULE)
 
     def test_a_hash_after_an_escaped_space_or_a_continued_word_continues_the_word(self):
         self.assertEqual(rule(evaluate("echo \\ #; git stash")), STASH_RULE)
@@ -1003,7 +1004,7 @@ class ShellReadingTests(unittest.TestCase):
 
     def test_a_line_continuation_is_removed(self):
         self.assertEqual(rule(evaluate("git \\\nstash")), STASH_RULE)
-        self.assertEqual(rule(evaluate("git \\\npush")), PUSH_RULE)
+        self.assertEqual(rule(evaluate("git \\\nclean -fdx")), CLEAN_RULE)
         self.assertEqual(rule(evaluate("git \\\ncommit -m 'Add thing' -- a")), SUBJECT_RULE)
         self.assertIsNone(evaluate("git commit -F - -- a \\\n<<'EOF'\nfeat: x\nEOF"))
         self.assertIsNone(evaluate('git commit -m "fix: x" \\\n-- a'))
@@ -1031,9 +1032,9 @@ class ShellReadingTests(unittest.TestCase):
         self.assertEqual(rule(evaluate("cat msg.txt | git commit -F - --trailer '<<EOF' -- a")), STDIN_RULE)
 
     def test_an_unterminated_span_runs_to_the_end_of_the_command_and_fails_closed(self):
-        for command in ("git push $(echo", "git push ${X", "git push <(echo", "git push `echo", "git push $'x", "git push 'x", 'git push "x'):
+        for command in ("git clean -fdx $(echo", "git clean -fdx ${X", "git clean -fdx <(echo", "git clean -fdx `echo", "git clean -fdx $'x", "git clean -fdx 'x", 'git clean -fdx "x'):
             with self.subTest(command=command):
-                self.assertEqual(rule(evaluate(command)), PUSH_RULE)
+                self.assertEqual(rule(evaluate(command)), CLEAN_RULE)
         for command in ("echo $(git stash", "echo `git stash", "cat <(git stash", 'echo "$(git stash', "echo ${X:-$(git stash"):
             with self.subTest(command=command):
                 self.assertEqual(rule(evaluate(command)), STASH_RULE)
@@ -1228,8 +1229,8 @@ class RmTests(IgnoreRepoTests):
                 self.assertEqual(permitted(result), "name the path literally.")
 
     def test_first_deny_in_segment_order_wins(self):
-        self.assertEqual(rule(self.in_repo("rm -rf src; git push")), RM_RULE)
-        self.assertEqual(rule(self.in_repo("git push; rm -rf src")), "git push is the user's to run manually.")
+        self.assertEqual(rule(self.in_repo("rm -rf src; git stash")), RM_RULE)
+        self.assertEqual(rule(self.in_repo("git stash; rm -rf src")), STASH_RULE)
 
     def test_denies_when_target_only_shares_a_prefix_string(self):
         for command in ("rm -rf /tmp/claudeX", "rm -rf /private/tmp/claude-evil/x", f"rm -rf {TMPDIR}-evil/x"):
@@ -1482,15 +1483,15 @@ class FindDeleteTests(IgnoreRepoTests):
 
     def test_git_run_by_an_action_is_judged_by_the_git_rules(self):
         stash = "git stash silently destroys uncommitted work in a shared tree."
-        push = "git push is the user's to run manually."
+        clean = CLEAN_RULE
         for command, expected in (
             ("find . -maxdepth 0 -exec git stash \\;", stash),
-            ("find . -exec git push \\;", push),
+            ("find . -exec git clean -fdx \\;", clean),
             ("find node_modules -execdir git stash \\;", stash),
-            ("find . -name '*.pyc' -ok git push \\;", push),
+            ("find . -name '*.pyc' -ok git clean -fdx \\;", clean),
             ("find . -okdir git stash \\;", stash),
             ("find . -exec sh -c 'git stash' \\;", stash),
-            ("find . -exec sudo git push \\;", push),
+            ("find . -exec sudo git clean -fdx \\;", clean),
             ("find . -name '*.ts' -exec git stash \\; -delete", stash),
         ):
             with self.subTest(command=command):
@@ -1682,8 +1683,8 @@ class FindDeleteTests(IgnoreRepoTests):
 
 
 class CompoundCommandTests(unittest.TestCase):
-    def test_denies_push_after_and(self):
-        self.assertEqual(decision(evaluate("cd packages/aegis && npm test && git push")), "deny")
+    def test_denies_stash_after_and(self):
+        self.assertEqual(decision(evaluate("cd packages/aegis && npm test && git stash")), "deny")
 
     def test_denies_stash_after_semicolon_and_pipe(self):
         self.assertEqual(decision(evaluate("ls; git stash")), "deny")
@@ -1699,18 +1700,18 @@ class CompoundCommandTests(unittest.TestCase):
         self.assertIsNone(evaluate('for f in a b; do git add -- "$f"; done'))
 
     def test_handles_git_global_options(self):
-        self.assertEqual(decision(evaluate("git -C lindorm-monorepo push")), "deny")
+        self.assertEqual(decision(evaluate("git -C lindorm-monorepo stash")), "deny")
         self.assertEqual(decision(evaluate("git -c core.pager=cat stash")), "deny")
         self.assertEqual(decision(evaluate("git --no-pager --git-dir=.git stash")), "deny")
 
     def test_two_token_global_options_carry_a_value(self):
         self.assertEqual(decision(evaluate("git --config-env core.pager=P stash")), "deny")
         self.assertEqual(decision(evaluate("git --attr-source HEAD stash")), "deny")
-        self.assertEqual(decision(evaluate("git --namespace ns push")), "deny")
+        self.assertEqual(decision(evaluate("git --namespace ns stash")), "deny")
         self.assertIsNone(evaluate("git --config-env core.pager=P log -1"))
 
     def test_unbalanced_quotes_still_evaluated(self):
-        self.assertEqual(decision(evaluate("git push 'oops")), "deny")
+        self.assertEqual(decision(evaluate("git stash 'oops")), "deny")
 
 
 class ScannerTests(unittest.TestCase):
@@ -1793,7 +1794,7 @@ class DecisionSurfaceTests(unittest.TestCase):
 
 class SubprocessTests(unittest.TestCase):
     def test_denies_via_stdin_and_exits_zero(self):
-        proc = subprocess.run([sys.executable, HOOK_PATH], input=json.dumps(bash("git push")), capture_output=True, text=True)
+        proc = subprocess.run([sys.executable, HOOK_PATH], input=json.dumps(bash("git stash")), capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
 
