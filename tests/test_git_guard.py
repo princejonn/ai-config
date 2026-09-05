@@ -15,14 +15,15 @@ git_guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(git_guard)
 
 MONOREPO = "/Users/jonn/Projects/lindorm/lindorm-monorepo"
-SERVICES = "/Users/jonn/Projects/lindorm/lindorm-services/services/tyr"
 TMPDIR = "/private/tmp/claude-501/abc"
+IGNORED = "node_modules/\ndist/\ncoverage/\n*.pyc\n__pycache__/\nlink\nbuild/\n"
+RM_RULE = "rm outside $TMPDIR, the scratchpad or a git-ignored path deletes work the tree cannot regenerate."
+SUBSTITUTION_RULE = "delete target carries a shell substitution the guard cannot resolve."
 
 DENIED = (
     "git stash",
-    "git stash list",
-    "git stash show -p stash@{0}",
     "git stash pop",
+    "git stash -m list",
     "git reset --hard HEAD~1",
     "git clean -fdx",
     "git checkout .",
@@ -35,6 +36,13 @@ DENIED = (
     'git commit -a -m "x"',
     'git commit --no-verify -m "x"',
     'git commit -m "fix: x\n\nCo-Authored-By: X" -- a',
+    'git commit -m "fix: thing\n\nthe hook denies Co-Authored-By: trailers" -- a',
+    'git commit -m "fix: thing\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)" -- a',
+    "printf 'feat: x' | git commit -F - -- a",
+    "git commit -F - -- a",
+    'git commit -m "fix: x"',
+    'git commit -m "fix: x" --',
+    'git commit --allow-empty -m "chore: trigger"',
     'eval "git stash"',
     'sh -c "git stash"',
     "$(git stash)",
@@ -51,21 +59,26 @@ DENIED = (
     "git restore -- '**'",
     "git checkout -- ..",
     "git restore -- $PWD",
+    "git checkout -- $(pwd)",
+    'git restore -- "${DIR}"',
+    "git checkout -- ':(glob)**'",
+    "git restore -- ':(top,glob)*'",
+    "git checkout -- ':!src'",
+    "git restore -- ':(exclude)src'",
+    "git checkout -- ':^src'",
+    "git restore --staged -- ':!src'",
     f"git checkout -- {MONOREPO}",
     "git --config-env core.pager=P stash",
     "git --attr-source HEAD stash",
     "git -c ALIAS.s=stash s",
-)
-ASKED = (
-    "rm -rf packages/aegis/dist",
-    "sudo rm -rf x",
     "git commit --amend --no-edit",
     "git commit -F msg.txt -- a",
     "git commit -C HEAD -- a",
-    "find . -name '*.js' -delete",
-    "find packages -type d -name dist -exec rm -rf {} +",
-    'rm -rf "$TMPDIR/$(echo ../..)"',
     'git commit -m "fix: $MSG" -- a',
+    "git commit --fixup=HEAD~1",
+    'rm -rf "$TMPDIR/$(echo ../..)"',
+    "rm -rf ~/x",
+    "rm -rf $HOME/x",
 )
 PERMITTED = (
     "git log --stat",
@@ -95,7 +108,14 @@ PERMITTED = (
     "find . -name '*.ts' -newer x",
     "xargs -n1 echo",
     "node scripts/build.js",
-    "git restore -- ':(top,glob)*'",
+    "git restore -- ':(glob)src/**/*.ts'",
+    "git checkout -- ':(top)packages/aegis'",
+    "git restore -- src ':!src/gen'",
+    "git stash list",
+    "git stash show -p",
+    "git commit -m 'fix: generated with care' -- a",
+    "git commit -m 'feat: add robot 🤖 emoji' -- a",
+    'git commit --allow-empty -m "chore: trigger" -- a',
     "git status",
     "ls",
 )
@@ -109,6 +129,20 @@ def decision(result):
     return None if result is None else result["hookSpecificOutput"]["permissionDecision"]
 
 
+def reason(result):
+    if decision(result) != "deny":
+        raise AssertionError(f"expected a deny, got {result!r}")
+    return result["hookSpecificOutput"]["permissionDecisionReason"].removeprefix(f"{git_guard.HOOK}: ")
+
+
+def rule(result):
+    return reason(result).partition(" Permitted: ")[0]
+
+
+def permitted(result):
+    return reason(result).partition(" Permitted: ")[2]
+
+
 def evaluate(command, cwd=MONOREPO):
     return git_guard.evaluate(bash(command, cwd))
 
@@ -120,10 +154,15 @@ class GitStashTests(unittest.TestCase):
     def test_denies_stash_pop_and_push(self):
         self.assertEqual(decision(evaluate("git stash pop")), "deny")
         self.assertEqual(decision(evaluate("git stash push -m wip")), "deny")
+        self.assertEqual(decision(evaluate("git stash -u")), "deny")
+        self.assertEqual(decision(evaluate("git stash -m list")), "deny")
+        self.assertEqual(rule(evaluate("git stash -m list")), "git stash silently destroys uncommitted work in a shared tree.")
 
-    def test_denies_stash_list_and_show(self):
-        self.assertEqual(decision(evaluate("git stash list")), "deny")
-        self.assertEqual(decision(evaluate("git stash show -p stash@{0}")), "deny")
+    def test_permits_stash_list_and_show(self):
+        self.assertIsNone(evaluate("git stash list"))
+        self.assertIsNone(evaluate("git stash show"))
+        self.assertIsNone(evaluate("git stash show -p"))
+        self.assertIsNone(evaluate("git stash show -p stash@{0}"))
 
 
 class GitResetCleanTests(unittest.TestCase):
@@ -157,7 +196,9 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
         for spec in (".", "./", ":/", "*", "':(top)'", ":/src", "./.", ":", "'**'", "..", "../..", "$PWD", "${PWD}", "$PWD/"):
             for subcommand in ("checkout", "restore"):
                 with self.subTest(subcommand=subcommand, spec=spec):
-                    self.assertEqual(decision(evaluate(f"git {subcommand} -- {spec}")), "deny")
+                    result = evaluate(f"git {subcommand} -- {spec}")
+                    self.assertEqual(decision(result), "deny")
+                    self.assertEqual(rule(result), f"tree-wide git {subcommand} pathspec reverts everyone's uncommitted work.")
         self.assertEqual(decision(evaluate("git checkout HEAD -- packages/aegis .")), "deny")
         self.assertEqual(decision(evaluate("git restore --staged -- .")), "deny")
 
@@ -176,14 +217,49 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
             self.assertIsNone(evaluate(f"git checkout -- {cwd}/src", cwd=cwd))
             self.assertIsNone(evaluate(f"git restore -- {root}/packages/other", cwd=cwd))
 
-    def test_top_glob_pathspec_is_left_alone(self):
-        self.assertIsNone(evaluate("git restore -- ':(top,glob)*'"))
+    def test_positive_pathspec_magic_is_decided_by_the_path_after_it(self):
+        for spec in ("':(glob)**'", "':(top)'", "':(top,glob)*'", "':(glob)*'", "':(glob)'"):
+            for subcommand in ("checkout", "restore"):
+                with self.subTest(subcommand=subcommand, spec=spec):
+                    result = evaluate(f"git {subcommand} -- {spec}")
+                    self.assertEqual(decision(result), "deny")
+                    self.assertEqual(rule(result), f"tree-wide git {subcommand} pathspec reverts everyone's uncommitted work.")
+        self.assertIsNone(evaluate("git restore -- ':(glob)src/**/*.ts'"))
+        self.assertIsNone(evaluate("git checkout -- ':(top)packages/aegis'"))
         self.assertIsNone(evaluate("git checkout -- ':(top,glob)*.ts'"))
+
+    def test_denies_exclude_only_pathspecs_as_tree_wide(self):
+        for command in (
+            "git checkout -- ':!src'",
+            "git restore -- ':(exclude)src'",
+            "git checkout -- ':^src'",
+            "git restore --staged -- ':!src'",
+            "git checkout -- ':(top,exclude)src'",
+            "git restore -- ':!src' ':^docs'",
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), f"tree-wide git {command.split()[1]} pathspec reverts everyone's uncommitted work.")
+        self.assertIsNone(evaluate("git restore -- src ':!src/gen'"))
+        self.assertIsNone(evaluate("git checkout -- ':(top)src' ':(exclude)src/gen'"))
+
+    def test_denies_checkout_pathspec_with_a_substitution(self):
+        for subcommand in ("checkout", "restore"):
+            for spec in ("$(pwd)", '"${DIR}"', "$DIR", "$PWDX", "${PWDX}", "`pwd`", "src/$(basename x)"):
+                with self.subTest(subcommand=subcommand, spec=spec):
+                    result = evaluate(f"git {subcommand} -- {spec}")
+                    self.assertEqual(decision(result), "deny")
+                    self.assertEqual(rule(result), f"git {subcommand} pathspec carries a shell substitution the guard cannot resolve.")
+        result = evaluate('git checkout -- "$PWD"')
+        self.assertEqual(decision(result), "deny")
+        self.assertEqual(rule(result), "tree-wide git checkout pathspec reverts everyone's uncommitted work.")
 
     def test_permits_scoped_relative_pathspecs(self):
         self.assertIsNone(evaluate("git checkout -- ./packages/aegis"))
         self.assertIsNone(evaluate("git restore -- ../packages/aegis"))
         self.assertIsNone(evaluate("git restore -- $PWD/src"))
+        self.assertIsNone(evaluate("git restore -- ${PWD}/src"))
 
     def test_denies_tree_wide_restore(self):
         self.assertEqual(decision(evaluate("git restore .")), "deny")
@@ -255,58 +331,116 @@ class GitCommitFlagTests(unittest.TestCase):
         self.assertIsNone(evaluate('git commit -m"feat: add thing" -- packages/aegis'))
         self.assertIsNone(evaluate('git commit -qm "feat: add thing" -- packages/aegis'))
         self.assertIsNone(evaluate("git commit -ma -- packages/aegis"))
-        self.assertEqual(decision(evaluate("git commit -Fan.txt -- a")), "ask")
+        result = evaluate("git commit -Fan.txt -- a")
+        self.assertEqual(decision(result), "deny")
+        self.assertEqual(rule(result), "git commit -F takes the message from outside the command.")
+
+    def test_denies_commit_without_a_pathspec(self):
+        for command in (
+            'git commit -m "fix: x"',
+            'git commit -m "fix: x" --',
+            "git commit",
+            "git commit -F - <<'EOF'\nfix: x\nEOF",
+            "git commit -F msg.txt",
+            'git commit --allow-empty -m "chore: trigger"',
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), "git commit without a pathspec commits the whole index.")
+        self.assertIsNone(evaluate('git commit -m "fix: x" -- a'))
+        self.assertIsNone(evaluate('git commit --allow-empty -m "chore: trigger" -- a'))
+
+    def test_fixup_and_squash_need_a_pathspec_too(self):
+        for command in ("git commit --fixup=HEAD~1", "git commit --fixup HEAD~1", "git commit --squash=HEAD~1", "git commit --squash HEAD~1"):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), "git commit without a pathspec commits the whole index.")
+        self.assertIsNone(evaluate("git commit --fixup=HEAD~1 -- a"))
+        self.assertIsNone(evaluate("git commit --squash HEAD~1 -- a"))
 
 
 class GitCommitMessageSourceTests(unittest.TestCase):
-    def test_asks_when_message_comes_from_a_file(self):
-        for command in (
-            "git commit -F msg.txt -- a",
-            "git commit --file=msg.txt -- a",
-            "git commit --file msg.txt -- a",
-            "git commit -Fmsg.txt -- a",
-            "git commit -qF msg.txt -- a",
+    def test_denies_message_from_a_file(self):
+        for command, flag in (
+            ("git commit -F msg.txt -- a", "-F"),
+            ("git commit --file=msg.txt -- a", "--file"),
+            ("git commit --file msg.txt -- a", "--file"),
+            ("git commit -Fmsg.txt -- a", "-F"),
+            ("git commit -qF msg.txt -- a", "-F"),
         ):
             with self.subTest(command=command):
-                self.assertEqual(decision(evaluate(command)), "ask")
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), f"git commit {flag} takes the message from outside the command.")
+                self.assertEqual(permitted(result), "put the message in the command: -F - with a heredoc, or a literal -m.")
 
-    def test_asks_when_message_comes_from_another_commit_or_template(self):
-        for command in (
-            "git commit -C HEAD -- a",
-            "git commit -c HEAD~1 -- a",
-            "git commit --reuse-message=HEAD -- a",
-            "git commit --reedit-message HEAD -- a",
-            "git commit -t tpl.txt -- a",
-            "git commit --template=tpl.txt -- a",
+    def test_denies_message_from_another_commit_or_template(self):
+        for command, flag in (
+            ("git commit -C HEAD -- a", "-C"),
+            ("git commit -c HEAD~1 -- a", "-c"),
+            ("git commit --reuse-message=HEAD -- a", "--reuse-message"),
+            ("git commit --reedit-message HEAD -- a", "--reedit-message"),
+            ("git commit -t tpl.txt -- a", "-t"),
+            ("git commit --template=tpl.txt -- a", "--template"),
         ):
             with self.subTest(command=command):
-                self.assertEqual(decision(evaluate(command)), "ask")
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), f"git commit {flag} takes the message from outside the command.")
 
-    def test_asks_when_message_is_shell_expanded(self):
-        for command in (
-            'git commit -m "fix: $MSG" -- a',
-            'git commit -m "fix: ${MSG}" -- a',
-            'git commit -m "fix: `date`" -- a',
-            'git commit -m "fix: $(cat msg)" -- a',
-            'git commit --message="fix: $MSG" -- a',
-            'git commit --message "fix: $MSG" -- a',
-            'git commit -qm "fix: $MSG" -- a',
-            'git commit -m"fix: $MSG" -- a',
-            'git commit -m "fix: cost is $5" -- a',
+    def test_denies_shell_expanded_message(self):
+        for command, flag in (
+            ('git commit -m "fix: $MSG" -- a', "-m"),
+            ('git commit -m "fix: ${MSG}" -- a', "-m"),
+            ('git commit -m "fix: `date`" -- a', "-m"),
+            ('git commit -m "fix: $(cat msg)" -- a', "-m"),
+            ('git commit --message="fix: $MSG" -- a', "--message"),
+            ('git commit --message "fix: $MSG" -- a', "--message"),
+            ('git commit -qm "fix: $MSG" -- a', "-m"),
+            ('git commit -m"fix: $MSG" -- a', "-m"),
+            ('git commit -m "fix: cost is $5" -- a', "-m"),
         ):
             with self.subTest(command=command):
-                self.assertEqual(decision(evaluate(command)), "ask")
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), f"git commit {flag} takes the message from outside the command.")
+
+    def test_message_source_is_denied_before_the_attribution_scan(self):
+        result = evaluate('git commit -F msg.txt -m "Co-Authored-By: x" -- a')
+        self.assertEqual(rule(result), "git commit -F takes the message from outside the command.")
 
     def test_permits_literal_message(self):
         self.assertIsNone(evaluate('git commit -m "fix: x" -- a'))
         self.assertIsNone(evaluate("git commit -m 'fix: x' -m 'body' -- a"))
         self.assertIsNone(evaluate('git commit --message="fix: x" -- a'))
 
-    def test_permits_message_from_stdin(self):
+    def test_permits_stdin_message_from_a_heredoc(self):
         self.assertIsNone(evaluate("git commit -F - -- packages/aegis <<'EOF'\nfix: thing\nEOF"))
         self.assertIsNone(evaluate("git commit --file=- -- packages/aegis <<'EOF'\nfix: thing\nEOF"))
         self.assertIsNone(evaluate("git commit -F- -- packages/aegis <<'EOF'\nfix: thing\nEOF"))
         self.assertIsNone(evaluate("git commit -F - -- a <<'EOF'\nfix: x\nEOF"))
+        self.assertIsNone(evaluate("git commit -F - -- a << EOF\nfix: x\nEOF"))
+        self.assertIsNone(evaluate("git commit -F - -- a <<EOF\nfix: x\nEOF"))
+
+    def test_denies_stdin_message_without_a_heredoc(self):
+        for command in (
+            "printf 'feat: x' | git commit -F - -- a",
+            "cat msg.txt | git commit --file=- -- a",
+            "git commit -F - -- a",
+            "git commit --file=- -- a",
+            "git commit -F- -- a",
+            "git commit -qF - -- a",
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), "git commit -F - takes the message from a pipe or stdin the guard cannot read.")
+        command = "printf 'Co-Authored-By: x' | git commit -F - -- a"
+        result = evaluate(command)
+        self.assertEqual(decision(result), "deny")
+        self.assertEqual(rule(result), f"commit text contains '{command}'; commit messages carry no Claude attribution.")
 
     def test_pathspec_after_double_dash_is_not_a_message_source(self):
         self.assertIsNone(evaluate('git commit -m "fix: x" -- -C'))
@@ -318,10 +452,9 @@ class GitCommitAttributionTests(unittest.TestCase):
         for line in (
             "Co-Authored-By: Claude <noreply@anthropic.com>",
             "Claude-Session: url",
-            "Generated with tool",
-            "generated with tool",
-            "🤖 Generated with Claude Code",
-            "🤖 robot only",
+            "🤖 Generated with [Claude Code](https://claude.com/claude-code)",
+            "Generated with [Claude Code](https://claude.com/claude-code)",
+            "generated with [claude code]",
         ):
             with self.subTest(line=line):
                 self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{line}" -- packages/aegis')), "deny")
@@ -340,8 +473,21 @@ class GitCommitAttributionTests(unittest.TestCase):
         self.assertIsNone(evaluate('git commit -m "fix: thing\n\nAnthropic docs describe this" -- a'))
         self.assertIsNone(evaluate('git commit -m "docs: mention claude code and anthropic" -- a'))
 
-    def test_trailer_key_inside_a_sentence_is_not_attribution(self):
-        self.assertIsNone(evaluate('git commit -m "fix: thing\n\nthe hook denies Co-Authored-By: trailers" -- a'))
+    def test_denies_trailer_key_anywhere_in_a_line(self):
+        result = evaluate('git commit -m "fix: thing\n\nthe hook denies Co-Authored-By: trailers" -- a')
+        self.assertEqual(decision(result), "deny")
+        self.assertEqual(rule(result), "commit text contains 'the hook denies Co-Authored-By: trailers'; commit messages carry no Claude attribution.")
+        self.assertEqual(decision(evaluate('git commit -m "fix: thing\n\nsee claude-session: url" -- a')), "deny")
+
+    def test_attribution_phrase_is_the_claude_code_link(self):
+        self.assertIsNone(evaluate("git commit -m 'fix: generated with care' -- a"))
+        self.assertIsNone(evaluate("git commit -m 'feat: add robot 🤖 emoji' -- a"))
+        result = evaluate('git commit -m "fix: thing\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)" -- a')
+        self.assertEqual(decision(result), "deny")
+        self.assertEqual(
+            rule(result),
+            "commit text contains '🤖 Generated with [Claude Code](https://claude.com/claude-code)'; commit messages carry no Claude attribution.",
+        )
 
     def test_denies_single_line_message_that_is_a_trailer(self):
         self.assertEqual(decision(evaluate('git commit -m "Co-Authored-By: x" -- a')), "deny")
@@ -358,22 +504,17 @@ class GitCommitAttributionTests(unittest.TestCase):
         self.assertIsNone(evaluate('grep -rn "Co-Authored-By" .'))
 
 
-class GitCommitAskTests(unittest.TestCase):
-    def test_asks_on_amend(self):
-        self.assertEqual(decision(evaluate("git commit --amend --no-edit")), "ask")
+class GitCommitAmendTests(unittest.TestCase):
+    def test_denies_amend(self):
+        for command in ("git commit --amend --no-edit", "git commit --amend", "git commit --amend -m 'fix: x' -- a"):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), "git commit --amend rewrites an existing commit.")
+                self.assertEqual(permitted(result), "make a new commit; squashing is the user's decision at review.")
 
-    def test_asks_when_cwd_is_lindorm_services(self):
-        self.assertEqual(decision(evaluate('git commit -m "x" -- a', cwd=SERVICES)), "ask")
-
-    def test_asks_when_command_mentions_lindorm_services(self):
-        self.assertEqual(decision(evaluate('git -C lindorm-services commit -m "x" -- a')), "ask")
-
-    def test_permits_monorepo_commit(self):
-        self.assertIsNone(evaluate('git commit -m "x" -- a', cwd=MONOREPO))
-
-    def test_deny_wins_over_ask(self):
-        self.assertEqual(decision(evaluate("git commit --amend -a", cwd=SERVICES)), "deny")
-        self.assertEqual(decision(evaluate('git commit -F msg.txt -m "Co-Authored-By: x" -- a')), "deny")
+    def test_all_flag_is_denied_before_amend(self):
+        self.assertEqual(rule(evaluate("git commit --amend -a")), "git commit -a/--all/--no-verify commits the whole tree or skips hooks.")
 
 
 class ProgramPositionTests(unittest.TestCase):
@@ -431,6 +572,17 @@ class ProgramPositionTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(decision(evaluate(command)), "deny")
 
+    def test_wrappers_by_absolute_path_are_stripped(self):
+        for command, expected in (
+            ("/usr/bin/sudo git stash", "git stash silently destroys uncommitted work in a shared tree."),
+            ("/usr/bin/env -i git stash", "git stash silently destroys uncommitted work in a shared tree."),
+            ("/usr/bin/timeout 5 git push", "git push is the user's to run manually."),
+            ("/usr/bin/xargs rm -rf", SUBSTITUTION_RULE),
+            ("/usr/bin/sudo -u root /usr/bin/xargs -0 rm -f", SUBSTITUTION_RULE),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), expected)
+
     def test_wrapped_harmless_programs_stay_silent(self):
         for command in ("xargs -n1 echo", "xargs -I {} echo {}", "env -i printenv", "nice -n 5 npm test", "exec ls", "sudo -u root ls"):
             with self.subTest(command=command):
@@ -454,9 +606,6 @@ class ShellIndirectionTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(decision(evaluate(command)), "deny")
 
-    def test_asks_for_rm_inside_a_substitution(self):
-        self.assertEqual(decision(evaluate("echo $(rm -rf build)")), "ask")
-
     def test_depth_limit_stops_recursion(self):
         nested = "git stash"
         for _ in range(5):
@@ -469,31 +618,157 @@ class ShellIndirectionTests(unittest.TestCase):
         self.assertIsNone(evaluate("eval ls"))
 
 
-class RmTests(unittest.TestCase):
-    def setUp(self):
-        patcher = mock.patch.dict(os.environ, {"TMPDIR": TMPDIR})
+class IgnoreRepoTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(directory.cleanup)
+        cls.root = os.path.realpath(directory.name)
+        for prefix in git_guard.SAFE_RM_PREFIXES + (TMPDIR,):
+            if git_guard.under_prefix(cls.root, prefix):
+                raise AssertionError(f"fixture root {cls.root} lies under the safe prefix {prefix}, where every recursive rm passes")
+        if "scratchpad" in cls.root.split("/"):
+            raise AssertionError(f"fixture root {cls.root} carries a scratchpad segment, where every recursive rm passes")
+        environment = {"TMPDIR": TMPDIR, "HOME": cls.root, "XDG_CONFIG_HOME": os.path.join(cls.root, ".config"), "GIT_CONFIG_SYSTEM": os.devnull}
+        patcher = mock.patch.dict(os.environ, environment)
         patcher.start()
-        self.addCleanup(patcher.stop)
+        cls.addClassCleanup(patcher.stop)
+        os.makedirs(os.path.join(cls.root, "src"))
+        os.makedirs(os.path.join(cls.root, "packages", "aegis", "dist"))
+        os.symlink("src", os.path.join(cls.root, "link"))
+        os.symlink(os.path.join("..", "..", "..", "src"), os.path.join(cls.root, "packages", "aegis", "dist", "link"))
+        with open(os.path.join(cls.root, ".gitignore"), "w") as ignore:
+            ignore.write(IGNORED)
+        with open(os.path.join(cls.root, "src", "a.ts"), "w") as tracked:
+            tracked.write("export {};\n")
+        with open(os.path.join(cls.root, "notes.txt"), "w") as untracked:
+            untracked.write("scratch\n")
+        os.makedirs(os.path.join(cls.root, "dist"))
+        with open(os.path.join(cls.root, "dist", "out.js"), "w") as ignored:
+            ignored.write("export {};\n")
+        os.makedirs(os.path.join(cls.root, "node_modules"))
+        with open(os.path.join(cls.root, "build"), "w") as tracked_file_under_a_directory_pattern:
+            tracked_file_under_a_directory_pattern.write("#!/bin/sh\n")
+        with open(os.path.join(cls.root, "-x"), "w") as dash_named:
+            dash_named.write("x\n")
+        cls.git("init", "-q")
+        cls.git("config", "user.email", "fixture@example.invalid")
+        cls.git("config", "user.name", "fixture")
+        cls.git("add", "--", ".gitignore", "src/a.ts", "build")
+        cls.git("commit", "-q", "-m", "chore: fixture", "--", ".gitignore", "src/a.ts", "build")
 
-    def test_asks_on_recursive_rm_outside_temp(self):
-        self.assertEqual(decision(evaluate("rm -rf packages/aegis/dist")), "ask")
-        self.assertEqual(decision(evaluate("rm -R build")), "ask")
-        self.assertEqual(decision(evaluate("rm -fr ./x")), "ask")
+    @classmethod
+    def git(cls, *args):
+        subprocess.run(["git", "-C", cls.root, *args], check=True, capture_output=True)
 
-    def test_asks_when_any_target_is_outside_temp(self):
-        self.assertEqual(decision(evaluate("rm -rf $TMPDIR/x ./y")), "ask")
+    def in_repo(self, command, path=""):
+        return evaluate(command, cwd=os.path.join(self.root, path))
 
-    def test_asks_on_rm_by_path_or_wrapper(self):
-        for command in ("sudo rm -rf x", "/bin/rm -rf x", "command rm -rf x", "timeout 5 rm -rf x", "xargs rm -rf"):
+    def outside_repo(self):
+        return tempfile.TemporaryDirectory(dir=os.path.dirname(self.root))
+
+
+class RmTests(IgnoreRepoTests):
+    def test_permits_recursive_rm_of_a_git_ignored_path(self):
+        for command in (
+            "rm -rf node_modules",
+            "rm -rf ./dist",
+            "rm -rf dist/",
+            "rm -rf packages/aegis/dist",
+            "rm -rf packages/aegis/dist/bundle.js",
+            "rm -rf node_modules dist",
+            f"rm -rf {self.root}/node_modules",
+            "sudo rm -rf node_modules",
+        ):
             with self.subTest(command=command):
-                self.assertEqual(decision(evaluate(command)), "ask")
+                self.assertIsNone(self.in_repo(command))
 
-    def test_asks_when_target_escapes_temp(self):
-        self.assertEqual(decision(evaluate("rm -rf $TMPDIR/../../../etc")), "ask")
-        self.assertEqual(decision(evaluate('rm -rf "${TMPDIR}/../x"')), "ask")
-        self.assertEqual(decision(evaluate("rm -rf /tmp/claude/../etc")), "ask")
+    def test_absent_path_is_judged_by_check_ignore_without_a_trailing_slash(self):
+        for command in ("rm -rf coverage", "rm -R __pycache__", "rm -rf nonexistent"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("rm -rf dist/new"))
+        self.assertIsNone(self.in_repo("rm nonexistent.pyc"))
 
-    def test_asks_when_target_carries_a_substitution(self):
+    def test_denies_rm_of_a_tracked_file_whose_name_matches_a_directory_pattern(self):
+        for command in ("rm build", "rm -f build", "rm -rf build"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+
+    def test_targets_after_double_dash_are_judged(self):
+        for command in ("rm -- -x", "rm -rf -- -x", "rm -f -- src/a.ts -x"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("rm -f -- dist/out.js"))
+
+    def test_denies_glob_target(self):
+        for command in ("rm *.log", "rm -rf build*", "rm -rf dist/[ab]", "rm -rf dist/?", "find 'dist/*' -delete"):
+            with self.subTest(command=command):
+                result = self.in_repo(command)
+                self.assertEqual(rule(result), SUBSTITUTION_RULE)
+                self.assertEqual(permitted(result), "name the path literally.")
+        self.assertIsNone(self.in_repo("rm -rf node_modules"))
+
+    def test_ignored_path_is_resolved_against_a_subdirectory_cwd(self):
+        self.assertIsNone(self.in_repo("rm -rf dist", "packages/aegis"))
+        self.assertIsNone(self.in_repo("rm -rf ../../node_modules", "packages/aegis"))
+        self.assertEqual(rule(self.in_repo("rm -rf .", "packages/aegis")), RM_RULE)
+        self.assertEqual(rule(self.in_repo("rm -rf ../../src", "packages/aegis")), RM_RULE)
+
+    def test_denies_recursive_rm_of_a_path_git_does_not_ignore(self):
+        for command in (
+            "rm -rf src",
+            "rm -rf src/a.ts",
+            "rm -R build",
+            "rm -fr ./x",
+            "rm -rf node_modules src",
+            "rm -rf $TMPDIR/x ./y",
+            "rm -rf ./scratchpad/x",
+            "rm -rf scratchpad",
+            "rm -rf /a/scratchpad-old/x",
+        ):
+            with self.subTest(command=command):
+                result = self.in_repo(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), RM_RULE)
+                self.assertTrue(permitted(result).startswith("mv "))
+
+    def test_denies_recursive_rm_of_an_ignored_symlink(self):
+        for command in ("rm -rf link/", "rm -rf link", "rm -rf ./link/", f"rm -rf {self.root}/link/", "rm -rf packages/aegis/dist/link/"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+
+    def test_denies_recursive_rm_of_the_repository_root(self):
+        for command, path in (
+            ("rm -rf .", ""),
+            ("rm -rf ./", ""),
+            (f"rm -rf {self.root}", ""),
+            (f"rm -rf {self.root}/", ""),
+            ("rm -rf ../..", "packages/aegis"),
+            (f"rm -rf {self.root}", "packages/aegis"),
+        ):
+            with self.subTest(command=command, path=path):
+                self.assertEqual(rule(self.in_repo(command, path)), RM_RULE)
+
+    def test_denies_recursive_rm_outside_the_repository(self):
+        with self.outside_repo() as outside:
+            self.assertEqual(rule(evaluate("rm -rf node_modules", cwd=outside)), RM_RULE)
+            self.assertEqual(rule(self.in_repo(f"rm -rf {outside}/node_modules")), RM_RULE)
+        self.assertEqual(rule(self.in_repo("rm -rf ../x")), RM_RULE)
+        self.assertEqual(rule(self.in_repo("rm -rf /Users/nobody/node_modules")), RM_RULE)
+        self.assertEqual(rule(git_guard.evaluate({"tool_name": "Bash", "tool_input": {"command": "rm -rf node_modules"}})), RM_RULE)
+
+    def test_denies_rm_by_path_or_wrapper(self):
+        for command in ("sudo rm -rf x", "/bin/rm -rf x", "command rm -rf x", "timeout 5 rm -rf x", "echo $(rm -rf build)", "sudo rm x", "/bin/rm x"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+
+    def test_denies_when_target_escapes_temp(self):
+        for command in ("rm -rf $TMPDIR/../../../etc", 'rm -rf "${TMPDIR}/../x"', "rm -rf /tmp/claude/../etc"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+
+    def test_denies_when_target_carries_a_substitution(self):
         for command in (
             'rm -rf "$TMPDIR/$(echo ../..)"',
             'rm -rf "$TMPDIR/`echo ../..`"',
@@ -501,75 +776,226 @@ class RmTests(unittest.TestCase):
             'rm -rf "${TMPDIR}/${X}"',
             'rm -rf "$TMPDIR/${X}"',
             "rm -rf /tmp/claude/$(basename $PWD)",
+            "rm -rf node_modules/$(x)",
         ):
             with self.subTest(command=command):
-                self.assertEqual(decision(evaluate(command)), "ask")
+                result = self.in_repo(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), SUBSTITUTION_RULE)
+                self.assertEqual(permitted(result), "name the path literally.")
 
-    def test_asks_when_target_only_shares_a_prefix_string(self):
-        self.assertEqual(decision(evaluate("rm -rf /tmp/claudeX")), "ask")
-        self.assertEqual(decision(evaluate("rm -rf /private/tmp/claude-evil/x")), "ask")
-        self.assertEqual(decision(evaluate(f"rm -rf {TMPDIR}-evil/x")), "ask")
+    def test_denies_target_under_home_or_an_expanded_variable(self):
+        for command in (
+            "rm -rf ~/node_modules",
+            "rm -rf ~/Documents/x",
+            "rm -rf $HOME/dist",
+            "rm -rf $X/node_modules",
+            "rm -rf ~",
+            'rm -rf "$HOME/node_modules"',
+            "rm -rf $TMPDIRX/x",
+            "rm -rf node_modules ~/dist",
+        ):
+            with self.subTest(command=command):
+                result = self.in_repo(command)
+                self.assertEqual(rule(result), SUBSTITUTION_RULE)
+                self.assertEqual(permitted(result), "name the path literally.")
 
-    def test_asks_when_scratchpad_is_relative_or_partial(self):
-        self.assertEqual(decision(evaluate("rm -rf ./scratchpad/x")), "ask")
-        self.assertEqual(decision(evaluate("rm -rf scratchpad")), "ask")
-        self.assertEqual(decision(evaluate("rm -rf /a/scratchpad-old/x")), "ask")
+    def test_first_deny_in_segment_order_wins(self):
+        self.assertEqual(rule(self.in_repo("rm -rf src; git push")), RM_RULE)
+        self.assertEqual(rule(self.in_repo("git push; rm -rf src")), "git push is the user's to run manually.")
+
+    def test_denies_when_target_only_shares_a_prefix_string(self):
+        for command in ("rm -rf /tmp/claudeX", "rm -rf /private/tmp/claude-evil/x", f"rm -rf {TMPDIR}-evil/x"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
 
     def test_permits_recursive_rm_under_temp(self):
-        self.assertIsNone(evaluate("rm -rf $TMPDIR/out"))
-        self.assertIsNone(evaluate('rm -rf "$TMPDIR/x"'))
-        self.assertIsNone(evaluate('rm -rf "${TMPDIR}/x"'))
-        self.assertIsNone(evaluate("rm -rf /tmp/claude/x /private/tmp/claude/y"))
-        self.assertIsNone(evaluate("rm -rf /tmp/claude"))
-        self.assertIsNone(evaluate("rm -rf /some/where/scratchpad/x"))
-        self.assertIsNone(evaluate("rm -rf /some/where/scratchpad"))
+        self.assertIsNone(self.in_repo("rm -rf $TMPDIR/out"))
+        self.assertIsNone(self.in_repo('rm -rf "$TMPDIR/x"'))
+        self.assertIsNone(self.in_repo('rm -rf "${TMPDIR}/x"'))
+        self.assertIsNone(self.in_repo("rm -rf /tmp/claude/x /private/tmp/claude/y"))
+        self.assertIsNone(self.in_repo("rm -rf /tmp/claude"))
+        self.assertIsNone(self.in_repo("rm -rf /some/where/scratchpad/x"))
+        self.assertIsNone(self.in_repo("rm -rf /some/where/scratchpad"))
 
     def test_permits_literal_tmpdir_when_unset_in_environment(self):
         with mock.patch.dict(os.environ, {"TMPDIR": ""}):
-            self.assertIsNone(evaluate('rm -rf "$TMPDIR/x"'))
-            self.assertEqual(decision(evaluate("rm -rf $TMPDIR/../x")), "ask")
+            self.assertIsNone(self.in_repo('rm -rf "$TMPDIR/x"'))
+            self.assertEqual(rule(self.in_repo("rm -rf $TMPDIR/../x")), RM_RULE)
 
     def test_permits_resolved_tmpdir_value(self):
-        self.assertIsNone(evaluate(f"rm -rf {TMPDIR}/out"))
-        self.assertIsNone(evaluate(f"rm -rf {TMPDIR}"))
+        self.assertIsNone(self.in_repo(f"rm -rf {TMPDIR}/out"))
+        self.assertIsNone(self.in_repo(f"rm -rf {TMPDIR}"))
 
-    def test_permits_non_recursive_rm(self):
-        self.assertIsNone(evaluate("rm -f packages/aegis/src/x.ts"))
+    def test_denies_plain_rm_of_a_path_git_does_not_ignore(self):
+        for command in ("rm -f packages/aegis/src/x.ts", "rm src/a.ts", "rm notes.txt", "rm -- src/a.ts", "rm node_modules src/a.ts", "rm dist/out.js notes.txt"):
+            with self.subTest(command=command):
+                result = self.in_repo(command)
+                self.assertEqual(rule(result), RM_RULE)
+                self.assertTrue(permitted(result).startswith("mv "))
+
+    def test_permits_plain_rm_of_a_git_ignored_or_temp_path(self):
+        for command in ("rm -f dist/out.js", "rm dist/out.js", 'rm "$TMPDIR/x"', "rm -- packages/aegis/dist/bundle.js", "rm -f dist/out.js packages/aegis/dist/bundle.js"):
+            with self.subTest(command=command):
+                self.assertIsNone(self.in_repo(command))
+
+    def test_denies_plain_rm_of_an_unresolvable_target(self):
+        for command in ("rm -- ~/x", "rm $HOME/x", "rm $(f)"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), SUBSTITUTION_RULE)
+
+    def test_permits_rm_with_no_target(self):
+        self.assertIsNone(self.in_repo("rm"))
+        self.assertIsNone(self.in_repo("rm -f"))
+
+    def test_denies_rm_behind_an_absolute_path_wrapper(self):
+        for command in ("/usr/bin/nice -n 5 rm -rf src", "/usr/bin/sudo rm src/a.ts", "/usr/bin/env rm notes.txt", "/usr/bin/timeout 5 /bin/rm -rf src"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("/usr/bin/nice -n 5 rm -rf node_modules"))
+
+    def test_denies_rm_fed_by_xargs(self):
+        for command in ("ls | xargs rm -rf", "xargs rm", "find . -name '*.log' | xargs rm -f", "xargs -0 rm -rf", "xargs -n1 rm", "sudo xargs rm -f"):
+            with self.subTest(command=command):
+                result = self.in_repo(command)
+                self.assertEqual(rule(result), SUBSTITUTION_RULE)
+                self.assertEqual(permitted(result), "name the path literally.")
+        self.assertIsNone(self.in_repo("xargs -n1 echo"))
+        self.assertIsNone(self.in_repo("ls | xargs -I {} echo {}"))
+
+    def test_git_absent_timed_out_or_failing_means_not_ignored(self):
+        for outcome in (FileNotFoundError(2, "git"), subprocess.TimeoutExpired(["git"], 5), mock.Mock(returncode=128)):
+            with self.subTest(outcome=outcome):
+                patch = {"side_effect": outcome} if isinstance(outcome, BaseException) else {"return_value": outcome}
+                with mock.patch.object(git_guard.subprocess, "run", **patch):
+                    self.assertEqual(rule(self.in_repo("rm -rf node_modules")), RM_RULE)
+
+    def test_check_ignore_runs_once_from_the_repository_root(self):
+        with mock.patch.object(git_guard.subprocess, "run", return_value=mock.Mock(returncode=1)) as run:
+            self.assertEqual(rule(self.in_repo("rm -rf dist", "packages/aegis")), RM_RULE)
+        self.assertEqual([call.args[0] for call in run.call_args_list], [["git", "-C", self.root, "check-ignore", "-q", "--", "packages/aegis/dist"]])
+        self.assertEqual({call.kwargs["timeout"] for call in run.call_args_list}, {2})
 
 
-class FindDeleteTests(unittest.TestCase):
-    def setUp(self):
-        patcher = mock.patch.dict(os.environ, {"TMPDIR": TMPDIR})
-        patcher.start()
-        self.addCleanup(patcher.stop)
+class FindDeleteTests(IgnoreRepoTests):
+    def test_permits_find_deleting_only_git_ignored_names(self):
+        for command, path in (
+            ("find . -name '*.pyc' -delete", ""),
+            ("find . -type d -name __pycache__ -exec rm -rf {} +", ""),
+            ("find packages -type d -name dist -exec rm -rf {} +", ""),
+            ("find . -iname '*.pyc' -delete", ""),
+            ("find . -type d -path '*/node_modules' -prune -exec rm -rf {} +", ""),
+            ("find . -type d -ipath '*/__pycache__' -exec rm -r {} \\;", ""),
+            ("find src -name '*.pyc' -delete", ""),
+            ("find . -type d -name '*.pyc' -name __pycache__ -delete", ""),
+            ("find . -name '*.pyc' -delete", "packages/aegis"),
+        ):
+            with self.subTest(command=command, path=path):
+                self.assertIsNone(self.in_repo(command, path))
 
-    def test_asks_when_find_deletes_outside_temp(self):
+    def test_permits_find_deleting_from_a_git_ignored_start_path(self):
+        self.assertIsNone(self.in_repo("find node_modules -delete"))
+        self.assertIsNone(self.in_repo("find dist -name '*.js' -delete"))
+        self.assertIsNone(self.in_repo("find packages/aegis/dist -type f -exec rm -rf {} +"))
+
+    def test_denies_find_deleting_a_name_git_does_not_ignore(self):
         for command in (
             "find . -name '*.js' -delete",
             "find -name '*.js' -delete",
-            "find packages -type d -name dist -exec rm -rf {} +",
-            "find packages -type d -name dist -exec rm -r {} \\;",
-            "find . -type d -name dist -execdir rm -fr {} +",
-            "find . -type d -name dist -exec rm -R {} +",
-            "find -L packages -name dist -delete",
+            "find . -name '*.ts' -delete",
+            "find . -name '*.pyc' -name '*.ts' -delete",
+            "find . -name '*.pyc' -o -name '*.ts' -delete",
+            "find packages -type d -name src -exec rm -rf {} +",
+            "find packages -type d -name src -exec rm -r {} \\;",
+            "find . -type d -name src -execdir rm -fr {} +",
+            "find . -type d -name src -exec rm -R {} +",
+            "find -L packages -name src -delete",
+            "find . -delete",
+            "find src -delete",
             "find $TMPDIR/x . -delete",
-            "find \"$TMPDIR/$(echo ../..)\" -delete",
         ):
             with self.subTest(command=command):
-                self.assertEqual(decision(evaluate(command)), "ask")
+                result = self.in_repo(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), RM_RULE)
+                self.assertTrue(permitted(result).startswith("mv "))
+
+    def test_denies_find_deletes_outside_a_repository(self):
+        with self.outside_repo() as outside:
+            self.assertEqual(rule(evaluate("find . -name '*.pyc' -delete", cwd=outside)), RM_RULE)
+
+    def test_denies_find_whose_start_path_carries_a_substitution(self):
+        for command in (
+            'find "$TMPDIR/$(echo ../..)" -delete',
+            'find "$(pwd)" -name \'*.pyc\' -delete',
+            "find ~/node_modules -delete",
+            "find $HOME -name '*.pyc' -delete",
+        ):
+            with self.subTest(command=command):
+                result = self.in_repo(command)
+                self.assertEqual(rule(result), SUBSTITUTION_RULE)
+                self.assertEqual(permitted(result), "name the path literally.")
 
     def test_permits_find_deleting_under_temp(self):
-        self.assertIsNone(evaluate("find $TMPDIR/x -name '*.log' -delete"))
-        self.assertIsNone(evaluate('find "${TMPDIR}/x" -type d -exec rm -rf {} +'))
-        self.assertIsNone(evaluate("find /tmp/claude/x -delete"))
-        self.assertIsNone(evaluate("find -L /tmp/claude/x -delete"))
-        self.assertIsNone(evaluate("find -f /tmp/claude/x -delete"))
+        self.assertIsNone(self.in_repo("find $TMPDIR/x -name '*.log' -delete"))
+        self.assertIsNone(self.in_repo('find "${TMPDIR}/x" -type d -exec rm -rf {} +'))
+        self.assertIsNone(self.in_repo("find /tmp/claude/x -delete"))
+        self.assertIsNone(self.in_repo("find -L /tmp/claude/x -delete"))
+        self.assertIsNone(self.in_repo("find -f /tmp/claude/x -delete"))
+
+    def test_name_retry_with_a_slash_applies_only_when_find_wants_directories(self):
+        for command in (
+            "find . -name build -delete",
+            "find . -type f -name build -delete",
+            "find . -name __pycache__ -delete",
+            "find . -path '*/node_modules' -prune -exec rm -rf {} +",
+            "find . -ipath '*/__pycache__' -exec rm -r {} \\;",
+            "find . -name '*.pyc' -name __pycache__ -delete",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("find . -type d -name build -exec rm -rf {} +"))
+        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
+
+    def test_name_retry_needs_type_d_to_constrain_every_action(self):
+        for command in (
+            "find . -type d -o -name build -delete",
+            "find . -type d -or -name build -delete",
+            "find . ! -type d -name build -delete",
+            "find . -not -type d -name build -delete",
+            "find . \\( -type d \\) -name build -delete",
+            "find . -name build -delete -type d",
+            "find . -name build -exec rm -rf {} + -type d",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("find . -type d -name build -exec rm -rf {} +"))
+        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
+
+    def test_find_exec_reaching_rm_through_a_shell_or_wrapper_is_a_delete(self):
+        for command in (
+            "find . -name '*.ts' -exec sh -c 'rm -rf \"$1\"' _ {} \\;",
+            "find . -name '*.ts' -exec bash -c 'rm $0' {} \\;",
+            "find . -name '*.ts' -exec xargs rm {} +",
+            "find . -name '*.ts' -execdir sudo rm {} \\;",
+            "find . -name '*.ts' -exec /usr/bin/env rm -f {} +",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -exec sh -c 'rm -f \"$1\"' _ {} \\;"))
+        self.assertIsNone(self.in_repo("find . -name '*.ts' -exec sh -c 'cat \"$1\"' _ {} \\;"))
+
+    def test_find_exec_rm_with_any_flags_is_a_delete(self):
+        for command in ("find src -name a.ts -exec rm -f {} +", "find . -name '*.ts' -exec rm {} \\;", "find . -name '*.js' -exec rm -f {} +", "find src -execdir rm {} +"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -exec rm -f {} +"))
+        self.assertIsNone(self.in_repo("find . -name '*.ts' -exec cat {} +"))
 
     def test_permits_find_that_does_not_delete(self):
-        self.assertIsNone(evaluate("find . -name '*.ts' -newer x"))
-        self.assertIsNone(evaluate("find . -name '*.js' -exec rm -f {} +"))
-        self.assertIsNone(evaluate("find . -exec grep -l foo {} \\;"))
-        self.assertIsNone(evaluate("find . -type f -print0"))
+        self.assertIsNone(self.in_repo("find . -name '*.ts' -newer x"))
+        self.assertIsNone(self.in_repo("find . -exec grep -l foo {} \\;"))
+        self.assertIsNone(self.in_repo("find . -type f -print0"))
 
 
 class CompoundCommandTests(unittest.TestCase):
@@ -632,23 +1058,16 @@ class DecisionSurfaceTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(decision(evaluate(command)), "deny")
 
-    def test_every_asked_example_is_asked(self):
-        for command in ASKED:
-            with self.subTest(command=command):
-                self.assertEqual(decision(evaluate(command)), "ask")
-
     def test_every_permitted_example_is_silent(self):
         for command in PERMITTED:
             with self.subTest(command=command):
                 self.assertIsNone(evaluate(command))
 
-    def test_only_deny_and_ask_are_ever_emitted(self):
-        for command in DENIED + ASKED + PERMITTED:
+    def test_no_decision_is_ask(self):
+        self.assertFalse(hasattr(git_guard, "ask"))
+        for command in DENIED + PERMITTED:
             with self.subTest(command=command):
-                result = evaluate(command)
-                if result is not None:
-                    self.assertIn(decision(result), {"deny", "ask"})
-                    self.assertNotIn("allow", json.dumps(result))
+                self.assertIn(decision(evaluate(command)), {None, "deny"})
 
 
 class SubprocessTests(unittest.TestCase):

@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""PreToolUse hook (Edit|Write|MultiEdit|NotebookEdit): read-only paths and lerna-owned versions."""
+"""PreToolUse hook (Edit|Write|MultiEdit|NotebookEdit): dotenv files, the .git store, git-ignored generated directories and lerna-owned versions are read-only."""
 
 import json
 import os
+import subprocess
 import sys
 
 HOOK = "write-guard.py"
-READ_ONLY_SEGMENTS = {"node_modules", "dist", ".git", "coverage", "build"}
+GENERATED_DIRECTORY_NAMES = {"node_modules", "dist", "coverage", "build"}
+GENERATED_PERMITTED = "edit the source that generates it."
 
 
 def deny(rule, permitted):
@@ -32,6 +34,54 @@ def target_path(hook_input):
 
 def is_env_file(basename):
     return basename == ".env" or (basename.startswith(".env.") and basename != ".env.example")
+
+
+def git_store_rule(segments):
+    ancestors = segments[:-1]
+    if ".git" not in ancestors:
+        return None
+    rest = segments[ancestors.index(".git") + 1:]
+    if rest == ["info", "exclude"] or (rest[0] == "hooks" and len(rest) > 1):
+        return None
+    return deny("the .git directory is git's own store and is read-only.", ".git/info/exclude and .git/hooks/* only.")
+
+
+def repository_root(directory):
+    while True:
+        if os.path.exists(os.path.join(directory, ".git")):
+            return directory
+        parent = os.path.dirname(directory)
+        if parent == directory:
+            return None
+        directory = parent
+
+
+def git_ignores(root, directory):
+    """True or False from git check-ignore; None when git could not answer."""
+    directory_pathspec = os.path.relpath(directory, root) + "/"
+    try:
+        completed = subprocess.run(["git", "-C", root, "check-ignore", "-q", "--", directory_pathspec], capture_output=True, timeout=5)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode in (0, 1):
+        return completed.returncode == 0
+    return None
+
+
+def generated_directory_rule(segments):
+    for depth, name in enumerate(segments[:-1]):
+        if name not in GENERATED_DIRECTORY_NAMES:
+            continue
+        directory = "/".join(segments[: depth + 1])
+        root = repository_root(directory)
+        if root is None:
+            return deny(f"'{name}' is a generated directory by name and lies outside any repository.", GENERATED_PERMITTED)
+        ignored = git_ignores(root, directory)
+        if ignored is None:
+            return deny(f"'{name}' is a generated directory by name and git could not be consulted.", GENERATED_PERMITTED)
+        if ignored:
+            return deny(f"'{name}' is a git-ignored generated directory and is read-only.", GENERATED_PERMITTED)
+    return None
 
 
 def read_text(path):
@@ -89,9 +139,9 @@ def evaluate(hook_input):
 
     if is_env_file(basename):
         return deny("dotenv files hold secrets and are read-only.", "edit .env.example only.")
-    blocked = READ_ONLY_SEGMENTS.intersection(segments[:-1])
-    if blocked:
-        return deny(f"'{sorted(blocked)[0]}' is a generated or vendored directory and is read-only.", "edit the source that generates it.")
+    denied = git_store_rule(segments) or generated_directory_rule(segments)
+    if denied:
+        return denied
 
     if basename != "package.json":
         return None

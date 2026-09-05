@@ -29,3 +29,4 @@
   not by recording that something once happened; incidents go in the commit body.
 - A rule that is really the answer fits in a sentence and generalises beyond the case that prompted it.
 - What can be enforced mechanically is a hook, not prose. `~/.claude/hooks/` holds the global ones.
+  A hook denies or stays silent; it never asks.

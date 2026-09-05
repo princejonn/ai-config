@@ -5,7 +5,7 @@ import sys
 import unittest
 
 HOOK_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "claude", "hooks", "verdict-guard.py")
-REVIEWER_FAILURE = "reviewer output must end with ACCEPTED or NOT ACCEPTED\n"
+REVIEWER_FAILURE = "reviewer output must end with ACCEPTED, NOT ACCEPTED or BLOCKED\n"
 VERIFIER_FAILURE = "verifier output must state VERIFIED, DISPROVEN or UNVERIFIABLE per claim\n"
 
 
@@ -38,15 +38,21 @@ class ReviewerVerdictTests(unittest.TestCase):
         self.assertEqual(outcome(run(stop("reviewer", "Findings: none.\n\nACCEPTED"))), (0, "", ""))
 
     def test_not_accepted_as_the_final_line_lets_the_reviewer_stop(self):
-        self.assertEqual(outcome(run(stop("reviewer", "Fixes:\n1. x\n\nNOT ACCEPTED"))), (0, "", ""))
+        for message in ("Fixes:\n1. x\n\nNOT ACCEPTED", "Standards: NOT ACCEPTED\nSpec: NOT ACCEPTED\n\nNOT ACCEPTED"):
+            with self.subTest(message=message):
+                self.assertEqual(outcome(run(stop("reviewer", message))), (0, "", ""))
+
+    def test_blocked_as_the_final_line_lets_the_reviewer_stop(self):
+        message = "## Questions\n\nThe brief does not say whether 409 or 422 is expected. Which?\n\nBLOCKED"
+        self.assertEqual(outcome(run(stop("reviewer", message))), (0, "", ""))
 
     def test_emphasised_final_line_counts(self):
-        for message in ("**ACCEPTED**", "Fixes:\n1. x\n\n**NOT ACCEPTED**", "__NOT ACCEPTED__", "`ACCEPTED`"):
+        for message in ("**ACCEPTED**", "Fixes:\n1. x\n\n**NOT ACCEPTED**", "__NOT ACCEPTED__", "`ACCEPTED`", "Which?\n\n**BLOCKED**"):
             with self.subTest(message=message):
                 self.assertEqual(outcome(run(stop("reviewer", message))), (0, "", ""))
 
     def test_one_trailing_full_stop_on_the_final_line_counts(self):
-        for message in ("ACCEPTED.", "Fixes:\n1. x\n\nNOT ACCEPTED.", "**ACCEPTED.**", "**ACCEPTED**."):
+        for message in ("ACCEPTED.", "Fixes:\n1. x\n\nNOT ACCEPTED.", "**ACCEPTED.**", "**ACCEPTED**.", "Which?\n\nBLOCKED."):
             with self.subTest(message=message):
                 self.assertEqual(outcome(run(stop("reviewer", message))), (0, "", ""))
 
@@ -59,6 +65,10 @@ class ReviewerVerdictTests(unittest.TestCase):
         message = "The prior round was NOT ACCEPTED; no disposition this round."
         self.assertEqual(outcome(run(stop("reviewer", message))), (2, "", REVIEWER_FAILURE))
 
+    def test_a_question_without_a_verdict_sends_the_reviewer_back(self):
+        message = "## Questions\n\nThe brief does not say whether 409 or 422 is expected. Which?"
+        self.assertEqual(outcome(run(stop("reviewer", message))), (2, "", REVIEWER_FAILURE))
+
     def test_prose_after_the_verdict_line_sends_the_reviewer_back(self):
         for message in ("ACCEPTED\n\nOne more note: rerun the gate.", "NOT ACCEPTED\nSee the fixes above."):
             with self.subTest(message=message):
@@ -68,6 +78,9 @@ class ReviewerVerdictTests(unittest.TestCase):
         for message in ("Verdict: ACCEPTED", "Verdict: **ACCEPTED**.", "ACCEPTED, with one note", "(NOT ACCEPTED)", '"ACCEPTED"', "ACCEPTED.."):
             with self.subTest(message=message):
                 self.assertEqual(outcome(run(stop("reviewer", message))), (2, "", REVIEWER_FAILURE))
+
+    def test_verdict_with_a_prefix_on_the_final_line_sends_the_reviewer_back(self):
+        self.assertEqual(outcome(run(stop("reviewer", "Standards: NOT ACCEPTED\n\nVerdict: NOT ACCEPTED"))), (2, "", REVIEWER_FAILURE))
 
     def test_verdict_inside_another_word_is_no_verdict(self):
         self.assertEqual(outcome(run(stop("reviewer", "The change is UNACCEPTED."))), (2, "", REVIEWER_FAILURE))
@@ -98,6 +111,10 @@ class VerifierVerdictTests(unittest.TestCase):
             with self.subTest(token=token):
                 self.assertEqual(outcome(run(stop("verifier", f"Claim 1: {token} — evidence at x:1."))), (0, "", ""))
 
+    def test_ambiguous_claim_returns_unverifiable_with_the_readings(self):
+        message = "Claim 1: UNVERIFIABLE — true under reading (a) `count` means rows, false under reading (b) `count` means bytes; the brief must pick one."
+        self.assertEqual(outcome(run(stop("verifier", message))), (0, "", ""))
+
     def test_verdict_before_the_final_line_lets_the_verifier_stop(self):
         message = "Claim 1: VERIFIED.\nClaim 2: DISPROVEN.\n\nFalsification search: grep over src."
         self.assertEqual(outcome(run(stop("verifier", message))), (0, "", ""))
@@ -124,7 +141,9 @@ class VerifierVerdictTests(unittest.TestCase):
         self.assertEqual(outcome(run(stop("verifier", "I read the file and it looks right."))), (2, "", VERIFIER_FAILURE))
 
     def test_reviewer_verdict_is_not_a_verifier_verdict(self):
-        self.assertEqual(outcome(run(stop("verifier", "ACCEPTED"))), (2, "", VERIFIER_FAILURE))
+        for token in ("ACCEPTED", "NOT ACCEPTED", "BLOCKED"):
+            with self.subTest(token=token):
+                self.assertEqual(outcome(run(stop("verifier", token))), (2, "", VERIFIER_FAILURE))
 
 
 class FailOpenTests(unittest.TestCase):
@@ -141,6 +160,19 @@ class FailOpenTests(unittest.TestCase):
         for garbage in ("", "not json", "{{{", "[]", '"reviewer"'):
             with self.subTest(garbage=garbage):
                 self.assertEqual(outcome(run(garbage)), (0, "", ""))
+
+
+class NoAskTests(unittest.TestCase):
+    def test_stdout_is_empty_whether_the_agent_stops_or_is_sent_back(self):
+        for agent_type, message in (
+            ("reviewer", "Findings: none.\n\nACCEPTED"),
+            ("reviewer", "The prior round was NOT ACCEPTED; no disposition this round."),
+            ("verifier", "Claim 1: VERIFIED — evidence at x:1."),
+            ("verifier", "I read the file and it looks right."),
+            ("researcher", "Memo: three call sites."),
+        ):
+            with self.subTest(agent_type=agent_type, message=message):
+                self.assertEqual(run(stop(agent_type, message)).stdout, "")
 
 
 if __name__ == "__main__":

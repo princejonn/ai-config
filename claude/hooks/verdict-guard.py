@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SubagentStop hook: a reviewer whose last message does not end with its verdict, or a verifier whose last message states none, is sent back to give one."""
+"""SubagentStop hook: a reviewer whose last message does not end with ACCEPTED, NOT ACCEPTED or BLOCKED, or a verifier whose last message states none of VERIFIED, DISPROVEN, UNVERIFIABLE, is sent back to give a verdict."""
 
 import json
 import re
@@ -24,7 +24,7 @@ def states_verdict(message, tokens):
 
 
 VERDICTS = {
-    "reviewer": (("ACCEPTED", "NOT ACCEPTED"), ends_with_verdict, "reviewer output must end with ACCEPTED or NOT ACCEPTED"),
+    "reviewer": (("ACCEPTED", "NOT ACCEPTED", "BLOCKED"), ends_with_verdict, "reviewer output must end with ACCEPTED, NOT ACCEPTED or BLOCKED"),
     "verifier": (("VERIFIED", "DISPROVEN", "UNVERIFIABLE"), states_verdict, "verifier output must state VERIFIED, DISPROVEN or UNVERIFIABLE per claim"),
 }
 
