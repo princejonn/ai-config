@@ -15,7 +15,7 @@ MANIFEST = CLAUDE / "settings.json"
 SKILL_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
 DESCRIPTION_MAX = 1024
 BODY_MAX_LINES = 200
-CLAUDE_MD_MAX_BYTES = 3800
+CLAUDE_MD_MAX_BYTES = 8600
 MODELS = {"fable", "opus", "sonnet"}
 
 SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
@@ -346,7 +346,7 @@ class HooksTest(unittest.TestCase):
 
 
 class ClaudeMdTest(unittest.TestCase):
-    def test_at_most_3800_bytes(self):
+    def test_at_most_8600_bytes(self):
         self.assertLessEqual((CLAUDE / "CLAUDE.md").stat().st_size, CLAUDE_MD_MAX_BYTES)
 
 

@@ -45,7 +45,7 @@ pair issue-triage \
   'Which open issue is the most urgent?'
 pair issue-write \
   'Turn this finding into an issue: render accepts an empty name and returns an empty tag.' \
-  'Tidy up the labels on the open issues.'
+  'Triage issue #15 before we start on it — challenge its proposal.'
 pair plan \
   'Give me a phased execution plan for splitting widget.py into a package, with invariants and an exit check per phase.' \
   'Rename widget.py to renderer.py and update the README.'

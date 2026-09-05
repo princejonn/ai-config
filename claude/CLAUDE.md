@@ -48,6 +48,9 @@ agent type inherits the session's model, so pass `model` explicitly.
 | `review` | a change-set awaits acceptance — forks into `reviewer` |
 | `deliver` | agreed work: developer → review rounds → tester → review delta → docs → commit |
 | `commit` | an item is accepted and the gate is green |
+| `issue-write` | a finding, request or idea becomes a tracker item |
+| `issue-next` | what to work on next — one item, dispatches nothing |
+| `issue-triage` | a named issue is judged before work: draft, critique, duplicate, done |
 
 **Briefs.** An agent cannot see this conversation; every brief takes the shape `rules/brief.md`
 defines.
