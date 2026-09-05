@@ -23,9 +23,14 @@ MANIFEST_HOOKS = {
 }
 LIVE_ATTRIBUTION = {"commit": "", "pr": "", "sessionUrl": False}
 LIVE_ALLOW = ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)", "Bash(mv:*)"]
+LIVE_ASK = ["Bash(git push:*)"]
 MANIFEST = {
     "hooks": MANIFEST_HOOKS,
-    "defaults": {"attribution": LIVE_ATTRIBUTION, "permissions.allow": LIVE_ALLOW},
+    "defaults": {
+        "attribution": LIVE_ATTRIBUTION,
+        "permissions.allow": LIVE_ALLOW,
+        "permissions.ask": LIVE_ASK,
+    },
 }
 HOOKS_ONLY_MANIFEST = {"hooks": MANIFEST_HOOKS, "defaults": {}}
 
@@ -68,7 +73,8 @@ LIVE_HOOKS = {
         },
     ],
 }
-LIVE_SETTINGS = {"hooks": LIVE_HOOKS, "attribution": LIVE_ATTRIBUTION, "permissions": {"allow": LIVE_ALLOW}}
+LIVE_PERMISSIONS = {"allow": LIVE_ALLOW, "ask": LIVE_ASK}
+LIVE_SETTINGS = {"hooks": LIVE_HOOKS, "attribution": LIVE_ATTRIBUTION, "permissions": LIVE_PERMISSIONS}
 
 FOREIGN_HANDLER = {"type": "command", "command": "/usr/local/bin/other-hook", "timeout": 5}
 
@@ -198,7 +204,7 @@ class MergeSettingsTest(unittest.TestCase):
         result = self.read()
         self.assertEqual(list(result), ["model", "hooks", "attribution", "permissions"])
         self.assertEqual(result["attribution"], LIVE_ATTRIBUTION)
-        self.assertEqual(result["permissions"], {"allow": LIVE_ALLOW})
+        self.assertEqual(result["permissions"], LIVE_PERMISSIONS)
 
     def test_present_partial_attribution_untouched(self):
         self.settings.write_text(rendered({"attribution": {"commit": "x"}}), encoding="utf-8")
@@ -207,19 +213,86 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(self.read()["attribution"], {"commit": "x"})
         self.assertIn('  "attribution": {\n    "commit": "x"\n  },\n', self.settings.read_text(encoding="utf-8"))
 
-    def test_present_permissions_allow_list_untouched_even_when_empty(self):
+    def test_empty_allow_list_gains_every_manifest_entry(self):
         self.settings.write_text(rendered({"permissions": {"allow": []}}), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(self.read()["permissions"], {"allow": []})
+        self.assertEqual(self.read()["permissions"]["allow"], LIVE_ALLOW)
 
-    def test_present_permissions_without_allow_gains_only_allow(self):
+    def test_present_permissions_without_allow_or_ask_gains_both(self):
         self.settings.write_text(rendered({"permissions": {"deny": ["Bash(sudo:*)"]}}), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
         permissions = self.read()["permissions"]
-        self.assertEqual(list(permissions), ["deny", "allow"])
-        self.assertEqual(permissions, {"deny": ["Bash(sudo:*)"], "allow": LIVE_ALLOW})
+        self.assertEqual(list(permissions), ["deny", "allow", "ask"])
+        self.assertEqual(permissions, {"deny": ["Bash(sudo:*)"], **LIVE_PERMISSIONS})
+
+    def test_allow_list_gains_missing_manifest_entries_in_manifest_order(self):
+        self.settings.write_text(rendered({"permissions": {"allow": ["Bash(ls:*)"]}}), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.read()["permissions"]["allow"], ["Bash(ls:*)", *LIVE_ALLOW])
+
+    def test_second_merge_leaves_a_merged_allow_list_unchanged(self):
+        self.settings.write_text(rendered({"permissions": {"allow": ["Bash(ls:*)"]}}), encoding="utf-8")
+        self.run_merge()
+        merged = self.settings.read_text(encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout, "  settings: unchanged\n")
+        self.assertEqual(self.settings.read_text(encoding="utf-8"), merged)
+        self.assertEqual(self.read()["permissions"]["allow"], ["Bash(ls:*)", *LIVE_ALLOW])
+
+    def test_entry_the_user_added_keeps_its_place(self):
+        allow = ["Bash(git commit:*)", "Bash(ls:*)", "Bash(rm:*)"]
+        self.settings.write_text(rendered({"permissions": {"allow": allow}}), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.read()["permissions"]["allow"], [*allow, "Bash(find:*)", "Bash(mv:*)"])
+
+    def test_manifest_entry_the_user_removed_comes_back(self):
+        allow = ["Bash(git commit:*)", "Bash(find:*)", "Bash(mv:*)"]
+        self.settings.write_text(rendered({"permissions": {"allow": allow}}), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.read()["permissions"]["allow"], [*allow, "Bash(rm:*)"])
+
+    def test_duplicate_in_the_user_list_is_not_deduplicated(self):
+        allow = ["Bash(rm:*)", "Bash(rm:*)"]
+        self.settings.write_text(rendered({"permissions": {"allow": allow}}), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self.read()["permissions"]["allow"],
+            [*allow, "Bash(git commit:*)", "Bash(find:*)", "Bash(mv:*)"],
+        )
+
+    def test_ask_created_with_the_push_rule_when_absent(self):
+        self.settings.write_text(rendered({"permissions": {"allow": ["Bash(ls:*)"]}}), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.read()["permissions"]["ask"], ["Bash(git push:*)"])
+
+    def test_present_ask_gains_the_push_rule(self):
+        self.settings.write_text(rendered({"permissions": {"ask": ["Bash(curl:*)"]}}), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.read()["permissions"]["ask"], ["Bash(curl:*)", "Bash(git push:*)"])
+
+    def test_present_ask_carrying_the_push_rule_is_untouched(self):
+        ask = ["Bash(git push:*)", "Bash(curl:*)"]
+        self.settings.write_text(rendered({"permissions": {"ask": ask}}), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.read()["permissions"]["ask"], ask)
+
+    def test_allow_not_array_exits_1_and_leaves_file(self):
+        self.settings.write_bytes(b'{"permissions": {"allow": "Bash(ls:*)"}}\n')
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 1)
+        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+        self.assertEqual(self.settings.read_bytes(), b'{"permissions": {"allow": "Bash(ls:*)"}}\n')
 
     def test_non_object_intermediate_exits_1_and_leaves_file(self):
         self.settings.write_bytes(b'{"permissions": []}\n')
@@ -358,6 +431,24 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(proc.stdout, "  settings: would change\n")
         self.assertEqual(self.settings.read_bytes(), before)
 
+    def test_check_exits_1_with_would_change_when_an_allow_entry_is_missing(self):
+        permissions = {"allow": ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)"], "ask": LIVE_ASK}
+        self.settings.write_text(rendered({**LIVE_SETTINGS, "permissions": permissions}), encoding="utf-8")
+        before = self.settings.read_bytes()
+        proc = self.run_merge("--check")
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(proc.stdout, "  settings: would change\n")
+        self.assertEqual(self.settings.read_bytes(), before)
+
+    def test_check_exits_0_when_the_user_list_carries_every_manifest_entry(self):
+        permissions = {"allow": ["Bash(ls:*)", *LIVE_ALLOW], "ask": LIVE_ASK}
+        self.settings.write_text(rendered({**LIVE_SETTINGS, "permissions": permissions}), encoding="utf-8")
+        before = self.settings.read_bytes()
+        proc = self.run_merge("--check")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout, "  settings: ok\n")
+        self.assertEqual(self.settings.read_bytes(), before)
+
     def test_check_current_exits_0(self):
         self.settings.write_text(rendered(LIVE_SETTINGS), encoding="utf-8")
         before = self.settings.read_bytes()
@@ -378,7 +469,7 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         result = self.read()
         self.assertEqual(list(result.keys()), ["permissions", "model", "hooks", "env", "attribution"])
-        self.assertEqual(result["permissions"], {"allow": ["Bash(ls:*)"]})
+        self.assertEqual(result["permissions"], {"allow": ["Bash(ls:*)", *LIVE_ALLOW], "ask": LIVE_ASK})
         self.assertEqual(result["model"], "opus")
         self.assertEqual(result["env"], {"FOO": "bar"})
         self.assertEqual(result["attribution"], LIVE_ATTRIBUTION)

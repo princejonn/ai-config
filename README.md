@@ -9,7 +9,7 @@ apply.sh                     symlinks claude/ into ~/.claude and ~/.agents/skill
 apply-ts.sh                  symlinks claude/rulesets/typescript/ into <folder>/.claude/rules
 lib/links.sh                 link classification, pruning and foreign-entry reporting shared by both apply scripts
 claude/CLAUDE.md             global instructions
-claude/settings.json         manifest: hooks (event -> [{matcher, script, timeout}]) and add-when-absent defaults
+claude/settings.json         manifest: hooks (event -> [{matcher, script, timeout}]) and defaults
 claude/hooks/                hook scripts
 claude/skills/ agents/ rules/
 claude/rulesets/typescript/  rules for TypeScript roots, linked per folder
@@ -19,12 +19,14 @@ tests/
 ```
 
 `./apply.sh` links every owned path, prunes dangling links into this repo, merges the manifest
-hooks into `~/.claude/settings.json`, adds its defaults where absent and lists foreign entries in
-the owned dirs. The defaults turn off commit and PR attribution and allow `git commit`, `rm`,
-`find` and `mv` without a prompt; `git-guard.py` guards the first three, so the permission layer is
-not a second gate. A present key, even partial, is left as it is. `apply.sh` refuses to
-overwrite a file it does not own: a differing file is reported as `CONFLICT` and must be moved
-aside by hand. A byte-identical file is adopted as a symlink.
+hooks and defaults into `~/.claude/settings.json` and lists foreign entries in the owned dirs. The
+defaults turn off commit and PR attribution, allow `git commit`, `rm`, `find` and `mv` without a
+prompt and ask before `git push`; `git-guard.py` guards the first three, so the permission layer is
+not a second gate. A list default merges by union: the entries a machine lacks are appended and
+nothing is ever removed. An object default present, even partial, is left as it is. A
+`Bash(git push:*)` entry in a machine's `deny` list must be removed by hand for the ask to take
+effect. `apply.sh` refuses to overwrite a file it does not own: a differing file is reported as
+`CONFLICT` and must be moved aside by hand. A byte-identical file is adopted as a symlink.
 
 Codex reads the same skills through `~/.agents/skills/<name>` links and the same instructions
 through `~/.codex/AGENTS.md`, rendered from `claude/CLAUDE.md` followed by `claude/rules/*.md`

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Merge the manifest's hook handlers and add-when-absent defaults into a Claude Code settings.json."""
+"""Merge the manifest's hook handlers and defaults into a Claude Code settings.json."""
 
 from __future__ import annotations
 
@@ -103,7 +103,13 @@ def add_defaults(document: dict[str, Any], defaults: dict[str, Any]) -> None:
             node = node.setdefault(segment, {})
             if not isinstance(node, dict):
                 raise ValueError(f"settings field '{'.'.join(parents[:depth])}' must be an object")
-        node.setdefault(leaf, value)
+        if not isinstance(value, list):
+            node.setdefault(leaf, value)
+            continue
+        present = node.setdefault(leaf, [])
+        if not isinstance(present, list):
+            raise ValueError(f"settings field '{dotted_path}' must be an array")
+        present.extend([entry for entry in value if entry not in present])
 
 
 def merge(document: dict[str, Any], manifest: dict[str, Any], hooks_dir: Path) -> dict[str, Any]:
