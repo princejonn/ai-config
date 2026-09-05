@@ -8,7 +8,7 @@ trap 'rm -rf "$WORK"' EXIT
 
 FIX="$WORK/repo"
 mkdir -p "$FIX/claude/skills/demo" "$FIX/claude/agents" "$FIX/claude/rules" "$FIX/claude/hooks" "$FIX/scripts"
-mkdir -p "$FIX/claude/rulesets/typescript" "$FIX/lib"
+mkdir -p "$FIX/claude/rulesets/typescript" "$FIX/lib" "$FIX/bin"
 cp "$HERE/../apply.sh" "$FIX/apply.sh"
 cp "$HERE/../lib/links.sh" "$FIX/lib/links.sh"
 cp "$HERE/../scripts/merge_settings.py" "$FIX/scripts/merge_settings.py"
@@ -20,6 +20,7 @@ printf '%s\n' '---' 'paths: ["**/*.ts"]' '---' '# Demo' 'rule' > "$FIX/claude/ru
 echo "plain rule" > "$FIX/claude/rules/plain.md"
 printf '%s\n' '---' 'paths: ["**/*.ts"]' '---' '# Code style' 'typescript rule' > "$FIX/claude/rulesets/typescript/code-style.md"
 echo "print('hook')" > "$FIX/claude/hooks/demo.py"
+printf '%s\n' '#!/bin/bash' 'exit 0' > "$FIX/bin/second-opinion-codex"
 printf '%s\n' '{"hooks": {"PreToolUse": [{"matcher": "Bash", "script": "demo.py", "timeout": 10}]},' \
   ' "defaults": {"attribution": {"commit": "", "pr": "", "sessionUrl": false},' \
   '  "permissions.allow": ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)", "Bash(mv:*)"],' \
@@ -41,13 +42,16 @@ fresh_home() {
   HOME_DIR="$WORK/home$homes"
   AGENTS_DIR="$WORK/agents$homes"
   CODEX_DIR="$WORK/codex$homes"
+  BIN_DIR="$WORK/bin$homes"
   mkdir -p "$CODEX_DIR"
 }
 
 OUT="$WORK/out"
 ERR="$WORK/err"
+RUN_PATH="$PATH"
 run_apply() {
   CLAUDE_CONFIG_DIR="$HOME_DIR" AGENTS_SKILLS_DIR="$AGENTS_DIR" CODEX_HOME="$CODEX_DIR" \
+    CLAUDE_LOCAL_BIN="$BIN_DIR" PATH="$RUN_PATH" \
     /bin/bash "$FIX/apply.sh" "$@" >"$OUT" 2>"$ERR"
   status=$?
 }
@@ -60,13 +64,14 @@ all_linked() {
     && links_to "$HOME_DIR/agents/demo.md" "$FIX/claude/agents/demo.md" \
     && links_to "$HOME_DIR/rules/demo.md" "$FIX/claude/rules/demo.md" \
     && links_to "$HOME_DIR/hooks/demo.py" "$FIX/claude/hooks/demo.py" \
-    && links_to "$AGENTS_DIR/demo" "$FIX/claude/skills/demo"
+    && links_to "$AGENTS_DIR/demo" "$FIX/claude/skills/demo" \
+    && links_to "$BIN_DIR/second-opinion-codex" "$FIX/bin/second-opinion-codex"
 }
 
 fresh_home
 run_apply --check
 [ "$status" = 1 ] && [ ! -e "$HOME_DIR" ] && [ ! -L "$HOME_DIR" ] \
-  && [ ! -e "$AGENTS_DIR" ] && [ -z "$(ls -A "$CODEX_DIR")" ]
+  && [ ! -e "$AGENTS_DIR" ] && [ ! -e "$BIN_DIR" ] && [ -z "$(ls -A "$CODEX_DIR")" ]
 check $? "1 check on a nonexistent target exits 1 and leaves it absent"
 
 run_apply
@@ -90,7 +95,7 @@ check $? "2 fresh apply links every target, writes the demo hook and the default
 cp "$HOME_DIR/settings.json" "$WORK/settings.before"
 run_apply
 [ "$status" = 0 ] && ! grep -Eq '^  (link|adopt|prune|foreign):' "$OUT" \
-  && [ "$(grep -c '^  ok: ' "$OUT")" = 8 ] \
+  && [ "$(grep -c '^  ok: ' "$OUT")" = 9 ] \
   && grep -q "^  ok: $HOME_DIR/CLAUDE.md -> $FIX/claude/CLAUDE.md$" "$OUT" \
   && grep -q "^  ok: $HOME_DIR/skills/demo -> $FIX/claude/skills/demo$" "$OUT" \
   && cmp -s "$WORK/settings.before" "$HOME_DIR/settings.json"
@@ -347,6 +352,36 @@ assert doc["permissions"]["allow"] == [
 assert doc["permissions"]["ask"] == ["Bash(git push:*)"]
 ' "$HOME_DIR/settings.json"
 check $? "30 a user allow entry survives apply and the manifest entries are appended"
+
+fresh_home
+run_apply
+[ "$status" = 0 ] && grep -q "^  link: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-codex$" "$OUT" \
+  && links_to "$BIN_DIR/second-opinion-codex" "$FIX/bin/second-opinion-codex" \
+  && [ "$(grep -c '^  warn: ' "$OUT")" = 1 ] \
+  && grep -q "^  warn: $BIN_DIR is not on PATH$" "$OUT"
+check $? "31 fresh apply links the second-opinion script into the local bin dir and warns once that the dir is not on PATH"
+
+RUN_PATH="$BIN_DIR:$PATH"
+run_apply
+run_status=$status
+run_apply --check
+RUN_PATH="$PATH"
+[ "$run_status" = 0 ] && [ "$status" = 0 ] \
+  && grep -q "^  ok: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-codex$" "$OUT" \
+  && ! grep -q '^  warn: ' "$OUT"
+check $? "32 a local bin dir on PATH is reported ok without a warn line and passes check"
+
+fresh_home
+run_apply
+ln -s /nonexistent/x "$BIN_DIR/other"
+rm "$FIX/bin/second-opinion-codex"
+run_apply
+prune_status=$status
+printf '%s\n' '#!/bin/bash' 'exit 0' > "$FIX/bin/second-opinion-codex"
+[ "$prune_status" = 0 ] && grep -q "^  prune: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-codex$" "$OUT" \
+  && [ ! -L "$BIN_DIR/second-opinion-codex" ] && [ ! -e "$BIN_DIR/second-opinion-codex" ] \
+  && [ -L "$BIN_DIR/other" ] && ! grep -q "^  prune: $BIN_DIR/other" "$OUT"
+check $? "33 a dangling second-opinion link in the local bin dir is pruned and a link the repo does not own is left alone"
 
 echo "PASS $pass FAIL $fail"
 [ "$fail" = 0 ]

@@ -5,9 +5,10 @@
 Source of truth for Claude Code configuration under `~/.claude`, shared with Codex.
 
 ```
-apply.sh                     symlinks claude/ into ~/.claude and ~/.agents/skills, renders ~/.codex/AGENTS.md, merges hooks into settings.json
+apply.sh                     symlinks claude/ into ~/.claude and ~/.agents/skills and bin/ into ~/.local/bin, renders ~/.codex/AGENTS.md, merges hooks into settings.json
 apply-ts.sh                  symlinks claude/rulesets/typescript/ into <folder>/.claude/rules
 lib/links.sh                 link classification, pruning and foreign-entry reporting shared by both apply scripts
+bin/second-opinion-codex     one read-only Codex call: packet in, findings out, exit 1 when Codex is unavailable
 claude/CLAUDE.md             global instructions
 claude/settings.json         manifest: hooks (event -> [{matcher, script, timeout}]) and defaults
 claude/hooks/                hook scripts
@@ -33,7 +34,12 @@ through `~/.codex/AGENTS.md`, rendered from `claude/CLAUDE.md` followed by `clau
 with their frontmatter removed. Blocks between `<!-- claude-only -->` and
 `<!-- /claude-only -->` describe Claude's machinery and are left out of the render. The first
 line is a marker; a file without it is a `CONFLICT`, and an absent `~/.codex` is skipped.
-`CLAUDE_CONFIG_DIR`, `AGENTS_SKILLS_DIR` and `CODEX_HOME` override the target paths.
+`CLAUDE_CONFIG_DIR`, `AGENTS_SKILLS_DIR`, `CODEX_HOME` and `CLAUDE_LOCAL_BIN` override the target
+paths.
+
+`apply.sh` links `bin/second-opinion-codex` into `~/.local/bin` and prints one `warn:` line when
+that directory is not on `PATH`. The `second-opinion` skill calls it and adjudicates what it
+returns.
 
 Hooks: `git-guard.py` and `write-guard.py` run on `PreToolUse`; `verdict-guard.py` runs on
 `SubagentStop` and sends a `reviewer` back once when its final line is none of `ACCEPTED`,
@@ -54,8 +60,8 @@ as `apply.sh`, prunes links to removed set files and lists foreign entries;
 `./apply-ts.sh --check <folder>` mutates nothing and exits 0 only when the folder is already
 in place.
 
-Tests: `python3 -m unittest discover -s tests -v`, `bash tests/test_apply.sh` and
-`bash tests/test_apply_ts.sh`.
+Tests: `python3 -m unittest discover -s tests -v`, `bash tests/test_apply.sh`,
+`bash tests/test_apply_ts.sh` and `bash tests/test_second_opinion.sh`.
 
 `bash tests/pressure.sh` checks skill triggering on demand — per skill one prompt that must fire it
 and one that must not, through `claude -p` in a scratch project — and spends tokens, so the gate

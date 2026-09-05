@@ -42,12 +42,14 @@ class LiveTreeCase(unittest.TestCase):
         self.home = os.path.join(self.base, ".claude")
         self.agents_skills = os.path.join(self.base, "agents-skills")
         self.codex = os.path.join(self.base, "codex")
+        self.local_bin = os.path.join(self.base, "local-bin")
         shutil.copytree(REPO, self.repo, ignore=IGNORED)
         os.makedirs(self.codex)
         self.env = {
             "CLAUDE_CONFIG_DIR": self.home,
             "AGENTS_SKILLS_DIR": self.agents_skills,
             "CODEX_HOME": self.codex,
+            "CLAUDE_LOCAL_BIN": self.local_bin,
         }
         applied = self.run_apply()
         self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)

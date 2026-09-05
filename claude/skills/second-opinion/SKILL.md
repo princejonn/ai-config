@@ -1,6 +1,6 @@
 ---
 name: second-opinion
-description: "Gets a review of a diff, or a challenge of a plan's premises, from a different model family by running the Codex CLI read-only, and verifies each finding before relaying it. Use before acceptance when author and reviewer share the assumptions that shaped the change, or when a design needs an outside attack. Requires the codex CLI; it complements review, never replaces it."
+description: "Gets a review of a diff, or a challenge of a plan's premises, from a different model family through the read-only `second-opinion-codex` command, and adjudicates every finding before relaying it. Use before acceptance when author and reviewer share the assumptions that shaped the change, or when a design needs an outside attack. It complements review, never replaces it."
 ---
 
 # Second opinion
@@ -9,29 +9,33 @@ description: "Gets a review of a diff, or a challenge of a plan's premises, from
 
 A same-model reviewer shares the author's blind spots. A different model family is a decorrelation seam. Its output is a list of claims, never a verdict.
 
-## Preconditions
+## Policy
 
-- `codex` on PATH.
-- Codex runs read-only: only the commands and flags below; never a flag that grants writes; never approve a Codex request to edit.
-- Inside the Claude Code sandbox every `codex` command carries `CODEX_CA_CERTIFICATE=/etc/ssl/cert.pem`. Codex never runs commands here: its own sandbox cannot start inside Claude Code's, so the material it needs goes in the prompt. A `Connection failed` or `certificate was not trusted` before any Codex output is the sandbox, not a quota: report it rather than bypassing the sandbox.
-
-## Availability
-
-- The user is on a free Codex tier. One attempt per item, never per round, and never a retry loop.
-- A non-zero exit, or output that says the usage limit, quota or rate limit is reached, or that login is required, means the second opinion is unavailable: report `second-opinion unavailable: <first stderr line>` and stop.
+- The user is on a free Codex tier: one attempt per item, never per round, and never a retry loop.
+- Codex runs read-only; never approve a request to edit.
 - The review verdict stands on its own; this skill adds to it and never gates it.
-- Keep the call small: review one commit or the uncommitted diff of one item, not a range.
+- Keep the call small: one commit or the uncommitted diff of one item, not a range.
 
-## Diff review
+## Packet
 
-- Write the diff to a file under `$TMPDIR`: `git diff HEAD` for uncommitted work plus `git diff --no-index -- /dev/null <file>` per untracked file, or `git show <sha>` for one commit.
-- Build the packet: one paragraph naming the repository's languages and conventions, the instruction "Do not run any commands; the diff is complete. Report only concrete defects, each with file and line, severity P1-P3, and the mechanism. No summary, no praise.", then the diff.
-- Run `CODEX_CA_CERTIFICATE=/etc/ssl/cert.pem codex exec -s read-only --ignore-user-config - < packet`, stdout and stderr to files under `$TMPDIR`; stdout carries only the final message.
+Write the packet to a file under `$TMPDIR`; it carries the material alone, and `second-opinion-codex` prepends the mode's contract.
 
-## Plan challenge
+- `diff`: `git diff HEAD` for uncommitted work plus `git diff --no-index -- /dev/null <file>` per untracked file, or `git show <sha>` for one commit.
+- `plan`: goal, binding constraints, assumptions, chosen approach, rejected alternatives and why, and the conditions that would invalidate the design.
 
-- `CODEX_CA_CERTIFICATE=/etc/ssl/cert.pem codex exec -s read-only --ignore-user-config "<packet>"` with a packet carrying: goal, binding constraints, assumptions, chosen approach, rejected alternatives and why, and the conditions that would invalidate the design.
-- Ask for `REFUTE` (a premise that is false), `MISSING` (a constraint not considered) and `ALTERNATIVE` (a cheaper approach) items only; no score, no summary.
+Name no secret-bearing path in it: a dotenv file, a private key or an `.ssh` path is refused.
+
+## Run
+
+Once, from the repository root, so Codex judges against that repository's own instruction files:
+
+`second-opinion-codex diff --packet "$TMPDIR/packet" --out "$TMPDIR/opinion"`, or `plan` for a plan challenge.
+
+Give the Bash tool `timeout: 600000`, its maximum in milliseconds; the script bounds nothing itself.
+
+- `0`: the findings are in `--out`, the transcript in `--out.stderr`.
+- `1`: unavailable — relay the `second-opinion unavailable:` line and stop. `Connection failed` or `certificate was not trusted` is the sandbox, not a quota; report it rather than bypassing the sandbox.
+- `2`: the call or the packet was rejected and no attempt was spent — correct it and run once.
 
 ## Adjudicate
 

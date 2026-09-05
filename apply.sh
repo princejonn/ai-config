@@ -5,6 +5,7 @@ REPO="$(cd "$(dirname "$0")" && pwd -P)"
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 AGENTS_SKILLS="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 CODEX_HOME="${CODEX_HOME:-$HOME/.codex}"
+LOCAL_BIN="${CLAUDE_LOCAL_BIN:-$HOME/.local/bin}"
 CHECK=0
 case "${1:-}" in
   --check) CHECK=1 ;;
@@ -55,9 +56,15 @@ done
 for source in "$REPO"/claude/hooks/*; do
   [ -f "$source" ] && link_target "$source" "$CLAUDE_HOME/hooks/$(basename "$source")"
 done
+link_target "$REPO/bin/second-opinion-codex" "$LOCAL_BIN/second-opinion-codex"
+case ":$PATH:" in
+  *":$LOCAL_BIN:"*) ;;
+  *) echo "  warn: $LOCAL_BIN is not on PATH" ;;
+esac
 
 prune "$CLAUDE_HOME/CLAUDE.md" "$CLAUDE_HOME"/skills/* "$CLAUDE_HOME"/agents/* \
-  "$CLAUDE_HOME"/rules/* "$CLAUDE_HOME"/hooks/* "$AGENTS_SKILLS"/*
+  "$CLAUDE_HOME"/rules/* "$CLAUDE_HOME"/hooks/* "$AGENTS_SKILLS"/* \
+  "$LOCAL_BIN"/*
 report_foreign "$REPO/claude/skills" "$CLAUDE_HOME"/skills/*
 report_foreign "$REPO/claude/agents" "$CLAUDE_HOME"/agents/*
 report_foreign "$REPO/claude/rules" "$CLAUDE_HOME"/rules/*

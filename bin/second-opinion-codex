@@ -1,0 +1,73 @@
+#!/bin/bash
+set -euo pipefail
+
+# Each alternative opening with a negated class leans on the leading space the scan's sed prepends.
+SECRET_PATTERN='[^A-Za-z0-9_]\.env|-----BEGIN|[^A-Za-z0-9]id_rsa|id_ed25519|[^A-Za-z0-9_]\.ssh/'
+UNAVAILABLE_PATTERN='usage limit (reached|exceeded)|hit your usage limit|quota exceeded|rate limit (reached|exceeded)|not logged in|codex login|log ?in (is )?required'
+
+usage() {
+  echo "usage: $0 diff|plan --packet FILE --out FILE" >&2
+  exit 2
+}
+
+contract() {
+  case "$1" in
+    diff)
+      cat <<'PARAGRAPH'
+Review the diff below against the repository in your working directory: read any AGENTS.md or CLAUDE.md it has, and count a violation of them as a defect. Read no dotenv file, no private key and no .ssh path in that tree. Report only concrete defects, each with file and line, severity P1-P3, and the mechanism. No summary, no praise.
+PARAGRAPH
+      ;;
+    plan)
+      cat <<'PARAGRAPH'
+Challenge the plan below. Report only REFUTE (a premise that is false), MISSING (a constraint not considered) and ALTERNATIVE (a cheaper approach) items, each with the evidence for it. No score, no summary, no praise.
+PARAGRAPH
+      ;;
+  esac
+  echo
+}
+
+mode="${1:-}"
+case "$mode" in
+  diff|plan) shift ;;
+  *) usage ;;
+esac
+
+packet=""
+out=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --packet) [ "$#" -ge 2 ] || usage; packet="$2"; shift 2 ;;
+    --out) [ "$#" -ge 2 ] || usage; out="$2"; shift 2 ;;
+    *) usage ;;
+  esac
+done
+{ [ -n "$packet" ] && [ -n "$out" ]; } || usage
+[ -f "$packet" ] || usage
+
+offender="$(sed 's/\.env\.example//g; s/^/ /' "$packet" | grep -n -E "$SECRET_PATTERN" | head -n 1 || true)"
+if [ -n "$offender" ]; then
+  echo "second-opinion refused: packet line ${offender%%:*} names a secret path" >&2
+  exit 2
+fi
+
+if ! ( : >>"$out" ) 2>/dev/null; then
+  echo "second-opinion: cannot write $out" >&2
+  exit 2
+fi
+
+assembled="$(mktemp "${TMPDIR:-/tmp}/second-opinion.XXXXXX")" \
+  || { rm -f "$out"; echo "second-opinion: cannot create a temp file" >&2; exit 2; }
+trap 'rm -f "$assembled"' EXIT
+{ contract "$mode"; cat "$packet"; } > "$assembled"
+
+status=0
+CODEX_CA_CERTIFICATE=/etc/ssl/cert.pem codex exec -s read-only --ignore-user-config - \
+  <"$assembled" >"$out" 2>"$out.stderr" || status=$?
+
+if [ "$status" != 0 ] || [ ! -s "$out" ]; then
+  reason="$(grep -i -E "$UNAVAILABLE_PATTERN" "$out.stderr" 2>/dev/null | sed -n '/./{p;q;}' || true)"
+  [ -n "$reason" ] || reason="$(sed -n '/./{p;q;}' "$out.stderr" 2>/dev/null || true)"
+  rm -f "$out"
+  echo "second-opinion unavailable: ${reason:-no output from codex}" >&2
+  exit 1
+fi
