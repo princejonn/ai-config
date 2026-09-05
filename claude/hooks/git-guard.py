@@ -14,6 +14,7 @@ ATTRIBUTION_PHRASE = "generated with [claude code]"
 SAFE_RM_PREFIXES = ("$TMPDIR", "${TMPDIR}", "/tmp/claude", "/private/tmp/claude")
 TMPDIR_VARIABLE = re.compile(r"^\$(\{TMPDIR\}|TMPDIR)(?=/|$)")
 UNRESOLVABLE_TARGET = re.compile(r"^~|[*?\[]|\$(?!TMPDIR(?=/|$)|\{TMPDIR\}(?=/|$))|`")
+UNRESOLVABLE_NAME = re.compile(r"^~|\$|`")
 UNRESOLVABLE_PATHSPEC = re.compile(r"\$(?!PWD(?=/|$)|\{PWD\})|`")
 SEGMENT_SPLIT = re.compile(r"(\|\||&&|\|&|;|\n|\||(?<![&<>])&(?![&>]))")
 PIPE_OPERATORS = {"|", "|&"}
@@ -59,9 +60,17 @@ PYTHON_TEST_MODULES = {"unittest", "pytest"}
 MAKE_VERIFY_TARGETS = {"test", "check"}
 PAGERS = {"tail", "head"}
 FIND_GLOBAL_FLAGS = {"-H", "-L", "-P", "-E", "-X", "-x", "-s", "-d"}
-FIND_NAME_PRIMARIES = {"-name", "-iname", "-path", "-ipath"}
-FIND_ACTIONS = {"-delete", "-exec", "-execdir"}
-FIND_BRANCHING = {"-o", "-or", "!", "-not", "("}
+FIND_FOLLOW_FLAGS = {"-H", "-L"}
+FIND_MATCH = "{}"
+FIND_EXEC_ACTIONS = {"-exec", "-execdir", "-ok", "-okdir"}
+FIND_DIR_ACTIONS = {"-execdir", "-okdir"}
+FIND_ACTIONS = FIND_EXEC_ACTIONS | {"-delete"}
+FIND_UNPROMPTED_ACTIONS = {"-delete", "-exec", "-execdir"}
+FIND_ACTION_TERMINATORS = {";", "+"}
+FIND_NAME_PRIMARIES = {"-name", "-path"}
+FIND_TYPES = {"d", "f"}
+FIND_DEPTH_PRIMARIES = {"-maxdepth", "-mindepth"}
+FIND_BARE_PRIMARIES = {"-prune", "-print", "-print0"}
 GIT_TIMEOUT_SECONDS = 2
 MAX_DEPTH = 3
 
@@ -559,6 +568,23 @@ def git_ignores(directory, path):
     return code == 0
 
 
+def ignoring_pattern(directory, path):
+    """The pattern check-ignore -v reports for path, else None."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", directory, "check-ignore", "-v", "--", path],
+            capture_output=True,
+            text=True,
+            timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0:
+        return None
+    source, _, _ = completed.stdout.rstrip("\n").rpartition("\t")
+    return source.split(":", 2)[2] if source.count(":") >= 2 else None
+
+
 def git_ignored_path(target, cwd):
     root = repo_root(cwd)
     if root is None:
@@ -612,69 +638,157 @@ def check_rm(wrappers, tokens, cwd):
     return deny_rm()
 
 
-def find_start_paths(args):
-    paths = []
-    index = 0
+def find_parts(args):
+    """Returns (global flags, start paths, expression); no start path means the current directory."""
+    flags, paths, index = [], [], 0
     while index < len(args):
         arg = args[index]
         if arg == "-f" and index + 1 < len(args):
             paths.append(args[index + 1])
             index += 2
         elif arg in FIND_GLOBAL_FLAGS:
+            flags.append(arg)
             index += 1
         elif arg.startswith("-") or arg in ("(", "!"):
             break
         else:
             paths.append(arg)
             index += 1
-    return paths or ["."]
+    return flags, paths or ["."], args[index:]
 
 
-def find_name_values(args):
-    return [args[index + 1] for index, arg in enumerate(args[:-1]) if arg in FIND_NAME_PRIMARIES]
+def find_action_end(args, index):
+    if args[index] == "-delete":
+        return index + 1
+    return next((position + 1 for position in range(index + 1, len(args)) if args[position] in FIND_ACTION_TERMINATORS), len(args))
 
 
-def find_wants_directories(args):
-    if any(arg in FIND_BRANCHING for arg in args):
-        return False
-    types = [index for index, arg in enumerate(args[:-1]) if arg == "-type" and args[index + 1] == "d"]
-    actions = [index for index, arg in enumerate(args) if arg in FIND_ACTIONS]
-    return bool(types) and bool(actions) and types[0] < actions[0]
+def find_action_commands(args):
+    """Yields (action, command) for each -exec, -execdir, -ok or -okdir."""
+    index = 0
+    while index < len(args):
+        if args[index] in FIND_EXEC_ACTIONS:
+            end = find_action_end(args, index)
+            yield args[index], shlex.join([token for token in args[index + 1 : end] if token not in FIND_ACTION_TERMINATORS])
+            index = end
+        else:
+            index += 1
 
 
-def ignored_name(cwd, name, directory):
-    """A dir/ pattern matches an absent name only with the trailing slash."""
-    return git_ignores(cwd, name) or (directory and not name.endswith("/") and git_ignores(cwd, name + "/"))
-
-
-def ignored_names(args, cwd):
-    names = find_name_values(args)
-    directory = find_wants_directories(args)
-    return bool(names) and repo_root(cwd) is not None and all(ignored_name(cwd, name, directory) for name in names)
+def find_action_segments(args):
+    """Yields (action, wrappers, tokens) for every segment an action runs, including shell indirection."""
+    for action, command in find_action_commands(args):
+        for wrappers, tokens in segments(command):
+            yield action, wrappers, tokens
 
 
 def find_deletes(args):
     if "-delete" in args:
         return True
-    for index, arg in enumerate(args):
-        if arg in ("-exec", "-execdir"):
-            action = args[index + 1 :]
-            end = next((position for position, token in enumerate(action) if token in (";", "+")), len(action))
-            if any(program(tokens) == "rm" for _, tokens in segments(shlex.join(action[:end]))):
-                return True
-    return False
+    return any(program(tokens) == "rm" or (program(tokens) == "find" and find_deletes(tokens[1:])) for _, _, tokens in find_action_segments(args))
+
+
+def find_action_git_decision(tokens, cwd):
+    invocation = git_invocation(tokens)
+    if invocation is None:
+        return None
+    subcommand, args, _ = invocation
+    decision = check_git(*invocation, cwd)
+    if decision is not None:
+        return decision
+    if subcommand == "commit" or (subcommand in ("checkout", "restore") and any(FIND_MATCH in spec for spec in pathspecs(args))):
+        return deny(f"git {subcommand} inside a find action cannot be judged.", f"run git {subcommand} as its own command with -- <paths>.")
+    return None
+
+
+def find_action_rm_decision(action, wrappers, tokens, cwd):
+    if program(tokens) != "rm":
+        return None
+    decision = check_rm(wrappers, [token for token in tokens if token != FIND_MATCH], cwd)
+    if decision is not None:
+        return decision
+    targets = [target for target in rm_targets(tokens[1:]) if target != FIND_MATCH]
+    if any(FIND_MATCH in target for target in targets) or (action in FIND_DIR_ACTIONS and not all(os.path.isabs(resolve_rm_target(target)) for target in targets)):
+        return deny_rm()
+    return None
+
+
+def find_action_decision(args, cwd):
+    for action, wrappers, tokens in find_action_segments(args):
+        decision = find_action_git_decision(tokens, cwd) or find_action_rm_decision(action, wrappers, tokens, cwd) or check_find(tokens, cwd)
+        if decision is not None:
+            return decision
+    return None
+
+
+def find_shape(expression):
+    """Returns (name values, wants directories) when the expression is allowed primaries then one unprompted action, else None."""
+    names, directory, index = [], False, 0
+    while index < len(expression) and expression[index] not in FIND_ACTIONS:
+        token = expression[index]
+        value = expression[index + 1] if index + 1 < len(expression) else None
+        if token == "-type" and value in FIND_TYPES:
+            directory = directory or value == "d"
+            index += 2
+        elif token in FIND_NAME_PRIMARIES and value is not None:
+            names.append(value)
+            index += 2
+        elif token in FIND_DEPTH_PRIMARIES and value is not None and value.isdigit():
+            index += 2
+        elif token in FIND_BARE_PRIMARIES:
+            index += 1
+        else:
+            return None
+    if not names or index == len(expression) or expression[index] not in FIND_UNPROMPTED_ACTIONS or find_action_end(expression, index) != len(expression):
+        return None
+    return names, directory
+
+
+def inside_repository(target, cwd, root):
+    return under_prefix(os.path.realpath(os.path.join(cwd, resolve_rm_target(target))), os.path.realpath(root))
+
+
+def unanchored(pattern):
+    body = pattern
+    while body.startswith(("/**/", "**/")):
+        body = body.removeprefix("/**/").removeprefix("**/")
+    return not pattern.startswith("!") and "/" not in body[:-1]
+
+
+def ignored_name(root, name, directory):
+    """A dir/ pattern matches an absent name only with the trailing slash."""
+    pattern = ignoring_pattern(root, name)
+    if pattern is None and directory and not name.endswith("/"):
+        pattern = ignoring_pattern(root, name + "/")
+    return pattern is not None and unanchored(pattern)
+
+
+def exempt_find(starts, names, directory, cwd):
+    root = repo_root(cwd)
+    return root is not None and all(inside_repository(start, cwd, root) for start in starts) and all(ignored_name(root, name, directory) for name in names)
 
 
 def check_find(tokens, cwd):
-    args = tokens[1:]
-    if program(tokens) != "find" or not find_deletes(args):
+    if program(tokens) != "find":
         return None
-    starts = find_start_paths(args)
+    args = tokens[1:]
+    decision = find_action_decision(args, cwd)
+    if decision is not None or not find_deletes(args):
+        return decision
+    flags, starts, expression = find_parts(args)
     if unresolvable_delete(starts):
         return deny_unresolvable_delete()
-    if deletable_targets(starts, cwd) or ignored_names(args, cwd):
+    if not FIND_FOLLOW_FLAGS.isdisjoint(flags):
+        return deny_rm()
+    if deletable_targets(starts, cwd):
         return None
-    return deny_rm()
+    shape = find_shape(expression)
+    if shape is None:
+        return deny_rm()
+    names, directory = shape
+    if any(UNRESOLVABLE_NAME.search(name) for name in names):
+        return deny_unresolvable_delete()
+    return None if exempt_find(starts, names, directory, cwd) else deny_rm()
 
 
 def without_version(name):

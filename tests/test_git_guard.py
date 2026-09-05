@@ -16,7 +16,7 @@ SPEC.loader.exec_module(git_guard)
 
 MONOREPO = "/Users/jonn/Projects/lindorm/lindorm-monorepo"
 TMPDIR = "/private/tmp/claude-501/abc"
-IGNORED = "node_modules/\ndist/\ncoverage/\n*.pyc\n__pycache__/\nlink\nbuild/\n"
+IGNORED = "node_modules/\ndist/\ncoverage/\n*.pyc\n__pycache__/\nlink\n/build/\n*.log\n!keep.log\n**/cache/\n/**/staging/\n**/**/twice/\n"
 RM_RULE = "rm outside $TMPDIR, the scratchpad or a git-ignored path deletes work the tree cannot regenerate."
 SUBSTITUTION_RULE = "delete target carries a shell substitution the guard cannot resolve."
 SUBJECT_RULE = "commit subjects follow Conventional Commits: <type>(<scope>): <description>."
@@ -956,16 +956,20 @@ class IgnoreRepoTests(unittest.TestCase):
         os.makedirs(os.path.join(cls.root, "dist"))
         with open(os.path.join(cls.root, "dist", "out.js"), "w") as ignored:
             ignored.write("export {};\n")
-        os.makedirs(os.path.join(cls.root, "node_modules"))
+        os.makedirs(os.path.join(cls.root, "node_modules", "pkg"))
+        os.symlink(os.path.dirname(cls.root), os.path.join(cls.root, "escape"))
         with open(os.path.join(cls.root, "build"), "w") as tracked_file_under_a_directory_pattern:
             tracked_file_under_a_directory_pattern.write("#!/bin/sh\n")
         with open(os.path.join(cls.root, "-x"), "w") as dash_named:
             dash_named.write("x\n")
+        os.makedirs(os.path.join(cls.root, "packages", "foo", "build"))
+        with open(os.path.join(cls.root, "packages", "foo", "build", "index.ts"), "w") as tracked_under_a_directory_named_by_an_anchored_pattern:
+            tracked_under_a_directory_named_by_an_anchored_pattern.write("export {};\n")
         cls.git("init", "-q")
         cls.git("config", "user.email", "fixture@example.invalid")
         cls.git("config", "user.name", "fixture")
-        cls.git("add", "--", ".gitignore", "src/a.ts", "build")
-        cls.git("commit", "-q", "-m", "chore: fixture", "--", ".gitignore", "src/a.ts", "build")
+        cls.git("add", "--", ".gitignore", "src/a.ts", "build", "packages/foo/build/index.ts")
+        cls.git("commit", "-q", "-m", "chore: fixture", "--", ".gitignore", "src/a.ts", "build", "packages/foo/build/index.ts")
 
     @classmethod
     def git(cls, *args):
@@ -1188,33 +1192,50 @@ class RmTests(IgnoreRepoTests):
 
 
 class FindDeleteTests(IgnoreRepoTests):
-    def test_permits_find_deleting_only_git_ignored_names(self):
+    def test_permits_ignored_names_with_allowed_primaries_and_one_action(self):
         for command, path in (
             ("find . -name '*.pyc' -delete", ""),
             ("find . -type d -name __pycache__ -exec rm -rf {} +", ""),
+            ("find . -type d -name node_modules -prune -exec rm -rf {} +", ""),
+            ("find . -maxdepth 2 -type d -name dist -prune -exec rm -rf {} +", ""),
+            ("find . -mindepth 1 -type f -name '*.pyc' -print -delete", ""),
+            ("find . -name '*.pyc' -print0 -delete", ""),
+            ("find . -name '*.pyc' -execdir rm {} +", ""),
             ("find packages -type d -name dist -exec rm -rf {} +", ""),
-            ("find . -iname '*.pyc' -delete", ""),
             ("find . -type d -path '*/node_modules' -prune -exec rm -rf {} +", ""),
-            ("find . -type d -ipath '*/__pycache__' -exec rm -r {} \\;", ""),
+            ("find . -path '*/dist/*' -delete", ""),
             ("find src -name '*.pyc' -delete", ""),
             ("find . -type d -name '*.pyc' -name __pycache__ -delete", ""),
             ("find . -name '*.pyc' -delete", "packages/aegis"),
+            ("find ../.. -name '*.pyc' -delete", "packages/aegis"),
         ):
             with self.subTest(command=command, path=path):
                 self.assertIsNone(self.in_repo(command, path))
 
-    def test_permits_find_deleting_from_a_git_ignored_start_path(self):
-        self.assertIsNone(self.in_repo("find node_modules -delete"))
-        self.assertIsNone(self.in_repo("find dist -name '*.js' -delete"))
-        self.assertIsNone(self.in_repo("find packages/aegis/dist -type f -exec rm -rf {} +"))
+    def test_permits_any_expression_from_a_safe_or_ignored_start_path(self):
+        for command in (
+            "find node_modules -delete",
+            "find node_modules ! -name x -o -newer y -ok rm {} \\;",
+            'find node_modules -name "$PAT" -delete',
+            "find dist -name '*.js' -delete",
+            "find packages/aegis/dist -type f -exec rm -rf {} +",
+            'find "$TMPDIR/x" -newer y -delete',
+            "find $TMPDIR/x -name '*.log' -delete",
+            'find "${TMPDIR}/x" -type d -exec rm -rf {} +',
+            "find /tmp/claude/x -delete",
+            "find -P node_modules -delete",
+            "find -f /tmp/claude/x -delete",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(self.in_repo(command))
 
-    def test_denies_find_deleting_a_name_git_does_not_ignore(self):
+    def test_denies_a_deleting_find_whose_name_git_does_not_ignore(self):
         for command in (
             "find . -name '*.js' -delete",
             "find -name '*.js' -delete",
             "find . -name '*.ts' -delete",
             "find . -name '*.pyc' -name '*.ts' -delete",
-            "find . -name '*.pyc' -o -name '*.ts' -delete",
+            "find . -path '*/src/*' -delete",
             "find packages -type d -name src -exec rm -rf {} +",
             "find packages -type d -name src -exec rm -r {} \\;",
             "find . -type d -name src -execdir rm -fr {} +",
@@ -1222,7 +1243,9 @@ class FindDeleteTests(IgnoreRepoTests):
             "find -L packages -name src -delete",
             "find . -delete",
             "find src -delete",
+            "find . -type d -delete",
             "find $TMPDIR/x . -delete",
+            "find $TMPDIR/x . -name '*.pyc' -delete",
         ):
             with self.subTest(command=command):
                 result = self.in_repo(command)
@@ -1230,70 +1253,284 @@ class FindDeleteTests(IgnoreRepoTests):
                 self.assertEqual(rule(result), RM_RULE)
                 self.assertTrue(permitted(result).startswith("mv "))
 
-    def test_denies_find_deletes_outside_a_repository(self):
+    def test_denies_primaries_operators_and_actions_outside_the_shape(self):
+        for command in (
+            "find . -name '*.pyc' -o -name x -delete",
+            "find . -name '*.pyc' -o -delete",
+            "find . -name '*.pyc' -or -delete",
+            "find . ! -name x -delete",
+            "find . ! -name '*.pyc' -delete",
+            "find . -not -name '*.pyc' -delete",
+            "find . \\( -name '*.pyc' \\) -delete",
+            "find . -name '*.pyc' -a -name y -delete",
+            "find . -name '*.pyc' -a -type f -delete",
+            "find . -name '*.pyc' -and -type f -delete",
+            "find . -name '*.pyc' -newer y -delete",
+            "find . -name '*.pyc' -mtime +7 -delete",
+            "find . -name '*.pyc' -size +1k -delete",
+            "find . -name '*.pyc' -empty -delete",
+            "find . -type l -name '*.pyc' -delete",
+            "find . -maxdepth x -name '*.pyc' -delete",
+            "find . -iname '*.PYC' -delete",
+            "find . -iname '*.pyc' -delete",
+            "find . -type d -ipath '*/__pycache__' -exec rm -r {} \\;",
+            "find . -name '*.pyc' -delete -delete",
+            "find . -name '*.pyc' -exec rm {} \\; -delete",
+            "find . -name '*.pyc' -delete -type d",
+            "find . -name build -delete -type d",
+            "find . -name build -exec rm -rf {} + -type d",
+            "find . -type d -o -name build -delete",
+            "find . -type d -or -name build -delete",
+            "find . ! -type d -name build -delete",
+            "find . -not -type d -name build -delete",
+            "find . \\( -type d \\) -name build -delete",
+        ):
+            with self.subTest(command=command):
+                result = self.in_repo(command)
+                self.assertEqual(rule(result), RM_RULE)
+                self.assertTrue(permitted(result).startswith("mv "))
+
+    def test_denies_a_deleting_find_whose_start_path_is_outside_the_repository(self):
+        for command in (
+            "find / -name '*.pyc' -delete",
+            "find ../other -name '*.pyc' -delete",
+            "find /Users/nobody -name '*.pyc' -delete",
+            f"find {os.path.dirname(self.root)} -name '*.pyc' -delete",
+            "find . ../other -name '*.pyc' -delete",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
         with self.outside_repo() as outside:
             self.assertEqual(rule(evaluate("find . -name '*.pyc' -delete", cwd=outside)), RM_RULE)
 
-    def test_denies_find_whose_start_path_carries_a_substitution(self):
+    def test_prompting_actions_delete_and_are_never_the_shape(self):
+        for command in (
+            "find . -name '*.pyc' -ok rm {} \\;",
+            "find . -name '*.pyc' -okdir rm {} \\;",
+            "find . -name '*.pyc' -ok sh -c 'rm -rf dist' \\;",
+            "find . -type d -name __pycache__ -okdir rm -rf {} \\;",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -ok cat {} \\;"))
+
+    def test_name_retry_with_a_slash_applies_only_with_type_d(self):
+        for command in (
+            "find . -name build -delete",
+            "find . -type f -name build -delete",
+            "find . -name __pycache__ -delete",
+            "find . -path '*/node_modules' -prune -exec rm -rf {} +",
+            "find . -name '*.pyc' -name __pycache__ -delete",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
+        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -delete"))
+
+    def test_an_anchored_pattern_does_not_exempt_a_name_that_matches_every_directory(self):
+        for command in (
+            "find . -type d -name build -exec rm -rf {} +",
+            "find packages -type d -name build -exec rm -rf {} +",
+            "find . -type d -name build -delete",
+            "find . -name keep.log -delete",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
+        self.assertIsNone(self.in_repo("find packages -type d -name dist -exec rm -rf {} +"))
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -delete"))
+        self.assertIsNone(self.in_repo("find . -name x.log -delete"))
+        self.assertIsNone(self.in_repo("find . -type d -name cache -delete"))
+        self.assertIsNone(self.in_repo("find . -type d -name staging -delete"))
+        self.assertIsNone(self.in_repo("find . -type d -name twice -delete"))
+        self.assertIsNone(self.in_repo("find . -path '*/dist/*' -delete"))
+
+    def test_git_run_by_an_action_is_judged_by_the_git_rules(self):
+        stash = "git stash silently destroys uncommitted work in a shared tree."
+        push = "git push is the user's to run manually."
+        for command, expected in (
+            ("find . -maxdepth 0 -exec git stash \\;", stash),
+            ("find . -exec git push \\;", push),
+            ("find node_modules -execdir git stash \\;", stash),
+            ("find . -name '*.pyc' -ok git push \\;", push),
+            ("find . -okdir git stash \\;", stash),
+            ("find . -exec sh -c 'git stash' \\;", stash),
+            ("find . -exec sudo git push \\;", push),
+            ("find . -name '*.ts' -exec git stash \\; -delete", stash),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), expected)
+        self.assertIsNone(self.in_repo("find . -exec git status \\;"))
+        self.assertIsNone(self.in_repo("find . -name '*.ts' -exec git add -- {} +"))
+
+    def test_denies_a_start_path_or_name_value_with_a_substitution(self):
         for command in (
             'find "$TMPDIR/$(echo ../..)" -delete',
             'find "$(pwd)" -name \'*.pyc\' -delete',
             "find ~/node_modules -delete",
             "find $HOME -name '*.pyc' -delete",
+            "find $DIR -delete",
+            'find . -name "$PAT" -delete',
+            'find . -name "${PAT}" -delete',
+            'find . -name "`cat p`" -delete',
+            'find . -name "$(cat p)" -delete',
+            "find . -path '$X/*.pyc' -delete",
+            "find . -name '~*.pyc' -delete",
+            'find . -type d -name "$D" -exec rm -rf {} +',
         ):
             with self.subTest(command=command):
                 result = self.in_repo(command)
                 self.assertEqual(rule(result), SUBSTITUTION_RULE)
                 self.assertEqual(permitted(result), "name the path literally.")
 
-    def test_permits_find_deleting_under_temp(self):
-        self.assertIsNone(self.in_repo("find $TMPDIR/x -name '*.log' -delete"))
-        self.assertIsNone(self.in_repo('find "${TMPDIR}/x" -type d -exec rm -rf {} +'))
-        self.assertIsNone(self.in_repo("find /tmp/claude/x -delete"))
-        self.assertIsNone(self.in_repo("find -L /tmp/claude/x -delete"))
-        self.assertIsNone(self.in_repo("find -f /tmp/claude/x -delete"))
-
-    def test_name_retry_with_a_slash_applies_only_when_find_wants_directories(self):
-        for command in (
-            "find . -name build -delete",
-            "find . -type f -name build -delete",
-            "find . -name __pycache__ -delete",
-            "find . -path '*/node_modules' -prune -exec rm -rf {} +",
-            "find . -ipath '*/__pycache__' -exec rm -r {} \\;",
-            "find . -name '*.pyc' -name __pycache__ -delete",
-        ):
-            with self.subTest(command=command):
-                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
-        self.assertIsNone(self.in_repo("find . -type d -name build -exec rm -rf {} +"))
-        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
-
-    def test_name_retry_needs_type_d_to_constrain_every_action(self):
-        for command in (
-            "find . -type d -o -name build -delete",
-            "find . -type d -or -name build -delete",
-            "find . ! -type d -name build -delete",
-            "find . -not -type d -name build -delete",
-            "find . \\( -type d \\) -name build -delete",
-            "find . -name build -delete -type d",
-            "find . -name build -exec rm -rf {} + -type d",
-        ):
-            with self.subTest(command=command):
-                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
-        self.assertIsNone(self.in_repo("find . -type d -name build -exec rm -rf {} +"))
-        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
-
     def test_find_exec_reaching_rm_through_a_shell_or_wrapper_is_a_delete(self):
+        for command, expected in (
+            ("find . -name '*.ts' -exec sh -c 'rm -rf \"$1\"' _ {} \\;", SUBSTITUTION_RULE),
+            ("find . -name '*.ts' -exec bash -c 'rm $0' {} \\;", SUBSTITUTION_RULE),
+            ("find . -name '*.ts' -exec xargs rm {} +", SUBSTITUTION_RULE),
+            ("find . -name '*.pyc' -ok sh -c 'rm $1' _ {} \\;", SUBSTITUTION_RULE),
+            ("find . -name '*.ts' -execdir sudo rm {} \\;", RM_RULE),
+            ("find . -name '*.ts' -exec /usr/bin/env rm -f {} +", RM_RULE),
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), expected)
+        self.assertIsNone(self.in_repo("find . -name '*.ts' -exec sh -c 'cat \"$1\"' _ {} \\;"))
+
+    def test_the_action_rm_may_target_only_the_match_or_a_deletable_path(self):
         for command in (
-            "find . -name '*.ts' -exec sh -c 'rm -rf \"$1\"' _ {} \\;",
-            "find . -name '*.ts' -exec bash -c 'rm $0' {} \\;",
-            "find . -name '*.ts' -exec xargs rm {} +",
-            "find . -name '*.ts' -execdir sudo rm {} \\;",
-            "find . -name '*.ts' -exec /usr/bin/env rm -f {} +",
+            "find . -name '*.pyc' -exec rm -rf src \\;",
+            "find . -name '*.pyc' -exec rm -rf {} ../src \\;",
+            "find . -name '*.pyc' -exec sh -c 'rm -rf src' \\;",
+            "find . -name '*.pyc' -execdir rm -rf / \\;",
+            "find . -type d -name __pycache__ -exec rm -rf {} notes.txt +",
+            "find node_modules -exec rm -rf src \\;",
+            'find "$TMPDIR/x" -exec rm -rf {} src/a.ts \\;',
         ):
             with self.subTest(command=command):
                 self.assertEqual(rule(self.in_repo(command)), RM_RULE)
-        self.assertIsNone(self.in_repo("find . -name '*.pyc' -exec sh -c 'rm -f \"$1\"' _ {} \\;"))
-        self.assertIsNone(self.in_repo("find . -name '*.ts' -exec sh -c 'cat \"$1\"' _ {} \\;"))
+        for command in (
+            "find . -name '*.pyc' -exec sh -c 'rm $1' _ {} \\;",
+            "find . -name '*.pyc' -exec sh -c 'rm -f \"$1\"' _ {} \\;",
+            "find . -name '*.pyc' -exec bash -c 'rm $0' {} \\;",
+            "find . -name '*.pyc' -exec xargs rm {} +",
+            "find node_modules -exec rm -rf {} $X \\;",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), SUBSTITUTION_RULE)
+        for command in (
+            "find . -name '*.pyc' -exec rm -rf {} +",
+            "find . -name '*.pyc' -exec rm -f -- {} \\;",
+            "find . -name '*.pyc' -exec rm -rf {} dist \\;",
+            "find . -name '*.pyc' -exec sh -c 'rm -rf \"$TMPDIR/x\"' \\;",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(self.in_repo(command))
+
+    def test_names_are_judged_from_the_repository_root(self):
+        for command in ("find ../.. -name '*.ts' -delete", "find ../.. -name a.ts -exec rm -rf {} +", "find ../.. -type d -name src -delete"):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command, "node_modules/pkg")), RM_RULE)
+        self.assertIsNone(self.in_repo("find ../.. -name '*.pyc' -delete", "node_modules/pkg"))
+        self.assertIsNone(self.in_repo("find ../.. -type d -name __pycache__ -delete", "node_modules/pkg"))
+        self.assertIsNone(self.in_repo("find . -name '*.ts' -delete", "node_modules/pkg"))
+
+    def test_denies_a_deleting_find_that_follows_links_whatever_the_start_path(self):
+        for command in (
+            "find -L /tmp/claude/x -delete",
+            'find -L "$TMPDIR/x" -delete',
+            "find -L node_modules -type f -exec rm {} +",
+            "find -H node_modules -delete",
+            "find -L escape -name '*.pyc' -delete",
+            "find -H escape -name '*.pyc' -delete",
+            "find -L . -name '*.pyc' -delete",
+            "find -H -f node_modules -delete",
+        ):
+            with self.subTest(command=command):
+                result = self.in_repo(command)
+                self.assertEqual(rule(result), RM_RULE)
+                self.assertTrue(permitted(result).startswith("mv "))
+        for command in (
+            "find -P . -name '*.pyc' -delete",
+            "find -P /tmp/claude/x -delete",
+            "find -L . -name '*.ts' -exec cat {} +",
+            "find -L /tmp/claude/x -name x",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(self.in_repo(command))
+
+    def test_a_start_path_in_the_shape_is_judged_by_its_real_path(self):
+        for command in (
+            "find escape -name '*.pyc' -delete",
+            "find escape/other -name '*.pyc' -delete",
+            "find . escape -name '*.pyc' -delete",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo("find link -type d -name __pycache__ -exec rm -rf {} +"))
+        self.assertIsNone(self.in_repo("find link/x -name '*.pyc' -delete"))
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -delete"))
+
+    def test_git_commit_inside_an_action_cannot_be_judged(self):
+        result = self.in_repo("find . -exec git commit -m 'x' -- src/a.ts \\;")
+        self.assertEqual(rule(result), "git commit inside a find action cannot be judged.")
+        self.assertEqual(permitted(result), "run git commit as its own command with -- <paths>.")
+        self.assertEqual(rule(self.in_repo("find . -exec sh -c 'git commit -m \"fix: x\" -- src/a.ts' \\;")), "git commit inside a find action cannot be judged.")
+        self.assertEqual(rule(self.in_repo("find . -exec git commit -a -m 'x' \\;")), "git commit -a/--all/--no-verify commits the whole tree or skips hooks.")
+
+    def test_an_unterminated_action_runs_to_the_end_of_the_command(self):
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -exec rm -rf {}"))
+        self.assertEqual(rule(self.in_repo("find . -name '*.ts' -exec rm -rf {}")), RM_RULE)
+        self.assertEqual(rule(self.in_repo("find . -name '*.pyc' -exec rm -rf {} src")), RM_RULE)
+
+    def test_a_find_inside_an_action_is_judged_from_cwd_like_any_find(self):
+        for command in (
+            "find . -name '*.pyc' -exec find src -delete \\;",
+            "find . -exec sh -c 'find src -delete' \\;",
+            "find node_modules -exec find ../src -delete \\;",
+            "find . -name '*.pyc' -exec sh -c 'find . -name \"*.ts\" -delete' \\;",
+            "find node_modules -exec find {} -delete \\;",
+            "find . -exec find . -exec find . -delete \\; \\;",
+            "find . -name '*.pyc' -exec find . -name '*.pyc' -exec rm -rf src \\; \\;",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertEqual(rule(self.in_repo("find . -exec find . -exec git stash \\; \\;")), "git stash silently destroys uncommitted work in a shared tree.")
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -exec find {} -name '*.pyc' -delete \\;"))
+        self.assertIsNone(self.in_repo("find node_modules -exec find node_modules -delete \\;"))
+        self.assertIsNone(self.in_repo("find . -exec find . -name '*.ts' -exec cat {} + \\;"))
+
+    def test_git_checkout_or_restore_of_the_match_inside_an_action_cannot_be_judged(self):
+        for subcommand in ("checkout", "restore"):
+            with self.subTest(subcommand=subcommand):
+                result = self.in_repo(f"find . -type f -exec git {subcommand} -- {{}} +")
+                self.assertEqual(rule(result), f"git {subcommand} inside a find action cannot be judged.")
+                self.assertEqual(permitted(result), f"run git {subcommand} as its own command with -- <paths>.")
+                self.assertEqual(rule(self.in_repo(f"find . -exec sh -c 'git {subcommand} -- {{}}' \\;")), f"git {subcommand} inside a find action cannot be judged.")
+        self.assertEqual(rule(self.in_repo("find . -exec git checkout -- . \\;")), "tree-wide git checkout pathspec reverts everyone's uncommitted work.")
+        self.assertEqual(rule(self.in_repo("find . -exec git restore {} \\;")), "tree-wide git restore reverts everyone's uncommitted work.")
+        self.assertIsNone(self.in_repo("find . -exec git checkout -- src/a.ts \\;"))
+
+    def test_execdir_targets_run_from_the_match_and_the_match_is_only_ever_bare(self):
+        for command in (
+            "find . -name '*.pyc' -execdir rm -rf build \\;",
+            "find . -name '*.pyc' -execdir rm -rf dist \\;",
+            "find node_modules -execdir rm -rf dist \\;",
+            "find . -name '*.pyc' -execdir rm -rf {} dist \\;",
+            "find . -name '*.pyc' -exec rm -rf {}/../dist +",
+            "find . -name '*.pyc' -exec rm -rf {}.bak \\;",
+            "find . -name '*.pyc' -execdir rm -rf {}/x \\;",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(self.in_repo(command)), RM_RULE)
+        self.assertIsNone(self.in_repo('find . -name \'*.pyc\' -execdir rm -rf "$TMPDIR/x" \\;'))
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -execdir rm -rf /tmp/claude/x {} \\;"))
+        self.assertIsNone(self.in_repo("find . -name '*.pyc' -exec rm -rf {} dist \\;"))
+
+    def test_a_find_without_an_expression_or_with_an_empty_action_never_raises(self):
+        for command in ("find", "find -L", "find -f", "find . -exec", "find . -exec find", "find . -exec find . -exec"):
+            with self.subTest(command=command):
+                self.assertIsNone(self.in_repo(command))
+        self.assertEqual(rule(self.in_repo("find -f -delete -f")), RM_RULE)
 
     def test_find_exec_rm_with_any_flags_is_a_delete(self):
         for command in ("find src -name a.ts -exec rm -f {} +", "find . -name '*.ts' -exec rm {} \\;", "find . -name '*.js' -exec rm -f {} +", "find src -execdir rm {} +"):
@@ -1306,6 +1543,7 @@ class FindDeleteTests(IgnoreRepoTests):
         self.assertIsNone(self.in_repo("find . -name '*.ts' -newer x"))
         self.assertIsNone(self.in_repo("find . -exec grep -l foo {} \\;"))
         self.assertIsNone(self.in_repo("find . -type f -print0"))
+        self.assertIsNone(self.in_repo("find . -name '*.ts' -exec cat {} +"))
 
 
 class CompoundCommandTests(unittest.TestCase):
