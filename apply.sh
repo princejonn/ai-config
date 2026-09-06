@@ -42,10 +42,10 @@ generate_agents_md() {
 
 link_target "$REPO/claude/CLAUDE.md" "$CLAUDE_HOME/CLAUDE.md"
 for source in "$REPO"/claude/skills/*; do
-  [ -d "$source" ] && link_target "$source" "$CLAUDE_HOME/skills/$(basename "$source")"
-done
-for source in "$REPO"/claude/skills/*; do
-  [ -d "$source" ] && link_target "$source" "$AGENTS_SKILLS/$(basename "$source")"
+  if [ -d "$source" ]; then
+    link_target "$source" "$CLAUDE_HOME/skills/$(basename "$source")"
+    link_target "$source" "$AGENTS_SKILLS/$(basename "$source")"
+  fi
 done
 for source in "$REPO"/claude/agents/*.md; do
   [ -f "$source" ] && link_target "$source" "$CLAUDE_HOME/agents/$(basename "$source")"
