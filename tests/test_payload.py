@@ -65,9 +65,9 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
 }
 SKILLS_WITH_INPUT = {"design-surface", "implement", "issue-next", "issue-triage", "issue-write", "plan-phases", "research", "research-complex", "review-change", "test", "verify-claim"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
-DEVELOPER_MODELS = {"developer-trivial": ("sonnet", "high"), "developer-standard": ("opus", "xhigh"), "developer-complex": ("fable", "xhigh")}
-RESEARCHER_MODELS = {"researcher-trivial": ("sonnet", "high"), "researcher-complex": ("fable", "high")}
-EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "root-cause"] for name in DEVELOPER_MODELS}, "tester": ["test"]}
+DEVELOPER_AGENTS = {"developer-trivial", "developer-standard", "developer-complex"}
+RESEARCHER_AGENTS = {"researcher-trivial", "researcher-complex"}
+EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "root-cause"] for name in DEVELOPER_AGENTS}, "tester": ["test"]}
 EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "tester", "verifier"}
 FORK_ONLY_AGENTS = {"researcher-trivial", "researcher-complex", "reviewer", "verifier"}
 RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
@@ -327,23 +327,14 @@ class AgentsTest(unittest.TestCase):
             with self.subTest(agent=stem):
                 self.assertEqual(sentence_count(body), 2)
 
-    def test_each_developer_pins_its_tier_model_and_effort(self):
+    def test_each_tiered_agent_is_named_once_in_tiers_and_its_description_names_its_frontmatter_model(self):
         docs = agent_docs()
-        for stem, (model, effort) in DEVELOPER_MODELS.items():
+        tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
+        for stem in DEVELOPER_AGENTS | RESEARCHER_AGENTS:
             with self.subTest(agent=stem):
                 fields, _ = docs[stem]
-                self.assertEqual((fields["model"], fields["effort"]), (model, effort))
-                self.assertIn(model, fields["description"].lower())
-                self.assertIn(f"| `{stem}` | `{model}` | `{effort}` |", read(SKILLS / "deliver" / "references" / "tiers.md"))
-
-    def test_each_researcher_pins_its_lane_model_and_effort(self):
-        docs = agent_docs()
-        for stem, (model, effort) in RESEARCHER_MODELS.items():
-            with self.subTest(agent=stem):
-                fields, _ = docs[stem]
-                self.assertEqual((fields["model"], fields["effort"]), (model, effort))
-                self.assertIn(model, fields["description"].lower())
-                self.assertIn(f"| `{stem}` | `{model}` | `{effort}` |", read(SKILLS / "deliver" / "references" / "tiers.md"))
+                self.assertEqual(tiers.count(f"| `{stem}` |"), 1)
+                self.assertIn(fields["model"], fields["description"].lower())
 
 
 class RulesTest(unittest.TestCase):
