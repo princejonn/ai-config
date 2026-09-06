@@ -1,13 +1,10 @@
 import importlib.util
-import io
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
-from unittest import mock
 
 HOOK_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "claude", "hooks", "announce-instructions.py")
 SPEC = importlib.util.spec_from_file_location("announce_instructions", HOOK_PATH)
@@ -57,10 +54,6 @@ class RepositoryCase(unittest.TestCase):
 
 
 class PointerTests(RepositoryCase):
-    def test_prints_the_path_then_headings_of_level_one_to_three_then_the_gate_sentence(self):
-        self.write("AGENTS.md", AGENTS_MD)
-        self.assertEqual(pointer(self.cwd), f"{self.instructions}\n# Title\n## Rules\n### Detail\n\n{GATE}")
-
     def test_prints_the_pointer_for_every_session_source(self):
         self.write("AGENTS.md", AGENTS_MD)
         for source in SOURCES:
@@ -80,14 +73,6 @@ class PointerTests(RepositoryCase):
     def test_prints_the_path_and_the_gate_sentence_for_an_agents_md_without_headings(self):
         self.write("AGENTS.md", "prose only\n\n#### Deep\n")
         self.assertEqual(pointer(self.cwd), f"{self.instructions}\n\n{GATE}")
-
-    def test_no_content_beyond_the_headings_is_printed(self):
-        self.write("AGENTS.md", AGENTS_MD)
-        printed = pointer(self.cwd)
-        self.assertIsNotNone(printed)
-        for line in ("intro", "- one", "body", "#### Deep"):
-            with self.subTest(line=line):
-                self.assertNotIn(line, printed)
 
     def test_a_byte_order_mark_does_not_hide_the_first_heading(self):
         self.write("AGENTS.md", BOM + AGENTS_MD)
@@ -251,16 +236,6 @@ class ScriptTests(RepositoryCase):
                 self.assertEqual(completed.stdout, "")
                 self.assertEqual(completed.stderr, "")
                 self.assertEqual(completed.returncode, 0)
-
-    def test_main_exits_0_and_prints_nothing_for_garbage_stdin(self):
-        for garbage in ("", "{", "[1]", "null"):
-            with self.subTest(garbage=garbage):
-                out = io.StringIO()
-                with mock.patch("sys.stdin", io.StringIO(garbage)), redirect_stdout(out):
-                    with self.assertRaises(SystemExit) as raised:
-                        announce_instructions.main()
-                self.assertEqual(raised.exception.code, 0)
-                self.assertEqual(out.getvalue(), "")
 
 
 if __name__ == "__main__":

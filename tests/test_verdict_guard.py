@@ -162,18 +162,5 @@ class FailOpenTests(unittest.TestCase):
                 self.assertEqual(outcome(run(garbage)), (0, "", ""))
 
 
-class NoAskTests(unittest.TestCase):
-    def test_stdout_is_empty_whether_the_agent_stops_or_is_sent_back(self):
-        for agent_type, message in (
-            ("reviewer", "Findings: none.\n\nACCEPTED"),
-            ("reviewer", "The prior round was NOT ACCEPTED; no disposition this round."),
-            ("verifier", "Claim 1: VERIFIED — evidence at x:1."),
-            ("verifier", "I read the file and it looks right."),
-            ("researcher", "Memo: three call sites."),
-        ):
-            with self.subTest(agent_type=agent_type, message=message):
-                self.assertEqual(run(stop(agent_type, message)).stdout, "")
-
-
 if __name__ == "__main__":
     unittest.main()

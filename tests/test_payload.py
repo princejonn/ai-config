@@ -12,10 +12,14 @@ RULES = CLAUDE / "rules"
 RULESETS = CLAUDE / "rulesets"
 HOOKS = CLAUDE / "hooks"
 MANIFEST = CLAUDE / "settings.json"
+SCRIPTS = REPO / "scripts"
 
 SPEC = importlib.util.spec_from_file_location("verdict_guard", HOOKS / "verdict-guard.py")
 verdict_guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(verdict_guard)
+RENDER_SPEC = importlib.util.spec_from_file_location("render_agents_md", SCRIPTS / "render_agents_md.py")
+render_agents_md = importlib.util.module_from_spec(RENDER_SPEC)
+RENDER_SPEC.loader.exec_module(render_agents_md)
 
 SKILL_NAME = re.compile(r"^[a-z0-9-]{1,64}$")
 RESERVED_SKILL_NAMES = {
@@ -408,6 +412,13 @@ class ClaudeMdTest(unittest.TestCase):
         for skill in skill_dirs():
             with self.subTest(skill=skill.name):
                 self.assertEqual(body.count(f"| `{skill.name}` |"), 1)
+
+    def test_real_tree_render_has_no_line_with_forks_into_or_select_tool_and_keeps_verify_then_claim(self):
+        rendered = render_agents_md.render(CLAUDE / "CLAUDE.md", RULES)
+        lines = rendered.split("\n")
+        self.assertEqual([line for line in lines if "forks into" in line], [])
+        self.assertEqual([line for line in lines if "select tool" in line], [])
+        self.assertIn("Verify, then claim", rendered)
 
 
 class OneHomeTest(unittest.TestCase):

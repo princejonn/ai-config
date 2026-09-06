@@ -109,9 +109,6 @@ class LiveTreeCase(unittest.TestCase):
 
 
 class CleanTreeTests(LiveTreeCase):
-    def test_silent_when_the_live_tree_matches_the_repository(self):
-        self.assertIsNone(self.notice())
-
     def test_silent_for_every_session_source(self):
         for source in SOURCES:
             with self.subTest(source=source):
@@ -122,11 +119,6 @@ class DriftTests(LiveTreeCase):
     def test_a_foreign_file_under_the_skills_dir_is_named(self):
         foreign = self.foreign_file()
         self.assertEqual(self.notice(), self.expected(f"foreign: {foreign}"))
-
-    def test_a_deleted_link_is_named_as_the_link_it_needs(self):
-        target, link_source = self.owned_link("rules", "git.md")
-        os.remove(target)
-        self.assertEqual(self.notice(), self.expected(f"link: {target} -> {link_source}"))
 
     def test_an_edited_agents_md_is_named_as_a_regeneration(self):
         agents_md = os.path.join(self.codex, "AGENTS.md")

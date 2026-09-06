@@ -50,9 +50,6 @@ class RenderAgentsMdTest(unittest.TestCase):
         expected = MARKER + "\n\n" + CLAUDE_MD + "\n# Git\n\nBody a.\n" + "\n# Style\n\nBody b.\n"
         self.assertEqual(proc.stdout, expected.encode("utf-8"))
 
-    def test_marker_is_the_first_line(self):
-        self.assertEqual(self.render().stdout.split(b"\n")[0], MARKER.encode("utf-8"))
-
     def test_empty_rules_dir_renders_claude_md_alone(self):
         self.assertEqual(self.render().stdout, (MARKER + "\n\n" + CLAUDE_MD).encode("utf-8"))
 
@@ -133,14 +130,6 @@ class RenderAgentsMdTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(proc.stdout.split(b"\n")[0], MARKER.encode("utf-8"))
         self.assertEqual(proc.stdout, (MARKER + "\n\n# Global\n").encode("utf-8"))
-
-    def test_real_tree_render_has_no_line_with_forks_into_or_select_tool_and_keeps_verify_then_claim(self):
-        proc = self.render(claude_md=REPO / "claude" / "CLAUDE.md", rules_dir=REPO / "claude" / "rules")
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        lines = proc.stdout.decode("utf-8").split("\n")
-        self.assertEqual([line for line in lines if "forks into" in line], [])
-        self.assertEqual([line for line in lines if "select tool" in line], [])
-        self.assertIn("Verify, then claim", proc.stdout.decode("utf-8"))
 
 
 if __name__ == "__main__":

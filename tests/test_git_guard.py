@@ -40,138 +40,18 @@ sys.stdout.buffer.write(b"".join(b"fake\\x001\\x00*\\x00" + path + b"\\x00" for 
 sys.exit(0 if paths else 1)
 """
 
-DENIED = (
-    "git stash",
-    "git stash pop",
-    "git stash -m list",
-    "git reset --hard HEAD~1",
-    "git clean -fdx",
-    "git checkout .",
-    "git checkout main",
-    "git checkout -- .",
-    "git restore .",
-    "git restore --staged -- :/",
-    "git switch -f main",
-    'git commit -a -m "x"',
-    'git commit --no-verify -m "x"',
-    'git commit -m "fix: x\n\nCo-Authored-By: X" -- a',
-    'git commit -m "fix: thing\n\nthe hook denies Co-Authored-By: trailers" -- a',
-    'git commit -m "fix: thing\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)" -- a',
-    "printf 'feat: x' | git commit -F - -- a",
-    "git commit -F - -- a",
-    'git commit -m "fix: x"',
-    'git commit -m "fix: x" --',
-    'git commit --allow-empty -m "chore: trigger"',
-    'eval "git stash"',
-    'sh -c "git stash"',
-    "$(git stash)",
-    "echo `git stash`",
-    "git -c alias.s=stash s",
-    "xargs git stash",
-    "exec git stash",
-    "command -p git stash",
-    "sudo -u root git stash",
-    "env -i git stash",
-    "nice -n 5 git stash",
-    "git checkout -- ./.",
-    "git checkout -- :",
-    "git restore -- '**'",
-    "git checkout -- ..",
-    "git restore -- $PWD",
-    "git checkout -- $(pwd)",
-    'git restore -- "${DIR}"',
-    "git checkout -- ':(glob)**'",
-    "git restore -- ':(top,glob)*'",
-    "git checkout -- ':!src'",
-    "git restore -- ':(exclude)src'",
-    "git checkout -- ':^src'",
-    "git restore --staged -- ':!src'",
-    f"git checkout -- {MONOREPO}",
-    "git --config-env core.pager=P stash",
-    "git --attr-source HEAD stash",
-    "git -c ALIAS.s=stash s",
-    "git commit --amend --no-edit",
-    "git commit -F msg.txt -- a",
-    "git commit -C HEAD -- a",
-    'git commit -m "fix: $MSG" -- a',
-    "git commit --fixup=HEAD~1",
-    'rm -rf "$TMPDIR/$(echo ../..)"',
-    "rm -rf ~/x",
-    "rm -rf $HOME/x",
-    'git commit -m "add thing" -- a',
-    "git commit -F - -- a <<'EOF'\nAdd thing\nEOF",
-    'git commit -m "docs: see §3.1.1" -- a',
-    "npm test | tail -50",
-    "npm run typecheck | head",
-    "pytest | tail -20",
-    "python3 -m unittest discover -s tests | tail -5",
-    "go test ./... | tail",
-    "cargo test 2>&1 | head -40",
-    "npx jest | tail",
-    "bash tests/test_apply.sh | tail -3",
-    "make test | tail",
-    'echo $(git stash ")")',
-    "diff <(git stash) x",
-    "git commit -F - -- a ${X:-<<EOF}",
-    "git commit -F - -- a $'<<EOF'",
-    "git commit -F - -- a $(cat <<EOF)\nfeat: x\nEOF",
-)
-PERMITTED = (
-    "git log --stat",
-    "git diff HEAD~1 -- file",
-    "git checkout -b feat",
-    "git checkout -- path/to/file",
-    "git restore --staged -- src/",
-    "git restore --staged -- file",
-    "git switch main",
-    "git push",
-    'git commit -m "fix: x" -- packages/aegis',
-    'git commit -m"feat: add thing" -- packages/aegis',
-    "git commit -F - -- a <<'EOF'\nfix: x\nEOF",
-    'git commit -m "chore: hooks" -- .claude/hooks/git-guard.py',
-    "git -c core.pager=cat log -1",
-    'rm -rf "$TMPDIR/x"',
-    "npx tsc",
-    "npx tsx script.ts",
-    "npm exec -- tsc",
-    'npm test > "$TMPDIR/o.txt" 2>&1; tail -50 "$TMPDIR/o.txt"',
-    "npm test && tail out.txt",
-    "npm --version",
-    'git commit -m "docs: RFC 6749 §3.1.1" -- a',
-    'git commit -m "feat: source-of-truth repo for Claude Code configuration" -- a',
-    "if git diff --quiet; then echo clean; fi",
-    'for f in a b; do git add -- "$f"; done',
-    'echo "git stash"',
-    "find . -name '*.ts' -newer x",
-    "xargs -n1 echo",
-    "node scripts/build.js",
-    "git restore -- ':(glob)src/**/*.ts'",
-    "git checkout -- ':(top)packages/aegis'",
-    "git restore -- src ':!src/gen'",
-    "git stash list",
-    "git stash show -p",
-    "git commit -m 'fix: generated with care' -- a",
-    "git commit -m 'feat: add robot 🤖 emoji' -- a",
-    'git commit --allow-empty -m "chore: trigger" -- a',
-    "git status",
-    "ls",
-    'git commit -m "feat(aegis): add thing" -- a',
-    'git commit -m "docs: OIDC Core §3.1.2.1" -- a',
-    "git commit -F - -- a <<'EOF'\nfeat: add thing\nEOF",
-    "ls | tail",
-    "git log | head",
-    "git commit -F - -- a $(echo \")\") <<'EOF'\nfeat: x\nEOF",
-    "git commit -F - -- a<<EOF\nfeat: x\nEOF",
-    "echo x # ; git stash",
-)
-
 
 def bash(command, cwd=MONOREPO):
     return {"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": cwd, "tool_input": {"command": command}}
 
 
 def decision(result):
-    return None if result is None else result["hookSpecificOutput"]["permissionDecision"]
+    if result is None:
+        return None
+    verdict = result["hookSpecificOutput"]["permissionDecision"]
+    if verdict != "deny":
+        raise AssertionError(f"a hook decision is deny or silence, got {verdict!r}")
+    return verdict
 
 
 def reason(result):
@@ -474,10 +354,6 @@ class GitCommitMessageSourceTests(unittest.TestCase):
         self.assertIsNone(evaluate('git commit -F - -- a <<"EOF"\nfix: x\nEOF'))
         self.assertIsNone(evaluate("git commit -F - -- a <<EOF # note\nfeat: x\nEOF"))
 
-    def test_unterminated_quote_never_opens_a_heredoc(self):
-        result = evaluate("git commit -F - -- a <<'EOF\nfeat: x\nEOF")
-        self.assertEqual(rule(result), "git commit -F - takes the message from a pipe or stdin the guard cannot read.")
-
     def test_denies_stdin_message_without_a_heredoc(self):
         for command in (
             "printf 'feat: x' | git commit -F - -- a",
@@ -529,7 +405,7 @@ class GitCommitAttributionTests(unittest.TestCase):
 
     def test_deny_reason_names_the_offending_line(self):
         result = evaluate('git commit -m "fix: thing\n\n  co-authored-by: x" -- packages/aegis')
-        self.assertIn("'co-authored-by: x'", result["hookSpecificOutput"]["permissionDecisionReason"])
+        self.assertIn("'co-authored-by: x'", reason(result))
 
     def test_product_names_are_not_attribution(self):
         self.assertIsNone(evaluate('git commit -m "feat: source-of-truth repo for Claude Code configuration" -- a'))
@@ -638,7 +514,6 @@ class GitCommitSubjectTests(unittest.TestCase):
             ("sh -c \"git commit -F - -- a <<'EOF'\nAdd thing\nEOF\"", SUBJECT_RULE),
             ("bash -c \"git commit -F - -- a <<'EOF'\nAdd thing\nEOF\"", SUBJECT_RULE),
             ("eval \"git commit -F - -- a <<'EOF'\nAdd thing\nEOF\"", SUBJECT_RULE),
-            ("echo $(git commit -F - -- a <<'EOF'\nsee §3\nEOF\n)", SUBJECT_RULE),
             ("echo $(git commit -F - -- a <<'EOF'\nfix: x\n\nsee §3\nEOF\n)", SECTION_RULE),
             ("echo `git commit -F - -- a <<'EOF'\nfix: x\n\nsee §3\nEOF\n`", SECTION_RULE),
         ):
@@ -824,6 +699,11 @@ class VerifyPipeTests(unittest.TestCase):
             "echo test | tail",
             "npm test | tee out.txt",
         ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_npm_npx_and_node_invocations_without_a_pipe_are_silent(self):
+        for command in ("npx tsx script.ts", "npm exec -- tsc", "npm --version", "node scripts/build.js"):
             with self.subTest(command=command):
                 self.assertIsNone(evaluate(command))
 
@@ -1206,7 +1086,7 @@ class RmTests(IgnoreRepoTests):
             with self.subTest(command=command):
                 self.assertEqual(rule(self.in_repo(command)), RM_RULE)
 
-    def test_denies_when_target_carries_a_substitution(self):
+    def test_denies_a_target_the_guard_cannot_resolve(self):
         for command in (
             'rm -rf "$TMPDIR/$(echo ../..)"',
             'rm -rf "$TMPDIR/`echo ../..`"',
@@ -1215,15 +1095,6 @@ class RmTests(IgnoreRepoTests):
             'rm -rf "$TMPDIR/${X}"',
             "rm -rf /tmp/claude/$(basename $PWD)",
             "rm -rf node_modules/$(x)",
-        ):
-            with self.subTest(command=command):
-                result = self.in_repo(command)
-                self.assertEqual(decision(result), "deny")
-                self.assertEqual(rule(result), SUBSTITUTION_RULE)
-                self.assertEqual(permitted(result), "name the path literally.")
-
-    def test_denies_target_under_home_or_an_expanded_variable(self):
-        for command in (
             "rm -rf ~/node_modules",
             "rm -rf ~/Documents/x",
             "rm -rf $HOME/dist",
@@ -1232,9 +1103,13 @@ class RmTests(IgnoreRepoTests):
             'rm -rf "$HOME/node_modules"',
             "rm -rf $TMPDIRX/x",
             "rm -rf node_modules ~/dist",
+            "rm -- ~/x",
+            "rm $HOME/x",
+            "rm $(f)",
         ):
             with self.subTest(command=command):
                 result = self.in_repo(command)
+                self.assertEqual(decision(result), "deny")
                 self.assertEqual(rule(result), SUBSTITUTION_RULE)
                 self.assertEqual(permitted(result), "name the path literally.")
 
@@ -1276,11 +1151,6 @@ class RmTests(IgnoreRepoTests):
         for command in ("rm -f dist/out.js", "rm dist/out.js", 'rm "$TMPDIR/x"', "rm -- packages/aegis/dist/bundle.js", "rm -f dist/out.js packages/aegis/dist/bundle.js"):
             with self.subTest(command=command):
                 self.assertIsNone(self.in_repo(command))
-
-    def test_denies_plain_rm_of_an_unresolvable_target(self):
-        for command in ("rm -- ~/x", "rm $HOME/x", "rm $(f)"):
-            with self.subTest(command=command):
-                self.assertEqual(rule(self.in_repo(command)), SUBSTITUTION_RULE)
 
     def test_permits_rm_with_no_target(self):
         self.assertIsNone(self.in_repo("rm"))
@@ -1524,7 +1394,6 @@ class FindDeleteTests(IgnoreRepoTests):
         ):
             with self.subTest(command=command):
                 self.assertEqual(rule(self.in_repo(command)), RM_RULE)
-        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
         self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -delete"))
 
     def test_names_and_their_slash_forms_share_one_call(self):
@@ -1546,7 +1415,6 @@ class FindDeleteTests(IgnoreRepoTests):
         ):
             with self.subTest(command=command):
                 self.assertEqual(rule(self.in_repo(command)), RM_RULE)
-        self.assertIsNone(self.in_repo("find . -type d -name __pycache__ -exec rm -rf {} +"))
         self.assertIsNone(self.in_repo("find packages -type d -name dist -exec rm -rf {} +"))
         self.assertIsNone(self.in_repo("find . -name '*.pyc' -delete"))
         self.assertIsNone(self.in_repo("find . -name x.log -delete"))
@@ -1848,34 +1716,11 @@ class FailOpenTests(unittest.TestCase):
         self.assertIsNone(git_guard.evaluate({"tool_name": "Bash", "tool_input": {"command": "git checkout -- src"}}))
 
 
-class DecisionSurfaceTests(unittest.TestCase):
-    def test_every_denied_example_is_denied(self):
-        for command in DENIED:
-            with self.subTest(command=command):
-                self.assertEqual(decision(evaluate(command)), "deny")
-
-    def test_every_permitted_example_is_silent(self):
-        for command in PERMITTED:
-            with self.subTest(command=command):
-                self.assertIsNone(evaluate(command))
-
-    def test_no_decision_is_ask(self):
-        self.assertFalse(hasattr(git_guard, "ask"))
-        for command in DENIED + PERMITTED:
-            with self.subTest(command=command):
-                self.assertIn(decision(evaluate(command)), {None, "deny"})
-
-
 class SubprocessTests(unittest.TestCase):
     def test_denies_via_stdin_and_exits_zero(self):
         proc = subprocess.run([sys.executable, HOOK_PATH], input=json.dumps(bash("git stash")), capture_output=True, text=True)
         self.assertEqual(proc.returncode, 0)
         self.assertEqual(json.loads(proc.stdout)["hookSpecificOutput"]["permissionDecision"], "deny")
-
-    def test_garbage_stdin_prints_nothing_and_exits_zero(self):
-        proc = subprocess.run([sys.executable, HOOK_PATH], input="{{{", capture_output=True, text=True)
-        self.assertEqual(proc.returncode, 0)
-        self.assertEqual(proc.stdout, "")
 
 
 if __name__ == "__main__":

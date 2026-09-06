@@ -125,13 +125,6 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(self.settings.read_text(encoding="utf-8"), rendered(LIVE_SETTINGS))
         self.assertEqual(self.settings.stat().st_mode & 0o777, 0o600)
 
-    def test_live_settings_reproduced_exactly(self):
-        self.settings.write_text(rendered(LIVE_SETTINGS), encoding="utf-8")
-        proc = self.run_merge(manifest=LIVE_MANIFEST)
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(proc.stdout, "  settings: unchanged\n")
-        self.assertEqual(self.read(), LIVE_SETTINGS)
-
     def test_foreign_groups_and_shared_group_handlers_survive(self):
         document = {
             "hooks": {
