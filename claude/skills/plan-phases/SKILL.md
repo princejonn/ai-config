@@ -5,8 +5,6 @@ description: "Turns a design, feature request or refactor into a phased, verifia
 
 # Plan
 
-Read-only: this skill writes nothing but the plan.
-
 ## Input
 
 The brief takes the shape `rules/brief.md` defines, and adds the design when there is one and the deliverable wanted — a phased plan.
@@ -30,7 +28,7 @@ The brief takes the shape `rules/brief.md` defines, and adds the design when the
 ## Output
 
 - **Goal and constraints** — in a few sentences.
-- **Current code** — every claim about what exists today cites `file:line`. A claim without a citation is not made.
+- **Current code** — as `design-surface` § Output directs.
 - **Phases** — for each: scope, files touched, dependencies on earlier phases, invariants, stop conditions, and the verification command.
 - **Risks and unknowns** — with the question each one needs answered.
 - **Deferred** — what is deliberately out of scope and why.

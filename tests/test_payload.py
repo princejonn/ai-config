@@ -79,6 +79,11 @@ ONE_HOME_PHRASES = {
     "a decision not made": "claude/rules/brief.md",
     "Unclear in the brief": "claude/rules/brief.md",
     "copy it aside": "claude/skills/test/SKILL.md",
+    "the brief or the specification": "claude/skills/test/SKILL.md",
+    "serialisation, formatter or summary can hide the defect under test": "claude/skills/test/SKILL.md",
+    "never an action not performed": "claude/rules/brief.md",
+    "anything inferred rather than run": "claude/rules/brief.md",
+    "every claim about what exists today cites": "claude/skills/design-surface/SKILL.md",
     "root cause": "claude/skills/root-cause/SKILL.md",
     "decorrelation": "claude/skills/second-opinion/SKILL.md",
     "the brief is incomplete and the question is above": "claude/skills/review-change/SKILL.md",
@@ -98,12 +103,15 @@ ONE_HOME_PHRASES = {
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
     "carries no orchestration": "claude/skills/author-skill/SKILL.md",
 }
-ABSENT_PHRASES = (
-    "@lindorm",
-    "exhaustive over intent",
-    "The tree is not yours",
-    "returned to the orchestrator verbatim",
-)
+ABSENT_PHRASES = {
+    "@lindorm": CLAUDE,
+    "exhaustive over intent": CLAUDE,
+    "The tree is not yours": CLAUDE,
+    "returned to the orchestrator verbatim": CLAUDE,
+    "Expected values traceable to the brief or spec": SKILLS,
+    "this skill writes nothing but": SKILLS,
+    "Never describe an action you did not perform": SKILLS,
+}
 
 MEANING_CHANGE_EXAMPLES = "or the meaning of one (what an operator does, which boundary a predicate uses, whether a value counts as absent)"
 EXPECTED_VALUES_RATIONALE = "a suite derived from the implementation stays green when the implementation is wrong"
@@ -417,10 +425,15 @@ class OneHomeTest(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertEqual(phrase_homes(phrase), {home})
 
-    def test_each_absent_phrase_occurs_nowhere_in_payload(self):
-        for phrase in ABSENT_PHRASES:
+    def test_each_absent_phrase_occurs_nowhere_in_the_tree_that_bars_it(self):
+        for phrase, tree in ABSENT_PHRASES.items():
             with self.subTest(phrase=phrase):
-                self.assertEqual(phrase_homes(phrase), set())
+                self.assertEqual(phrase_homes(phrase, tree), set())
+
+    def test_phrase_homes_filters_by_the_tree_it_is_given(self):
+        phrase = "never an action not performed"
+        self.assertEqual(phrase_homes(phrase, SKILLS), set())
+        self.assertEqual(phrase_homes(phrase, CLAUDE), {"claude/rules/brief.md"})
 
 
 class DescriptionsTest(unittest.TestCase):
@@ -536,8 +549,8 @@ class DeliverReferencesTest(unittest.TestCase):
                 self.assertIn(f"references/{name}", body)
 
 
-def phrase_homes(phrase):
-    return {str(p.relative_to(REPO)) for p in payload_files() if phrase in read(p)}
+def phrase_homes(phrase, tree=CLAUDE):
+    return {str(p.relative_to(REPO)) for p in payload_files() if p.is_relative_to(tree) and phrase in read(p)}
 
 
 def assert_description(case, description):

@@ -23,8 +23,7 @@ The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and add
 
 **Layer 2 — test honesty.** Tests assert *intended* behaviour, not *observed* behaviour. A test that encodes a bug hides it.
 - **The revert test, on every test in scope: would it still pass if its subject were reverted?** Reason it through from the assertions and say so — you do not mutate the tree. A blind test is a finding.
-- Failure modes covered, not just happy paths. Expected values traceable to the brief or spec, not to the implementation.
-- Assert on the thing, not on a rendering of it — a serialisation, formatter or summary can hide the defect under test.
+- Failure modes covered, not just happy paths; expected values and assertion targets as `test` § Principles directs.
 
 **Layer 3 — does the code explain itself?**
 - A comment doing a **name's**, a **type's** or a **test name's** job is a finding against the code — say which rename, type or test name replaces it.

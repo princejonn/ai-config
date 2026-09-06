@@ -42,4 +42,4 @@ Done requires the new or changed tests green, then the surrounding suite for the
 
 ## Output
 
-The report per `rules/brief.md`, plus: what is covered (test names); red-before-green evidence per test (failing name + assertion, and the method used); gaps that remain; bugs in the code under test that testing surfaced; and that the tests conform to the instruction files read, or where they deviate and why. Mark anything inferred rather than run as inferred.
+The report per `rules/brief.md`, plus: what is covered (test names); red-before-green evidence per test (failing name + assertion, and the method used); gaps that remain; bugs in the code under test that testing surfaced; and that the tests conform to the instruction files read, or where they deviate and why.

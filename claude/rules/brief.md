@@ -19,4 +19,4 @@ A detail omitted is a decision not made: the writer leaves none open, the reader
 
 ## Report
 
-The agent's report carries, whatever else the skill adds: Files changed; Verification — the command and the runner's own summary line, or "none run"; Instructions read — the paths; Unclear in the brief; Left open — what the brief asked for and is not delivered.
+The agent's report carries, whatever else the skill adds: Files changed; Verification — the command and the runner's own summary line, or "none run"; Instructions read — the paths; Unclear in the brief; Left open — what the brief asked for and is not delivered. Report only what was done: never an action not performed or a result not measured; anything inferred rather than run is marked inferred.

@@ -5,8 +5,6 @@ description: "Produces a design and trade-off analysis inline with the user — 
 
 # Design
 
-Read-only: this skill writes nothing but the design.
-
 ## Input
 
 The brief takes the shape `rules/brief.md` defines, and adds the binding constraints (scale, consistency, operational reality) and the deliverable wanted — a design or a comparison.

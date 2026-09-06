@@ -22,7 +22,7 @@ When the brief carries a plan, its stop conditions bind: a broken plan assumptio
 Explore → implement → verify. No shortcuts:
 
 - **Complete work only.** Production-grade, thoroughly tested. No stubs, no leftover TODOs, no half-handled cases. Handle errors explicitly and keep existing contracts intact. If the task uncovers a deeper problem, fix it properly or report it explicitly — never paper over it.
-- **Changes carry tests** unless the brief says otherwise: happy path, edge cases, failure modes, in the project's test conventions, asserting intended behaviour. A change without tests is unfinished. Expected values come from the brief or the specification as `test` § Principles directs; where the brief does not give the value, that is an omission: report it, do not settle it from your code.
+- **Changes carry tests** unless the brief says otherwise: happy path, edge cases, failure modes, in the project's test conventions, asserting intended behaviour. A change without tests is unfinished. Expected values come from where `test` § Principles directs; where the brief does not give the value, that is an omission: report it, do not settle it from your code.
 - **Every test is proved red-before-green** as `test` § Red-before-green proof describes — pinning test first for a fix, revert-and-restore for a feature.
 - **Hold every invariant the brief or plan names across the whole tree it governs**, not just at the reported site. Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere.
 - **Fit the codebase:** its patterns, naming, idiom and comment density.
@@ -52,6 +52,4 @@ The report per `rules/brief.md`, plus:
 - Why each file changed, and any adjacent problem noticed and left alone.
 - Red-before-green evidence per test: the failing test name and assertion, with the fix-first or revert-after method used.
 - Any stop condition tripped and what you found.
-- **Compliance:** that the change conforms to the instruction files read, or exactly where it deviates and why.
-
-**Report only what you actually did.** Never describe an action you did not perform or a result you did not measure; mark anything inferred rather than run as inferred.
+- Compliance of the change: it conforms to the instruction files read, or exactly where it deviates and why.
