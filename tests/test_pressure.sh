@@ -1,26 +1,12 @@
 #!/bin/bash
 set -u
 
-HERE="$(cd "$(dirname "$0")" && pwd -P)"
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/ai-config-pressure-test.XXXXXX")" || exit 1
-WORK="$(cd "$WORK" && pwd -P)" || exit 1
-trap 'rm -rf "$WORK"' EXIT
+SCRATCH=ai-config-pressure-test
+. "$(dirname "$0")/lib.sh"
 
 ERR="$WORK/err"
+FAIL_DUMP="$ERR"
 PROMPT='Tidy up the labels on the open issues.'
-
-pass=0
-fail=0
-check() {
-  if [ "$1" = 0 ]; then
-    echo "PASS $2"
-    pass=$((pass + 1))
-  else
-    echo "FAIL $2"
-    cat "$ERR" >&2
-    fail=$((fail + 1))
-  fi
-}
 
 init_event() {
   printf '{"type":"system","subtype":"init","session_id":"pressure-fixture"}\n'
@@ -49,48 +35,46 @@ run_verdict() {
   status=$?
 }
 
+verdict_is() {
+  [ "$status" = 0 ]; check $? "$2 exits 0"
+  [ ! -s "$ERR" ]; check $? "$2 prints nothing on stderr"
+  [ "$verdict" = "$1" ]; check $? "$2 is $1"
+}
+
 SIBLING="$WORK/sibling.jsonl"
 { init_event; skill_event issue-write; result_event error_max_turns; } > "$SIBLING"
 run_verdict "$SIBLING" issue-next "$PROMPT"
-[ "$status" = 0 ] && [ ! -s "$ERR" ] && [ "$verdict" = no ]
-check $? "1 a Skill call naming a sibling in a stream cut at the turn cap is no"
+verdict_is no "1 a Skill call naming a sibling in a stream cut at the turn cap"
 
 SUCCEEDED="$WORK/succeeded.jsonl"
 { init_event; text_event "the labels are tidy"; result_event success; } > "$SUCCEEDED"
 run_verdict "$SUCCEEDED" issue-next "$PROMPT"
-[ "$status" = 0 ] && [ ! -s "$ERR" ] && [ "$verdict" = no ]
-check $? "2 no Skill call in a stream that ended success is no"
+verdict_is no "2 no Skill call in a stream that ended success"
 
 CUT="$WORK/cut.jsonl"
 { init_event; text_event "reading the backlog"; result_event error_max_turns; } > "$CUT"
 run_verdict "$CUT" issue-next "$PROMPT"
-[ "$status" = 0 ] && [ ! -s "$ERR" ] && [ "$verdict" = cut ]
-check $? "3 no Skill call in a stream cut at the turn cap is cut"
+verdict_is cut "3 no Skill call in a stream cut at the turn cap"
 
 FIRED="$WORK/fired.jsonl"
 { init_event; skill_event issue-next; result_event success; } > "$FIRED"
 run_verdict "$FIRED" issue-next "$PROMPT"
-[ "$status" = 0 ] && [ ! -s "$ERR" ] && [ "$verdict" = yes ]
-check $? "4 a Skill call naming the skill under test is yes"
+verdict_is yes "4 a Skill call naming the skill under test"
 
 FIRED_CUT="$WORK/fired-cut.jsonl"
 { init_event; skill_event issue-next; result_event error_max_turns; } > "$FIRED_CUT"
 run_verdict "$FIRED_CUT" issue-next "$PROMPT"
-[ "$status" = 0 ] && [ ! -s "$ERR" ] && [ "$verdict" = yes ]
-check $? "5 a Skill call naming the skill under test in a stream cut at the turn cap is yes"
+verdict_is yes "5 a Skill call naming the skill under test in a stream cut at the turn cap"
 
 SIBLING_THEN_FIRED="$WORK/sibling-then-fired.jsonl"
 { init_event; skill_event issue-write; skill_event issue-next; result_event error_max_turns; } \
   > "$SIBLING_THEN_FIRED"
 run_verdict "$SIBLING_THEN_FIRED" issue-next "$PROMPT"
-[ "$status" = 0 ] && [ ! -s "$ERR" ] && [ "$verdict" = yes ]
-check $? "6 the skill under test after a sibling in the same stream is yes"
+verdict_is yes "6 the skill under test after a sibling in the same stream"
 
 NAMELESS="$WORK/nameless.jsonl"
 { init_event; bare_skill_event; result_event error_max_turns; } > "$NAMELESS"
 run_verdict "$NAMELESS" issue-next "$PROMPT"
-[ "$status" = 0 ] && [ ! -s "$ERR" ] && [ "$verdict" = cut ]
-check $? "7 a Skill call carrying no skill name in a stream cut at the turn cap is cut"
+verdict_is cut "7 a Skill call carrying no skill name in a stream cut at the turn cap"
 
-echo "PASS $pass FAIL $fail"
-[ "$fail" = 0 ]
+summary
