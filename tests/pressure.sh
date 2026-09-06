@@ -27,7 +27,7 @@ pair commit-item \
   'show me the git status'
 pair deliver \
   'We agreed on adding a slugify helper to widget.py — take it all the way to committable code.' \
-  'Draft a plan for adding a slugify helper to widget.py; write no code.'
+  'Weigh a separator argument against a full options object for a new slugify helper — which public surface should we settle on?'
 pair design-surface \
   'Compare the option shapes and error contracts for a strict mode on render before we change the surface.' \
   'Implement the strict mode on render exactly as agreed: an empty name raises ValueError.'
@@ -57,7 +57,7 @@ pair review-change \
   'Get Codex to look at this diff.'
 pair root-cause \
   'render returns the wrong string for an empty name and the cause is not known — find it.' \
-  'Add a docstring to render in widget.py.'
+  'Prove the pinning test for render goes red before the fix.'
 pair second-opinion \
   'Get Codex to attack the premises of this plan before we accept it.' \
   'Review this change-set against its brief and tell me whether it is acceptable.'
@@ -184,12 +184,16 @@ run_prompt() {
   wait "$pid" >/dev/null 2>&1 || true
 }
 
-skill_tool_used() {
-  python3 - "$1" "$2" <<'PY'
+stream_query() {
+  python3 - "$1" "$2" "${3-}" <<'PY'
 import json
 import sys
 
-stream, skill = sys.argv[1], sys.argv[2]
+stream, question, skill = sys.argv[1], sys.argv[2], sys.argv[3]
+
+session = None
+subtype = ""
+chosen = []
 for line in open(stream, encoding="utf-8", errors="replace"):
     line = line.strip()
     if not line:
@@ -198,38 +202,15 @@ for line in open(stream, encoding="utf-8", errors="replace"):
         event = json.loads(line)
     except ValueError:
         continue
-    if event.get("type") != "assistant":
+    kind = event.get("type")
+    if kind == "system" and event.get("subtype") == "init":
+        if session is None:
+            session = event.get("session_id", "")
         continue
-    content = event.get("message", {}).get("content")
-    if not isinstance(content, list):
+    if kind == "result":
+        subtype = event.get("subtype", "")
         continue
-    for block in content:
-        if not isinstance(block, dict) or block.get("type") != "tool_use":
-            continue
-        if block.get("name") != "Skill":
-            continue
-        argument = block.get("input")
-        if isinstance(argument, dict) and argument.get("skill") == skill:
-            sys.exit(0)
-sys.exit(1)
-PY
-}
-
-other_skill_used() {
-  python3 - "$1" "$2" <<'PY'
-import json
-import sys
-
-stream, skill = sys.argv[1], sys.argv[2]
-for line in open(stream, encoding="utf-8", errors="replace"):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        event = json.loads(line)
-    except ValueError:
-        continue
-    if event.get("type") != "assistant":
+    if kind != "assistant":
         continue
     content = event.get("message", {}).get("content")
     if not isinstance(content, list):
@@ -242,55 +223,26 @@ for line in open(stream, encoding="utf-8", errors="replace"):
         argument = block.get("input")
         if not isinstance(argument, dict):
             continue
-        chosen = argument.get("skill")
-        if isinstance(chosen, str) and chosen != skill:
-            sys.exit(0)
-sys.exit(1)
-PY
-}
+        name = argument.get("skill")
+        if isinstance(name, str):
+            chosen.append(name)
 
-session_id() {
-  python3 - "$1" <<'PY'
-import json
-import sys
-
-for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        event = json.loads(line)
-    except ValueError:
-        continue
-    if event.get("type") == "system" and event.get("subtype") == "init":
-        print(event.get("session_id", ""))
-        break
-PY
-}
-
-result_subtype() {
-  python3 - "$1" <<'PY'
-import json
-import sys
-
-subtype = ""
-for line in open(sys.argv[1], encoding="utf-8", errors="replace"):
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        event = json.loads(line)
-    except ValueError:
-        continue
-    if event.get("type") == "result":
-        subtype = event.get("subtype", "")
-print(subtype)
+if question == "session-id":
+    print(session or "")
+elif question == "result-subtype":
+    print(subtype)
+elif question == "skill-used":
+    print("yes" if skill in chosen else "no")
+elif question == "other-skill-used":
+    print("yes" if [name for name in chosen if name != skill] else "no")
+else:
+    sys.exit("stream_query: unknown question %s" % question)
 PY
 }
 
 command_expanded() {
   local session transcript
-  session="$(session_id "$1")"
+  session="$(stream_query "$1" session-id)"
   [ -n "$session" ] || return 1
   transcript="$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" -maxdepth 2 -name "$session.jsonl" 2>/dev/null | head -1)"
   [ -n "$transcript" ] || return 1
@@ -301,7 +253,7 @@ fired() {
   local stream="$1" skill="$2" prompt="$3"
   case "$prompt" in
     /*) command_expanded "$stream" "$skill" ;;
-    *) skill_tool_used "$stream" "$skill" ;;
+    *) [ "$(stream_query "$stream" skill-used "$skill")" = yes ] ;;
   esac
 }
 
@@ -309,9 +261,9 @@ nofire_verdict() {
   local stream="$1" skill="$2" prompt="$3"
   if fired "$stream" "$skill" "$prompt"; then
     echo yes
-  elif other_skill_used "$stream" "$skill"; then
+  elif [ "$(stream_query "$stream" other-skill-used "$skill")" = yes ]; then
     echo no
-  elif [ "$(result_subtype "$stream")" = success ]; then
+  elif [ "$(stream_query "$stream" result-subtype)" = success ]; then
     echo no
   else
     echo cut
@@ -343,10 +295,10 @@ failed=0
 for i in "${selected[@]}"; do
   skill="${SKILL[$i]}"
   run_prompt "$STREAMS/$skill.fire.jsonl" "${FIRE[$i]}"
-  fire_result="$(result_subtype "$STREAMS/$skill.fire.jsonl")"
+  fire_result="$(stream_query "$STREAMS/$skill.fire.jsonl" result-subtype)"
   if fired "$STREAMS/$skill.fire.jsonl" "$skill" "${FIRE[$i]}"; then fire=yes; else fire=no; fi
   run_prompt "$STREAMS/$skill.nofire.jsonl" "${NOFIRE[$i]}"
-  nofire_result="$(result_subtype "$STREAMS/$skill.nofire.jsonl")"
+  nofire_result="$(stream_query "$STREAMS/$skill.nofire.jsonl" result-subtype)"
   nofire="$(nofire_verdict "$STREAMS/$skill.nofire.jsonl" "$skill" "${NOFIRE[$i]}")"
   unfinished=""
   [ -n "$fire_result" ] || unfinished="$unfinished $STREAMS/$skill.fire.jsonl.err"

@@ -7,9 +7,13 @@ SCRATCH=ai-config-pressure-test
 ERR="$WORK/err"
 FAIL_DUMP="$ERR"
 PROMPT='Tidy up the labels on the open issues.'
+SLASH_PROMPT='/commit-item'
+CONFIG="$WORK/config"
+TRANSCRIPTS="$CONFIG/projects/-tmp-widget"
+mkdir -p "$TRANSCRIPTS"
 
 init_event() {
-  printf '{"type":"system","subtype":"init","session_id":"pressure-fixture"}\n'
+  printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "${1:-pressure-fixture}"
 }
 
 text_event() {
@@ -28,10 +32,14 @@ result_event() {
   printf '{"type":"result","subtype":"%s"}\n' "$1"
 }
 
+transcript_entry() {
+  printf '{"type":"user","message":{"role":"user","content":"%s"}}\n' "$1"
+}
+
 verdict=""
 status=0
 run_verdict() {
-  verdict="$(/bin/bash "$HERE/pressure.sh" --verdict "$1" "$2" "$3" 2>"$ERR")"
+  verdict="$(CLAUDE_CONFIG_DIR="$CONFIG" /bin/bash "$HERE/pressure.sh" --verdict "$1" "$2" "$3" 2>"$ERR")"
   status=$?
 }
 
@@ -76,5 +84,17 @@ NAMELESS="$WORK/nameless.jsonl"
 { init_event; bare_skill_event; result_event error_max_turns; } > "$NAMELESS"
 run_verdict "$NAMELESS" issue-next "$PROMPT"
 verdict_is cut "7 a Skill call carrying no skill name in a stream cut at the turn cap"
+
+EXPANDED="$WORK/expanded.jsonl"
+{ init_event expanded-fixture; result_event success; } > "$EXPANDED"
+transcript_entry '<command-name>/commit-item</command-name>' > "$TRANSCRIPTS/expanded-fixture.jsonl"
+run_verdict "$EXPANDED" commit-item "$SLASH_PROMPT"
+verdict_is yes "8 a /name prompt whose session transcript carries the expanded command"
+
+UNEXPANDED="$WORK/unexpanded.jsonl"
+{ init_event unexpanded-fixture; result_event success; } > "$UNEXPANDED"
+transcript_entry 'show me the git status' > "$TRANSCRIPTS/unexpanded-fixture.jsonl"
+run_verdict "$UNEXPANDED" commit-item "$SLASH_PROMPT"
+verdict_is no "9 a /name prompt whose session transcript lacks the expanded command"
 
 summary
