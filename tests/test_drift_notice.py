@@ -22,6 +22,8 @@ IGNORED = shutil.ignore_patterns(".git", "__pycache__", ".DS_Store")
 SOURCES = ("startup", "resume", "clear", "compact")
 GARBAGE = ("", "{", "[1]", '"x"', "null")
 ABSENT = object()
+DIRECTORY = object()
+FOREIGN_TARGET = "/etc/hosts"
 SLOW_CHECK = "#!/bin/bash\n/bin/bash -c 'sleep 5; :' {token}\necho '  foreign: staged'\nexit 1\n"
 STAGED_DRIFT = "#!/bin/bash\necho '  foreign: x'\nexit 1\n"
 STUB_TIMEOUT = 0.2
@@ -32,33 +34,92 @@ def payload(source="startup"):
     return {"hook_event_name": "SessionStart", "session_id": "s", "cwd": "/tmp", "source": source}
 
 
-class LiveTreeCase(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR"))
-        self.addCleanup(self.tmp.cleanup)
-        self.base = os.path.realpath(self.tmp.name)
-        self.repo = os.path.join(self.base, "repo")
-        self.apply = os.path.join(self.repo, "apply.sh")
-        self.home = os.path.join(self.base, ".claude")
-        self.agents_skills = os.path.join(self.base, "agents-skills")
-        self.codex = os.path.join(self.base, "codex")
-        self.local_bin = os.path.join(self.base, "local-bin")
-        shutil.copytree(REPO, self.repo, ignore=IGNORED)
-        os.makedirs(self.codex)
-        self.env = {
-            "CLAUDE_CONFIG_DIR": self.home,
-            "AGENTS_SKILLS_DIR": self.agents_skills,
-            "CODEX_HOME": self.codex,
-            "CLAUDE_LOCAL_BIN": self.local_bin,
-        }
-        applied = self.run_apply()
-        self.assertEqual(applied.returncode, 0, applied.stdout + applied.stderr)
+def entry(path):
+    if os.path.islink(path):
+        return os.readlink(path)
+    if os.path.isdir(path):
+        return DIRECTORY
+    with open(path, "rb") as handle:
+        return os.stat(path).st_mode & 0o777, handle.read()
 
-    def run_apply(self, *arguments):
+
+def snapshot(base):
+    state = {}
+    for root, directories, files in os.walk(base):
+        for name in directories + files:
+            path = os.path.join(root, name)
+            state[os.path.relpath(path, base)] = entry(path)
+    return state
+
+
+def discard(path):
+    if os.path.islink(path) or os.path.isfile(path):
+        os.remove(path)
+    elif os.path.isdir(path):
+        shutil.rmtree(path)
+
+
+def create(path, state):
+    if state is DIRECTORY:
+        os.mkdir(path)
+    elif isinstance(state, str):
+        os.symlink(state, path)
+    else:
+        mode, content = state
+        with open(path, "wb") as handle:
+            handle.write(content)
+        os.chmod(path, mode)
+
+
+def restore(base, state):
+    present = snapshot(base)
+    for relative in sorted(present, reverse=True):
+        if relative not in state:
+            discard(os.path.join(base, relative))
+    for relative in sorted(state):
+        if present.get(relative) != state[relative]:
+            path = os.path.join(base, relative)
+            discard(path)
+            create(path, state[relative])
+
+
+class LiveTreeCase(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        directory = tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR"))
+        cls.addClassCleanup(directory.cleanup)
+        cls.base = os.path.realpath(directory.name)
+        cls.repo = os.path.join(cls.base, "repo")
+        cls.apply = os.path.join(cls.repo, "apply.sh")
+        cls.home = os.path.join(cls.base, ".claude")
+        cls.agents_skills = os.path.join(cls.base, "agents-skills")
+        cls.codex = os.path.join(cls.base, "codex")
+        cls.local_bin = os.path.join(cls.base, "local-bin")
+        cls.env = {
+            "CLAUDE_CONFIG_DIR": cls.home,
+            "AGENTS_SKILLS_DIR": cls.agents_skills,
+            "CODEX_HOME": cls.codex,
+            "CLAUDE_LOCAL_BIN": cls.local_bin,
+        }
+        shutil.copytree(REPO, cls.repo, ignore=IGNORED)
+        os.makedirs(cls.codex)
+        applied = cls.run_apply()
+        if applied.returncode != 0:
+            raise AssertionError(applied.stdout + applied.stderr)
+        cls.applied = snapshot(cls.base)
+
+    def setUp(self):
+        self.addCleanup(self.restore_applied_tree)
+
+    def restore_applied_tree(self):
+        restore(self.base, self.applied)
+
+    @classmethod
+    def run_apply(cls, *arguments):
         return subprocess.run(
-            ["/bin/bash", self.apply, *arguments],
-            cwd=self.repo,
-            env={**os.environ, **self.env},
+            ["/bin/bash", cls.apply, *arguments],
+            cwd=cls.repo,
+            env={**os.environ, **cls.env},
             capture_output=True,
             text=True,
         )
@@ -87,6 +148,18 @@ class LiveTreeCase(unittest.TestCase):
 
     def owned_link(self, *relative):
         return os.path.join(self.home, *relative), os.path.join(self.repo, "claude", *relative)
+
+    def foreign_symlink(self, *relative):
+        target, _ = self.owned_link(*relative)
+        os.remove(target)
+        os.symlink(FOREIGN_TARGET, target)
+        return target
+
+    def edit_agents_md(self):
+        path = os.path.join(self.codex, "AGENTS.md")
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write("\nedited by hand\n")
+        return path
 
     def write_check(self, path, text):
         with open(path, "w", encoding="utf-8") as handle:
@@ -121,9 +194,7 @@ class DriftTests(LiveTreeCase):
         self.assertEqual(self.notice(), self.expected(f"foreign: {foreign}"))
 
     def test_an_edited_agents_md_is_named_as_a_regeneration(self):
-        agents_md = os.path.join(self.codex, "AGENTS.md")
-        with open(agents_md, "a", encoding="utf-8") as handle:
-            handle.write("\nedited by hand\n")
+        agents_md = self.edit_agents_md()
         self.assertEqual(self.notice(), self.expected(f"generate: {agents_md}"))
 
     def test_a_removed_manifest_default_is_named_as_a_settings_change(self):
@@ -138,10 +209,8 @@ class DriftTests(LiveTreeCase):
                 self.assertEqual(self.notice(payload(source)), self.expected(f"link: {target} -> {link_source}"))
 
     def test_a_foreign_symlink_at_an_owned_path_is_named_as_a_conflict(self):
-        target, _ = self.owned_link("rules", "git.md")
-        os.remove(target)
-        os.symlink("/etc/hosts", target)
-        self.assertEqual(self.notice(), self.expected(f"CONFLICT: {target} (foreign symlink -> /etc/hosts)"))
+        target = self.foreign_symlink("rules", "git.md")
+        self.assertEqual(self.notice(), self.expected(f"CONFLICT: {target} (foreign symlink -> {FOREIGN_TARGET})"))
 
     def test_an_absent_codex_home_is_passed_over_for_the_settings_change(self):
         self.edit_settings(lambda document: document.pop("attribution"))
@@ -227,6 +296,67 @@ class ScriptTests(LiveTreeCase):
         self.assertEqual(out.getvalue(), "")
         self.assertLess(elapsed, KILL_DEADLINE)
         self.assert_nothing_survives(token)
+
+
+def arrange_link(case):
+    target, _ = case.owned_link("rules", "git.md")
+    os.remove(target)
+
+
+def arrange_adopt(case):
+    target, source = case.owned_link("rules", "git.md")
+    os.remove(target)
+    shutil.copy(source, target)
+
+
+def arrange_prune(case):
+    _, source = case.owned_link("agents", "reviewer.md")
+    os.remove(source)
+
+
+def arrange_foreign(case):
+    case.foreign_file()
+
+
+def arrange_generate(case):
+    case.edit_agents_md()
+
+
+def arrange_conflict(case):
+    case.foreign_symlink("rules", "git.md")
+
+
+def arrange_settings(case):
+    case.edit_settings(lambda document: document.pop("attribution"))
+
+
+ARRANGEMENTS = (
+    ("link:", arrange_link),
+    ("adopt:", arrange_adopt),
+    ("prune:", arrange_prune),
+    ("foreign:", arrange_foreign),
+    ("generate:", arrange_generate),
+    ("CONFLICT:", arrange_conflict),
+    ("settings: would change", arrange_settings),
+)
+
+
+class VocabularyTests(LiveTreeCase):
+    def test_the_hook_names_every_drift_line_the_check_prints(self):
+        for prefix, arrange in ARRANGEMENTS:
+            with self.subTest(prefix=prefix):
+                # Restoring first, not last, undoes the arrangement of a subTest that failed mid-body.
+                self.restore_applied_tree()
+                arrange(self)
+                checked = self.run_apply("--check")
+                output = checked.stdout + checked.stderr
+                printed = [line.strip() for line in output.splitlines() if line.strip().startswith(prefix)]
+                self.assertEqual(checked.returncode, 1, output)
+                self.assertEqual(len(printed), 1, output)
+                self.assertEqual(self.notice(), self.expected(printed[0]))
+
+    def test_every_prefix_the_hook_matches_has_a_check_output_fixture(self):
+        self.assertEqual(sorted(prefix for prefix, _ in ARRANGEMENTS), sorted(drift_notice.DRIFT_PREFIXES))
 
 
 if __name__ == "__main__":
