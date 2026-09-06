@@ -13,7 +13,7 @@ SPEC = importlib.util.spec_from_file_location("write_guard", HOOK_PATH)
 write_guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(write_guard)
 
-CWD = "/Users/jonn/Projects/lindorm/lindorm-monorepo"
+CWD = "/Users/someone/Projects/lindorm/lindorm-monorepo"
 PACKAGE_JSON = '{\n  "name": "x",\n  "version": "0.1.0",\n  "private": true,\n  "engines": {\n    "node": ">=24",\n    "version": "1"\n  },\n  "dependencies": {\n    "a": "0.1.0"\n  }\n}\n'
 GITIGNORE = "node_modules/\ndist/\ncoverage/\nbuild/\n"
 TRACKED = ("packages/build/src/index.ts", "docs/build/index.md")

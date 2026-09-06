@@ -34,19 +34,19 @@ MANIFEST = {
 }
 HOOKS_ONLY_MANIFEST = {"hooks": MANIFEST_HOOKS, "defaults": {}}
 
-LIVE_HOOKS_DIR = "/Users/jonn/.claude/hooks"
+LIVE_HOOKS_DIR = "/Users/someone/.claude/hooks"
 LIVE_HOOKS = {
     "PreToolUse": [
         {
             "matcher": "Bash",
             "hooks": [
-                {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/git-guard.py", "timeout": 10}
+                {"type": "command", "command": "python3 /Users/someone/.claude/hooks/git-guard.py", "timeout": 10}
             ],
         },
         {
             "matcher": "Edit|Write|NotebookEdit",
             "hooks": [
-                {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/write-guard.py", "timeout": 10}
+                {"type": "command", "command": "python3 /Users/someone/.claude/hooks/write-guard.py", "timeout": 10}
             ],
         },
     ],
@@ -54,7 +54,7 @@ LIVE_HOOKS = {
         {
             "matcher": "reviewer|verifier",
             "hooks": [
-                {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/verdict-guard.py", "timeout": 5}
+                {"type": "command", "command": "python3 /Users/someone/.claude/hooks/verdict-guard.py", "timeout": 5}
             ],
         },
     ],
@@ -62,13 +62,13 @@ LIVE_HOOKS = {
         {
             "matcher": "*",
             "hooks": [
-                {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/announce-instructions.py", "timeout": 5}
+                {"type": "command", "command": "python3 /Users/someone/.claude/hooks/announce-instructions.py", "timeout": 5}
             ],
         },
         {
             "matcher": "*",
             "hooks": [
-                {"type": "command", "command": "python3 /Users/jonn/.claude/hooks/drift-notice.py", "timeout": 10}
+                {"type": "command", "command": "python3 /Users/someone/.claude/hooks/drift-notice.py", "timeout": 10}
             ],
         },
     ],
@@ -85,14 +85,12 @@ def rendered(document):
 
 class MergeSettingsTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        self.tmp = tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR"))
+        self.addCleanup(self.tmp.cleanup)
         self.dir = Path(self.tmp.name)
         self.settings = self.dir / "settings.json"
         self.manifest = self.dir / "manifest.json"
         self.write_manifest(MANIFEST)
-
-    def tearDown(self):
-        self.tmp.cleanup()
 
     def write_manifest(self, manifest):
         self.manifest.write_text(json.dumps(manifest), encoding="utf-8")
@@ -116,6 +114,14 @@ class MergeSettingsTest(unittest.TestCase):
 
     def read(self):
         return json.loads(self.settings.read_text(encoding="utf-8"))
+
+    def assert_error(self, args=(), message=""):
+        proc = self.run_merge(*args)
+        self.assertEqual(proc.returncode, 1)
+        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        self.assertIn(message, proc.stderr)
+        self.assertNotIn("Traceback", proc.stderr)
+        return proc
 
     def test_missing_file_creates_live_hooks_and_defaults(self):
         proc = self.run_merge(manifest=LIVE_MANIFEST)
@@ -281,89 +287,63 @@ class MergeSettingsTest(unittest.TestCase):
 
     def test_allow_not_array_exits_1_and_leaves_file(self):
         self.settings.write_bytes(b'{"permissions": {"allow": "Bash(ls:*)"}}\n')
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
-        self.assertNotIn("Traceback", proc.stderr)
+        self.assert_error()
         self.assertEqual(self.settings.read_bytes(), b'{"permissions": {"allow": "Bash(ls:*)"}}\n')
 
     def test_non_object_intermediate_exits_1_and_leaves_file(self):
         self.settings.write_bytes(b'{"permissions": []}\n')
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
-        self.assertNotIn("Traceback", proc.stderr)
+        self.assert_error()
         self.assertEqual(self.settings.read_bytes(), b'{"permissions": []}\n')
 
     def test_invalid_json_exits_1_and_leaves_file(self):
         self.settings.write_bytes(b"{not json")
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        proc = self.assert_error()
         self.assertEqual(proc.stdout, "")
         self.assertEqual(self.settings.read_bytes(), b"{not json")
         self.assertEqual(sorted(os.listdir(self.dir)), ["manifest.json", "settings.json"])
 
     def test_non_object_json_exits_1_and_leaves_file(self):
         self.settings.write_bytes(b"[]\n")
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        self.assert_error()
         self.assertEqual(self.settings.read_bytes(), b"[]\n")
 
     def test_hooks_not_object_exits_1_and_leaves_file(self):
         self.settings.write_bytes(b'{"hooks": []}\n')
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        self.assert_error()
         self.assertEqual(self.settings.read_bytes(), b'{"hooks": []}\n')
 
     def test_event_not_array_exits_1_and_leaves_file(self):
         self.settings.write_bytes(b'{"hooks": {"PreToolUse": {}}}\n')
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        self.assert_error()
         self.assertEqual(self.settings.read_bytes(), b'{"hooks": {"PreToolUse": {}}}\n')
 
     def test_manifest_not_object_exits_1_and_leaves_file(self):
         self.manifest.write_bytes(b"[]\n")
         self.settings.write_bytes(b"{}\n")
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        self.assert_error()
         self.assertEqual(self.settings.read_bytes(), b"{}\n")
 
     def test_manifest_with_unknown_key_exits_1_and_names_it(self):
         self.write_manifest({**HOOKS_ONLY_MANIFEST, "env": {"FOO": "bar"}})
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
-        self.assertIn("unknown keys: env", proc.stderr)
+        self.assert_error(message="unknown keys: env")
         self.assertFalse(self.settings.exists())
 
     def test_manifest_with_neither_key_exits_1(self):
         self.write_manifest({})
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        self.assert_error()
         self.assertFalse(self.settings.exists())
 
     def test_manifest_hooks_or_defaults_not_object_exits_1(self):
         for manifest in ({"hooks": [], "defaults": {}}, {"hooks": MANIFEST_HOOKS, "defaults": []}):
             with self.subTest(manifest=manifest):
                 self.write_manifest(manifest)
-                proc = self.run_merge()
-                self.assertEqual(proc.returncode, 1)
-                self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
-                self.assertNotIn("Traceback", proc.stderr)
+                self.assert_error()
                 self.assertFalse(self.settings.exists())
 
     def test_manifest_script_with_slash_exits_1(self):
         hooks = {"PreToolUse": [{"matcher": "Bash", "script": "sub/git-guard.py", "timeout": 10}]}
         self.write_manifest({"hooks": hooks, "defaults": {}})
-        proc = self.run_merge()
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
+        self.assert_error()
         self.assertFalse(self.settings.exists())
 
     def test_unwritable_parent_exits_1_without_traceback(self):
@@ -373,11 +353,10 @@ class MergeSettingsTest(unittest.TestCase):
         parent.mkdir()
         self.settings = parent / "settings.json"
         parent.chmod(0o500)
-        proc = self.run_merge()
-        parent.chmod(0o700)
-        self.assertEqual(proc.returncode, 1)
-        self.assertTrue(proc.stderr.startswith("ERROR: "), proc.stderr)
-        self.assertNotIn("Traceback", proc.stderr)
+        try:
+            proc = self.assert_error()
+        finally:
+            parent.chmod(0o700)
         self.assertEqual(proc.stdout, "")
         self.assertEqual(os.listdir(parent), [])
 

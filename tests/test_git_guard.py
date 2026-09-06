@@ -17,7 +17,7 @@ SPEC = importlib.util.spec_from_file_location("git_guard", HOOK_PATH)
 git_guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(git_guard)
 
-MONOREPO = "/Users/jonn/Projects/lindorm/lindorm-monorepo"
+MONOREPO = "/Users/someone/Projects/lindorm/lindorm-monorepo"
 TMPDIR = "/private/tmp/claude-501/abc"
 IGNORED = "node_modules/\ndist/\ncoverage/\n*.pyc\n__pycache__/\nlink\n/build/\n*.log\n!keep.log\n**/cache/\n/**/staging/\n**/**/twice/\n"
 RM_RULE = "rm outside $TMPDIR, the scratchpad or a git-ignored path deletes work the tree cannot regenerate."
@@ -627,7 +627,7 @@ class VerifyPipeTests(unittest.TestCase):
             "make -j4 test | tail",
             "bash tests/test_apply.sh | tail -3",
             "bash ./tests/x.sh | tail",
-            "bash /Users/jonn/Projects/ai-config/tests/test_apply.sh | head",
+            "bash /Users/someone/Projects/ai-config/tests/test_apply.sh | head",
         ):
             with self.subTest(command=command):
                 result = evaluate(command)

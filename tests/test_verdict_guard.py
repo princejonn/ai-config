@@ -13,11 +13,11 @@ def stop(agent_type, message=None, stop_hook_active=False):
     payload = {
         "hook_event_name": "SubagentStop",
         "session_id": "s1",
-        "cwd": "/Users/jonn/Projects/x",
-        "transcript_path": "/Users/jonn/.claude/projects/x/s1.jsonl",
+        "cwd": "/Users/someone/Projects/x",
+        "transcript_path": "/Users/someone/.claude/projects/x/s1.jsonl",
         "agent_id": "a1",
         "agent_type": agent_type,
-        "agent_transcript_path": "/Users/jonn/.claude/projects/x/a1.jsonl",
+        "agent_transcript_path": "/Users/someone/.claude/projects/x/a1.jsonl",
         "stop_hook_active": stop_hook_active,
     }
     if message is not None:
