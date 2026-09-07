@@ -3,7 +3,7 @@ name: researcher-trivial
 description: Runs one Sonnet research lane that enumerates files, call sites and occurrences into a compact evidence memo; dispatched through /research, not invoked directly.
 color: red
 model: sonnet
-effort: high
+effort: xhigh
 tools: Read, Grep, Glob, WebFetch, WebSearch
 ---
 

@@ -304,6 +304,12 @@ class AgentsTest(unittest.TestCase):
             self.assertEqual(p.suffix, ".md", p)
         self.assertEqual({p.stem for p in agent_files()}, EXPECTED_AGENTS)
 
+    def test_every_sonnet_and_opus_agent_runs_at_xhigh_effort(self):
+        for stem, (fields, _) in agent_docs().items():
+            if fields["model"] in {"sonnet", "opus"}:
+                with self.subTest(agent=stem):
+                    self.assertEqual(fields["effort"], "xhigh")
+
     def test_frontmatter_matches_expected_table(self):
         for stem, (fields, _) in agent_docs().items():
             with self.subTest(agent=stem):
