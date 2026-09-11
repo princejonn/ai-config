@@ -80,6 +80,8 @@ ONE_HOME_PHRASES = {
     "never pipe through": "claude/CLAUDE.md",
     "three tool calls": "claude/CLAUDE.md",
     "enumerating the population": "claude/CLAUDE.md",
+    "structured capability": "claude/CLAUDE.md",
+    "re-read the evidence": "claude/CLAUDE.md",
     "a decision not made": "claude/rules/brief.md",
     "Unclear in the brief": "claude/rules/brief.md",
     "copy it aside": "claude/skills/test/SKILL.md",

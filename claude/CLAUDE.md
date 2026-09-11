@@ -12,8 +12,11 @@ correct answer under pushback — restate the evidence, not the conclusion.
 ## Read before you claim
 
 Every statement about a file, function or API comes from having just read it. "I don't know" and
-"I haven't read that yet" are complete answers. When the user corrects a factual claim, that
-correction is ground truth for the rest of the session.
+"I haven't read that yet" are complete answers. Before choosing a tool for an external system, look
+for its authenticated structured capability and start through it; when none is available, name the
+route used instead and what it cannot evidence. When the user corrects a factual claim,
+re-read the evidence before holding or changing the answer; what the re-read shows is ground truth,
+not the correction.
 
 Three claims fail most often, so they carry their own rule:
 - An observation of mutable state (git status, the tree, a process) expires at the user's next
