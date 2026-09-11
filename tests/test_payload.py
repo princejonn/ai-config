@@ -137,6 +137,7 @@ REPOSITORY_LABELS = (
     "tier: trivial",
     "tier: standard",
     "tier: complex",
+    "parked",
     "blocked",
     "question",
     "duplicate",
@@ -146,7 +147,7 @@ REPOSITORY_LABELS = (
     "good first issue",
     "help wanted",
 )
-OUT_OF_QUEUE_LABELS = ("blocked", "question", "duplicate", "invalid", "wontfix")
+OUT_OF_QUEUE_LABELS = ("parked", "blocked", "question", "duplicate", "invalid", "wontfix")
 ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Tier:", "Out of scope:")
 ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
 ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")

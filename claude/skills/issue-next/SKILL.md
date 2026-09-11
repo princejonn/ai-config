@@ -25,7 +25,7 @@ Walk the sorted list from the top and stop at the first item § Skip lets throug
 
 ## Skip
 
-- An open item carrying `blocked`, `question`, `duplicate`, `invalid` or `wontfix` is out of the queue: skipped and reported with the label that skipped it, before any dependency is checked.
+- An open item carrying `parked`, `blocked`, `question`, `duplicate`, `invalid` or `wontfix` is out of the queue: skipped and reported with the label that skipped it, before any dependency is checked.
 - An item whose § Related carries a dependency line in the form `issue-write` § Shape gives: check each number it names with `gh issue view <N> --json state`. One still open skips the item, reported with the number that skipped it; a closed one does not block, and a note line is not a dependency. A number the view cannot resolve (exit 1, `Could not resolve`) does not block either: it is reported beside the winner as a malformed dependency line.
 - The item that survives, when it carries no § Acceptance section: return `BLOCKED` with the sentence `issue-write` would need — the scenario and the exact result it must produce — and stop. The item is repaired before anything is dispatched.
 
