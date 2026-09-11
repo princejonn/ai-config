@@ -16,7 +16,7 @@ A tier classifies an item's risk, never its file count: a one-line authorization
 
 ## Review placement
 
-Deterministic checks — tests, types, lint — run at every tier. Complex: a `reviewer` per item. Trivial and standard: one batched `reviewer` over the integrated diff, which also covers the cross-item interaction no per-item review sees.
+Deterministic checks — tests, types, lint — run at every tier. Complex: a `reviewer-complex` per item. Trivial and standard: one batched `reviewer` over the integrated diff, which also covers the cross-item interaction no per-item review sees.
 
 ## Fixes
 
@@ -24,11 +24,11 @@ A fix inherits the tier of the code it touches, runs in a fresh agent window wit
 
 ## Routing (Claude Code)
 
-| Tier | Agent |
-|---|---|
-| `trivial` | `developer-trivial` |
-| `standard` | `developer-standard` |
-| `complex` | `developer-complex` |
+| Tier | Developer | Reviewer |
+|---|---|---|
+| `trivial` | `developer-trivial` | `reviewer` |
+| `standard` | `developer-standard` | `reviewer` |
+| `complex` | `developer-complex` | `reviewer-complex` |
 
 ## Research routing (Claude Code)
 

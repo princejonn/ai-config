@@ -71,10 +71,32 @@ SKILLS_WITH_INPUT = {"design-surface", "implement", "issue-next", "issue-triage"
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_AGENTS = {"developer-trivial", "developer-standard", "developer-complex"}
 RESEARCHER_AGENTS = {"researcher-trivial", "researcher-complex"}
-EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "root-cause"] for name in DEVELOPER_AGENTS}, "tester": ["test"]}
-EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "tester", "verifier"}
-FORK_ONLY_AGENTS = {"researcher-trivial", "researcher-complex", "reviewer", "verifier"}
+EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "root-cause"] for name in DEVELOPER_AGENTS}, "tester": ["test"], "reviewer-complex": ["review-change"]}
+EXPECTED_AGENT_MODELS = {
+    "developer-trivial": "sonnet",
+    "developer-standard": "opus",
+    "developer-complex": "fable",
+    "researcher-trivial": "sonnet",
+    "researcher-complex": "fable",
+    "reviewer": "opus",
+    "reviewer-complex": "fable",
+    "tester": "opus",
+    "verifier": "opus",
+}
+EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
+ROUTED_ONLY_AGENTS = {"researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
 RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
+CIRCUIT_BREAKER_PASSAGES = (
+    "re-tiers",
+    "`reviewer-complex`",
+    "a defect trip re-tiers the item whose fixes carried the defect",
+    "a disagreement trip at any tier, end the run",
+)
+TIER_ROUTING_ROWS = (
+    "| `trivial` | `developer-trivial` | `reviewer` |",
+    "| `standard` | `developer-standard` | `reviewer` |",
+    "| `complex` | `developer-complex` | `reviewer-complex` |",
+)
 
 ONE_HOME_PHRASES = {
     "never pipe through": "claude/CLAUDE.md",
@@ -308,6 +330,11 @@ class AgentsTest(unittest.TestCase):
             self.assertEqual(p.suffix, ".md", p)
         self.assertEqual({p.stem for p in agent_files()}, EXPECTED_AGENTS)
 
+    def test_every_agent_runs_the_model_it_is_pinned_to(self):
+        for stem, (fields, _) in agent_docs().items():
+            with self.subTest(agent=stem):
+                self.assertEqual(fields["model"], EXPECTED_AGENT_MODELS[stem])
+
     def test_every_sonnet_and_opus_agent_runs_at_xhigh_effort(self):
         for stem, (fields, _) in agent_docs().items():
             if fields["model"] in {"sonnet", "opus"}:
@@ -328,9 +355,9 @@ class AgentsTest(unittest.TestCase):
                 if stem in EXPECTED_AGENT_SKILLS:
                     self.assertEqual(fields["skills"], EXPECTED_AGENT_SKILLS[stem])
 
-    def test_fork_only_agent_description_is_one_sentence_under_200_characters(self):
+    def test_each_routed_only_agent_description_is_one_sentence_under_200_characters(self):
         docs = agent_docs()
-        for stem in FORK_ONLY_AGENTS:
+        for stem in ROUTED_ONLY_AGENTS:
             with self.subTest(agent=stem):
                 description = docs[stem][0]["description"]
                 self.assertLess(len(description), 200)
@@ -422,6 +449,9 @@ class ClaudeMdTest(unittest.TestCase):
         for skill in skill_dirs():
             with self.subTest(skill=skill.name):
                 self.assertEqual(body.count(f"| `{skill.name}` |"), 1)
+
+    def test_built_in_agent_types_are_dispatched_with_opus(self):
+        self.assertIn("a built-in agent type inherits the session's model, so pass `model: opus`", re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
 
     def test_real_tree_render_has_no_line_with_forks_into_or_select_tool_and_keeps_verify_then_claim(self):
         rendered = render_agents_md.render(CLAUDE / "CLAUDE.md", RULES)
@@ -534,6 +564,13 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertEqual(body.count("gh issue list"), 1)
         self.assertIn("gh issue list", section(body, "Duplicate"))
 
+    def test_deliver_rounds_name_both_review_routes_and_point_at_tiers(self):
+        _, body = skill_docs()["deliver"]
+        rounds = section(body, "Rounds")
+        for passage in ("`reviewer` through `/review-change`", "`reviewer-complex` dispatched by the chat", "`references/tiers.md`"):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, rounds)
+
     def test_research_complex_points_at_research_and_restates_none_of_its_procedure(self):
         docs = skill_docs()
         _, research = docs["research"]
@@ -559,6 +596,18 @@ class DeliverReferencesTest(unittest.TestCase):
             with self.subTest(reference=name):
                 self.assertTrue((SKILLS / "deliver" / "references" / name).is_file())
                 self.assertIn(f"references/{name}", body)
+
+    def test_tier_routing_pairs_each_developer_with_the_reviewer_that_reviews_its_items(self):
+        tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
+        for row in TIER_ROUTING_ROWS:
+            with self.subTest(row=row):
+                self.assertEqual(tiers.count(row), 1)
+
+    def test_circuit_breaker_re_tiers_a_defect_trip_and_ends_the_run_on_a_disagreement(self):
+        bullet = next(line for line in read(SKILLS / "deliver" / "references" / "review-loop.md").splitlines() if line.startswith("- **Circuit breaker.**"))
+        for passage in CIRCUIT_BREAKER_PASSAGES:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, bullet)
 
 
 def phrase_homes(phrase, tree=CLAUDE):

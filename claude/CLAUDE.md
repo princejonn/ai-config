@@ -34,7 +34,7 @@ brief — a search whose hits are read, a suite run, a dependency source read. T
 passage; this chat judges it. A skill is the procedure; an agent runs one and returns the
 deliverable in the message — compact, complete, never a raw log. When capacity is limited, narrow
 scope, never method. The repo's agents pin `model` and `effort`, so they spawn bare; a built-in
-agent type inherits the session's model, so pass `model` explicitly.
+agent type inherits the session's model, so pass `model: opus`.
 
 | Skill | Fires when |
 |---|---|

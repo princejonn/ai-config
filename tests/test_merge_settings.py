@@ -15,7 +15,7 @@ MANIFEST_HOOKS = {
         {"matcher": "Bash", "script": "git-guard.py", "timeout": 10},
         {"matcher": "Edit|Write|NotebookEdit", "script": "write-guard.py", "timeout": 10},
     ],
-    "SubagentStop": [{"matcher": "reviewer|verifier", "script": "verdict-guard.py", "timeout": 5}],
+    "SubagentStop": [{"matcher": "reviewer|reviewer-complex|verifier", "script": "verdict-guard.py", "timeout": 5}],
     "SessionStart": [
         {"matcher": "*", "script": "announce-instructions.py", "timeout": 5},
         {"matcher": "*", "script": "drift-notice.py", "timeout": 10},
@@ -52,7 +52,7 @@ LIVE_HOOKS = {
     ],
     "SubagentStop": [
         {
-            "matcher": "reviewer|verifier",
+            "matcher": "reviewer|reviewer-complex|verifier",
             "hooks": [
                 {"type": "command", "command": "python3 /Users/someone/.claude/hooks/verdict-guard.py", "timeout": 5}
             ],

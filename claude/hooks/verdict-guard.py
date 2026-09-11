@@ -23,8 +23,11 @@ def states_verdict(message, tokens):
     return any(re.search(BEFORE + re.escape(token) + AFTER, plain, re.MULTILINE) for token in tokens)
 
 
+REVIEWER = (("ACCEPTED", "NOT ACCEPTED", "BLOCKED"), ends_with_verdict, "reviewer output must end with ACCEPTED, NOT ACCEPTED or BLOCKED")
+
 VERDICTS = {
-    "reviewer": (("ACCEPTED", "NOT ACCEPTED", "BLOCKED"), ends_with_verdict, "reviewer output must end with ACCEPTED, NOT ACCEPTED or BLOCKED"),
+    "reviewer": REVIEWER,
+    "reviewer-complex": REVIEWER,
     "verifier": (("VERIFIED", "DISPROVEN", "UNVERIFIABLE"), states_verdict, "verifier output must state VERIFIED, DISPROVEN or UNVERIFIABLE per claim"),
 }
 

@@ -105,6 +105,14 @@ class ReviewerVerdictTests(unittest.TestCase):
         self.assertEqual(outcome(run(json.dumps(payload))), (2, "", REVIEWER_FAILURE))
 
 
+class ReviewerComplexVerdictTests(unittest.TestCase):
+    def test_verifier_verdict_is_not_a_reviewer_complex_verdict(self):
+        self.assertEqual(outcome(run(stop("reviewer-complex", "VERIFIED"))), (2, "", REVIEWER_FAILURE))
+
+    def test_a_transcript_without_a_verdict_sends_the_reviewer_complex_back(self):
+        self.assertEqual(outcome(run(stop("reviewer-complex", "The fixes look fine."))), (2, "", REVIEWER_FAILURE))
+
+
 class VerifierVerdictTests(unittest.TestCase):
     def test_each_verdict_lets_the_verifier_stop(self):
         for token in ("VERIFIED", "DISPROVEN", "UNVERIFIABLE"):

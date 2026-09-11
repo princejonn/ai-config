@@ -2,8 +2,8 @@
 name: verifier
 description: Checks one load-bearing claim, or a small coupled set, against falsifying evidence, returning VERIFIED, DISPROVEN or UNVERIFIABLE; dispatched through /verify-claim, not invoked directly.
 color: green
-model: fable
-effort: high
+model: opus
+effort: xhigh
 tools: Bash, Read, Grep, Glob, WebFetch, WebSearch
 ---
 

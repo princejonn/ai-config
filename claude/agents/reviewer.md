@@ -2,8 +2,8 @@
 name: reviewer
 description: Reviews a diff, feature or subsystem for correctness, quality, security and test honesty, returning a numbered fix list and a verdict; dispatched through /review-change, not invoked directly.
 color: yellow
-model: fable
-effort: high
+model: opus
+effort: xhigh
 tools: Bash, Read, Grep, Glob
 ---
 
