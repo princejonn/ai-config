@@ -148,6 +148,11 @@ PINNING_TEST_FIRST = "Write the test, run it against the tree with no source fil
 COPY_ASIDE_ONLY_WHEN_FIX_PRESENT = "only when the fix is already in the tree"
 STAGED_FAILURE_WARNING = "A failure staged afterwards by reverting does not count: the helpers and structure the fix introduced stay standing, so what fails is one line's sensitivity, not the defect."
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
+CHANGE_SET_PER_COMMIT = "One commit per accepted change-set through `/commit-item`; an item may land in several, each reviewed"
+CLOSE_AFTER_PUSH = 'the issue closes after that commit is pushed, never before: pushed to the default branch, GitHub closes it; pushed to another branch, `gh issue close N --comment "<hash> <subject>"` runs once the push succeeds.'
+COMPLETING_COMMIT_FOOTER = "`Closes #N` only on the commit that completes the item, `Refs #N` on a change-set that leaves it open"
+COMPLETES_THE_ITEM_INPUT = "The brief says whether this change-set completes the item; unsaid, the footer is `Refs #N`."
+COMMIT_PUSH_CLOSE = "The order is commit, push, close, per `rules/git.md`"
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
 REPOSITORY_LABELS = (
@@ -423,6 +428,13 @@ class BriefRuleTest(unittest.TestCase):
                 self.assertEqual(text.count(label), 1)
 
 
+class GitRuleTest(unittest.TestCase):
+    def test_an_item_may_land_in_several_reviewed_commits_and_its_issue_closes_after_the_push(self):
+        text = re.sub(r"\s+", " ", read(RULES / "git.md"))
+        self.assertIn(CHANGE_SET_PER_COMMIT, text)
+        self.assertIn(CLOSE_AFTER_PUSH, text)
+
+
 class HooksTest(unittest.TestCase):
     def test_manifest_top_level_keys_are_exactly_hooks_and_defaults(self):
         self.assertEqual(set(json.loads(read(MANIFEST))), {"hooks", "defaults"})
@@ -570,6 +582,17 @@ class SkillPassagesTest(unittest.TestCase):
         for passage in ("`reviewer` through `/review-change`", "`reviewer-complex` dispatched by the chat", "`references/tiers.md`"):
             with self.subTest(passage=passage):
                 self.assertIn(passage, rounds)
+
+    def test_commit_item_footers_the_completing_commit_and_closes_no_issue_itself(self):
+        fields, body = skill_docs()["commit-item"]
+        self.assertNotIn("close", fields["description"].lower())
+        self.assertNotIn("gh issue close", body)
+        self.assertIn(COMPLETING_COMMIT_FOOTER, section(body, "Steps"))
+        self.assertIn(COMPLETES_THE_ITEM_INPUT, section(body, "Preconditions"))
+
+    def test_deliver_before_commit_orders_commit_push_close_by_the_git_rule(self):
+        _, body = skill_docs()["deliver"]
+        self.assertIn(COMMIT_PUSH_CLOSE, section(body, "Before commit"))
 
     def test_research_complex_points_at_research_and_restates_none_of_its_procedure(self):
         docs = skill_docs()

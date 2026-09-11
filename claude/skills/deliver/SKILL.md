@@ -50,4 +50,4 @@ Parallel developers run in separate git worktrees (`isolation: worktree` on the 
 
 ## Before commit
 
-An accepted review is not a passed gate: verify the load-bearing claims yourself, then run `/commit-item` for the item. Only the circuit breaker, an open deviation entry and a commit without a tracker reference wait on the user.
+An accepted review is not a passed gate: verify the load-bearing claims yourself, then run `/commit-item` for the item. The order is commit, push, close, per `rules/git.md`. Only the circuit breaker, an open deviation entry and a commit without a tracker reference wait on the user.
