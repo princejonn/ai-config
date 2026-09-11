@@ -7,7 +7,7 @@ description: "Finds the root cause of a defect before any fix — a reproducer f
 
 ## Rule
 
-No fix without a root cause shown by a reproducer. A fix that makes the symptom go away without a named mechanism is a guess, and a guess that passes is the most expensive kind.
+No fix without a root cause shown by a reproducer, or a probable factor the brief's Decisions made accepts. A fix that makes the symptom go away without a named mechanism is a guess, and a guess that passes is the most expensive kind.
 
 ## Reproduce
 
@@ -17,14 +17,14 @@ No fix without a root cause shown by a reproducer. A fix that makes the symptom 
 
 ## Hypothesise
 
-- List three to five candidate mechanisms, each with the observation that would falsify it.
+- List as many candidate mechanisms as the reproducer discriminates, at least two, each with the observation that would falsify it.
 - Rank by how cheap that observation is, not by how likely the mechanism feels.
 
 ## Instrument
 
 - Change one variable at a time.
 - Read the actual output from a file, never a summary of it.
-- A hypothesis survives only its falsification test; a surviving one is stated as `file:line` plus mechanism.
+- A hypothesis survives only its falsification test. A survivor discriminated from every material alternative is the cause, named as `file:line` plus mechanism; a survivor not discriminated from a material alternative is a probable factor, named with that alternative and the uncertainty that remains.
 
 ## Stop rule
 
@@ -33,12 +33,12 @@ After two failed fixes, return to Reproduce: the model of the system is wrong, n
 ## Hand-off
 
 - The reproducer becomes the pinning test (see the test skill's red-before-green proof).
-- The cause goes into the brief for implement.
+- The cause goes into the brief for implement; a probable factor goes in marked as such.
 - Instrumentation is removed before hand-off.
 
 ## Output
 
-- Cause as `file:line` and mechanism.
+- The grade: cause or probable factor, named as § Instrument directs.
 - The reproducer command.
 - Hypotheses falsified and by what.
 - The pinning test name.

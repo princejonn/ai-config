@@ -9,7 +9,7 @@ description: "Implements one defined code change in any language — feature, re
 
 The brief takes the shape `rules/brief.md` defines. Add no restriction, validation, contract, or capability beyond what the brief, the repository's instruction files, or the language and its libraries require.
 
-When the brief carries a plan, its stop conditions bind: a broken plan assumption means stop and return with what you found, never an improvised workaround. A complex-tier brief without a plan is a blocking omission.
+When the brief carries a plan, its stop conditions bind: a broken plan assumption means stop and return with what you found, never an improvised workaround. A complex-tier brief without a plan is a blocking omission. When the brief grades its cause a probable factor, build on it only where Decisions made says so; otherwise that is a blocking omission.
 
 ## Grounding
 

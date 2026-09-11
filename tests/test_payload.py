@@ -91,6 +91,7 @@ ONE_HOME_PHRASES = {
     "anything inferred rather than run": "claude/rules/brief.md",
     "every claim about what exists today cites": "claude/skills/design-surface/SKILL.md",
     "root cause": "claude/skills/root-cause/SKILL.md",
+    "not discriminated from a material alternative": "claude/skills/root-cause/SKILL.md",
     "decorrelation": "claude/skills/second-opinion/SKILL.md",
     "the brief is incomplete and the question is above": "claude/skills/review-change/SKILL.md",
     "it is not a round": "claude/skills/deliver/SKILL.md",
