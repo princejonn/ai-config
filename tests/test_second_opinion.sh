@@ -42,6 +42,14 @@ run_so() {
   status=$?
 }
 
+run_so_in() {
+  local dir="$1"
+  shift
+  rm -f "$WORK/ran" "$WORK/calls" "$WORK/stdin" "$WORK/argv" "$WORK/ca" "$OPINION" "$OPINION.stderr"
+  ( cd "$dir" && PATH="$WORK/bin:$PATH" exec /bin/bash "$SCRIPT" "$@" ) >"$OUT" 2>"$ERR"
+  status=$?
+}
+
 preamble() {
   local packet_lines prepended
   [ -f "$WORK/stdin" ] || return 1
@@ -68,7 +76,7 @@ cannot_write_exit() {
   [ "$status" = 2 ]; check $? "10 an --out in $label exits 2"
   [ ! -s "$OUT" ]; check $? "10 an --out in $label prints nothing on stdout"
   [ ! -e "$WORK/ran" ]; check $? "10 an --out in $label never calls codex"
-  [ "$(cat "$ERR")" = "second-opinion: cannot write $out" ]; check $? "10 an --out in $label names the file it cannot write"
+  [ "$(cat "$ERR")" = "second-opinion-codex: cannot write $out" ]; check $? "10 an --out in $label names the file it cannot write"
 }
 
 available_run() {
@@ -99,7 +107,7 @@ retrying in 1s'
 run_so diff --packet "$PACKET" --out "$OPINION"
 [ "$status" = 1 ]; check $? "2 a non-zero codex exit exits 1"
 [ ! -s "$OUT" ]; check $? "2 a non-zero codex exit prints nothing on stdout"
-[ "$(cat "$ERR")" = "second-opinion unavailable: stream error: unexpected status 500" ]; check $? "2 a non-zero codex exit is unavailable with the first stderr line"
+[ "$(cat "$ERR")" = "second-opinion-codex unavailable: stream error: unexpected status 500" ]; check $? "2 a non-zero codex exit is unavailable with the first stderr line"
 [ "$(lines "$WORK/calls")" = 1 ]; check $? "2 a non-zero codex exit calls codex exactly once"
 [ ! -e "$OPINION" ]; check $? "2 a non-zero codex exit leaves no --out"
 [ -s "$OPINION.stderr" ]; check $? "2 a non-zero codex exit keeps the transcript"
@@ -108,7 +116,7 @@ fake_codex 0 "" "model returned no message"
 run_so diff --packet "$PACKET" --out "$OPINION"
 [ "$status" = 1 ]; check $? "3 empty codex stdout exits 1 although codex exited 0"
 [ ! -s "$OUT" ]; check $? "3 empty codex stdout prints nothing on stdout"
-[ "$(cat "$ERR")" = "second-opinion unavailable: model returned no message" ]; check $? "3 empty codex stdout is unavailable with the stderr line"
+[ "$(cat "$ERR")" = "second-opinion-codex unavailable: model returned no message" ]; check $? "3 empty codex stdout is unavailable with the stderr line"
 [ ! -e "$OPINION" ]; check $? "3 empty codex stdout leaves no --out"
 
 for phrase in "You've hit your usage limit." "Not logged in" "Login is required to continue" \
@@ -117,7 +125,7 @@ for phrase in "You've hit your usage limit." "Not logged in" "Login is required 
 $phrase"
   run_so diff --packet "$PACKET" --out "$OPINION"
   [ "$status" = 1 ]; check $? "4 $phrase below the first transcript line exits 1"
-  [ "$(cat "$ERR")" = "second-opinion unavailable: $phrase" ]; check $? "4 $phrase below the first transcript line is the reason, not the first line"
+  [ "$(cat "$ERR")" = "second-opinion-codex unavailable: $phrase" ]; check $? "4 $phrase below the first transcript line is the reason, not the first line"
   [ "$(lines "$WORK/calls")" = 1 ]; check $? "4 $phrase below the first transcript line calls codex exactly once"
   [ ! -e "$OPINION" ]; check $? "4 $phrase below the first transcript line leaves no --out"
 done
@@ -129,13 +137,17 @@ status=$?
 [ "$status" = 1 ]; check $? "5 codex absent from PATH exits 1"
 [ ! -s "$OUT" ]; check $? "5 codex absent from PATH prints nothing on stdout"
 [ "$(lines "$ERR")" = 1 ]; check $? "5 codex absent from PATH prints one line on stderr"
-grep -q '^second-opinion unavailable: ' "$ERR"; check $? "5 codex absent from PATH is unavailable"
+grep -q '^second-opinion-codex unavailable: ' "$ERR"; check $? "5 codex absent from PATH is unavailable"
 [ ! -e "$WORK/ran" ]; check $? "5 codex absent from PATH never calls codex"
 [ ! -e "$OPINION" ]; check $? "5 codex absent from PATH leaves no --out"
 
-for token in "+++ b/.env" "+++ b/.env.local" "-----BEGIN OPENSSH PRIVATE KEY" "cp id_rsa /tmp/k" \
-  "cp my_id_rsa /tmp/k" "id_ed25519.pub" "cat ~/.ssh/config" "/Users/x/.ssh/known_hosts" \
-  "cat .ssh/config"; do
+for item in $'+++ b/.env\ta credential path\t.env' $'+++ b/.env.local\ta credential path\t.env' \
+  $'-----BEGIN OPENSSH PRIVATE KEY\ta credential path\t-----BEGIN' $'cp id_rsa /tmp/k\ta credential path\tid_rsa' \
+  $'cp my_id_rsa /tmp/k\ta credential path\tid_rsa' $'id_ed25519.pub\ta credential path\tid_ed25519' \
+  $'cat ~/.ssh/config\ta credential path\t.ssh/' $'/Users/x/.ssh/known_hosts\ta credential path\t.ssh/' \
+  $'cat .ssh/config\ta credential path\t.ssh/' $'customer-data/export.json\tpersonal data\tcustomer-data' \
+  $'gdpr/subjects.json\tpersonal data\tgdpr' $'+++ b/PII/subjects.json\tpersonal data\tPII'; do
+  IFS=$'\t' read -r token class expected <<< "$item"
   write_packet "diff --git a/x b/x" "--- a/x" "$token"
   run_so diff --packet "$PACKET" --out "$OPINION"
   [ "$status" = 2 ]; check $? "6 a packet naming $token exits 2"
@@ -144,14 +156,17 @@ for token in "+++ b/.env" "+++ b/.env.local" "-----BEGIN OPENSSH PRIVATE KEY" "c
   [ ! -e "$OPINION" ]; check $? "6 a packet naming $token leaves no --out"
   [ "$(lines "$ERR")" = 1 ]; check $? "6 a packet naming $token prints one line on stderr"
   grep -qE '(^|[^0-9])3([^0-9]|$)' "$ERR"; check $? "6 a packet naming $token names the offending line number"
+  grep -q "^second-opinion-codex refused: packet line 3 names $class: " "$ERR"; check $? "6 a packet naming $token names its class, $class"
+  grep -qF -- "$expected" "$ERR"; check $? "6 a packet naming $token names the matching path $expected"
+  ! grep -qF -- "$token" "$ERR"; check $? "6 a packet naming $token prints the match, not the packet line"
 done
 
 fake_codex 0 "P3 a nit" ""
 write_packet "diff --git a/x b/x" "--- a/x" "+++ b/.env.example" "+ SECRET_NAME=" \
   "process.env.SECRET_NAME" "config.foo.environment = 'test'" "valid_rsa_signature(sig)" \
-  "invalid_rsa" "import x from 'node.ssh/client'"
+  "invalid_rsa" "import x from 'node.ssh/client'" "src/customers/repository.ts" "analytics/user_events.ts"
 run_so diff --packet "$PACKET" --out "$OPINION"
-[ "$status" = 0 ]; check $? "7 a packet naming only .env.example, process.env, an environment field, an rsa word inside an identifier or an import path ending .ssh/ exits 0"
+[ "$status" = 0 ]; check $? "7 a packet naming only .env.example, process.env, an environment field, an rsa word inside an identifier, an import path ending .ssh/, a customers directory or a user_events file exits 0"
 [ -e "$WORK/ran" ]; check $? "7 a packet naming only benign secret-like words calls codex"
 [ -s "$OPINION" ]; check $? "7 a packet naming only benign secret-like words fills --out"
 [ ! -s "$ERR" ]; check $? "7 a packet naming only benign secret-like words prints nothing on stderr"
@@ -199,7 +214,7 @@ second line reason'
 run_so diff --packet "$PACKET" --out "$OPINION"
 [ "$status" = 1 ]; check $? "12 a blank first stderr line exits 1"
 [ ! -s "$OUT" ]; check $? "12 a blank first stderr line prints nothing on stdout"
-[ "$(cat "$ERR")" = "second-opinion unavailable: second line reason" ]; check $? "12 a blank first stderr line is skipped for the reason"
+[ "$(cat "$ERR")" = "second-opinion-codex unavailable: second line reason" ]; check $? "12 a blank first stderr line is skipped for the reason"
 [ ! -e "$OPINION" ]; check $? "12 the partial --out is removed"
 [ -s "$OPINION.stderr" ]; check $? "12 a blank first stderr line keeps the transcript"
 
@@ -207,7 +222,7 @@ fake_codex 0 "" ""
 run_so diff --packet "$PACKET" --out "$OPINION"
 [ "$status" = 1 ]; check $? "13 codex silent on both streams exits 1"
 [ ! -s "$OUT" ]; check $? "13 codex silent on both streams prints nothing on stdout"
-[ "$(cat "$ERR")" = "second-opinion unavailable: no output from codex" ]; check $? "13 codex silent on both streams is unavailable with no output from codex"
+[ "$(cat "$ERR")" = "second-opinion-codex unavailable: no output from codex" ]; check $? "13 codex silent on both streams is unavailable with no output from codex"
 [ ! -e "$OPINION" ]; check $? "13 codex silent on both streams leaves no --out"
 [ -e "$OPINION.stderr" ]; check $? "13 codex silent on both streams keeps the transcript"
 
@@ -221,6 +236,103 @@ status=$?
 [ ! -s "$OUT" ]; check $? "14 a temp file that cannot be created prints nothing on stdout"
 [ ! -e "$WORK/ran" ]; check $? "14 a temp file that cannot be created never calls codex"
 [ ! -e "$OPINION" ]; check $? "14 a temp file that cannot be created leaves no --out"
-grep -q '^second-opinion: cannot create a temp file$' "$ERR"; check $? "14 a temp file that cannot be created says so"
+grep -q '^second-opinion-codex: cannot create a temp file$' "$ERR"; check $? "14 a temp file that cannot be created says so"
+
+scratch_repo() {
+  mkdir -p "$WORK/$1/sub"
+  git -C "$WORK/$1" init -q
+  echo "$WORK/$1"
+}
+
+refused_in() {
+  local dir="$1" label="$2" class="$3" match="$4"
+  run_so_in "$dir" diff --packet "$PACKET" --out "$OPINION"
+  [ "$status" = 2 ]; check $? "15 $label exits 2"
+  [ ! -s "$OUT" ]; check $? "15 $label prints nothing on stdout"
+  [ ! -e "$WORK/ran" ]; check $? "15 $label never calls codex"
+  [ ! -e "$OPINION" ]; check $? "15 $label leaves no --out"
+  [ "$(cat "$ERR")" = "second-opinion-codex refused: packet line 3 names $class: $match" ]; check $? "15 $label names the class and the matching path"
+}
+
+sent_in() {
+  local dir="$1" label="$2"
+  run_so_in "$dir" diff --packet "$PACKET" --out "$OPINION"
+  [ "$status" = 0 ]; check $? "15 $label exits 0"
+  [ -e "$WORK/ran" ]; check $? "15 $label calls codex"
+  [ -s "$OPINION" ]; check $? "15 $label fills --out"
+  [ ! -s "$ERR" ]; check $? "15 $label prints nothing on stderr"
+}
+
+fake_codex 0 "P1 a finding" ""
+LISTED="$(scratch_repo listed)"
+printf '%s\n' "docs/internal.md" > "$LISTED/.confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/docs/internal.md"
+refused_in "$LISTED" "a path listed in .confidential" "a path .confidential marks" "docs/internal.md"
+refused_in "$LISTED/sub" "a path listed in .confidential, run from a subdirectory of the repository" "a path .confidential marks" "docs/internal.md"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/docs/external.md"
+sent_in "$LISTED" "a path .confidential does not list"
+
+GLOB="$(scratch_repo glob)"
+printf '%s\n' "secrets/*.yaml" > "$GLOB/.confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/secrets/prod.yaml"
+refused_in "$GLOB" "a path matching a .confidential glob" "a path .confidential marks" "secrets/prod.yaml"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/secrets/README.md"
+sent_in "$GLOB" "a path beside a .confidential glob that does not match it"
+
+LITERAL="$(scratch_repo literal)"
+printf '%s\n' "docs/(draft).md" > "$LITERAL/.confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/docs/(draft).md"
+refused_in "$LITERAL" "a .confidential entry carrying regex metacharacters" "a path .confidential marks" "docs/(draft).md"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/docs/draft.md" "+++ b/docs/(draft)xmd"
+sent_in "$LITERAL" "a path the .confidential entry would match only if its metacharacters were not literal"
+
+COMMENTED="$(scratch_repo commented)"
+printf '%s\n' "docs/a.md" "" "# internal/" "internal/plan.md" > "$COMMENTED/.confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/docs/a.md"
+refused_in "$COMMENTED" "an entry above a blank line and a comment in .confidential" "a path .confidential marks" "docs/a.md"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/internal/plan.md"
+refused_in "$COMMENTED" "an entry below a blank line and a comment in .confidential" "a path .confidential marks" "internal/plan.md"
+write_packet "diff --git a/x b/x" "--- a/x" "# internal/" "+ added line"
+sent_in "$COMMENTED" "a packet matching only the blank line and the comment in .confidential"
+
+SPACED="$(scratch_repo spaced)"
+printf 'docs/one.md \ndocs/two.md\r\n \n\t\n' > "$SPACED/.confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/docs/one.md"
+refused_in "$SPACED" "a .confidential entry with a trailing space" "a path .confidential marks" "docs/one.md"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/docs/two.md"
+refused_in "$SPACED" "a .confidential entry ending in CRLF" "a path .confidential marks" "docs/two.md"
+write_packet "diff --git a/x b/x" "--- a/x" "+ added line"
+sent_in "$SPACED" "a packet in a repository whose .confidential has whitespace-only lines"
+
+DASHED="$(scratch_repo dashed)"
+printf '%s\n' "-x.md" > "$DASHED/.confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/-x.md"
+refused_in "$DASHED" "a .confidential entry opening with a dash" "a path .confidential marks" "-x.md"
+
+UNMARKED="$(scratch_repo unmarked)"
+write_packet "diff --git a/x b/x" "--- a/x" "+ added line"
+sent_in "$UNMARKED" "a repository without .confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "id_ed25519.pub"
+refused_in "$UNMARKED" "a credential path in a repository without .confidential" "a credential path" "id_ed25519"
+
+EMPTY="$(scratch_repo empty)"
+: > "$EMPTY/.confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "+ added line"
+sent_in "$EMPTY" "a repository with an empty .confidential"
+
+mkdir -p "$WORK/plain"
+printf '%s\n' "docs/internal.md" > "$WORK/plain/.confidential"
+write_packet "diff --git a/x b/x" "--- a/x" "+++ b/docs/internal.md"
+refused_in "$WORK/plain" "a path listed in .confidential of a directory outside any repository" "a path .confidential marks" "docs/internal.md"
+
+printf 'diff --git a/x b/x\n--- a/x\n+ caf\xE9\n+++ b/.env\n' > "$PACKET"
+LC_ALL=en_US.UTF-8 run_so diff --packet "$PACKET" --out "$OPINION"
+[ "$status" = 2 ]; check $? "16 a credential path below a line with an invalid byte exits 2"
+[ ! -s "$OUT" ]; check $? "16 a credential path below a line with an invalid byte prints nothing on stdout"
+[ ! -e "$WORK/ran" ]; check $? "16 a credential path below a line with an invalid byte never calls codex"
+[ ! -e "$OPINION" ]; check $? "16 a credential path below a line with an invalid byte leaves no --out"
+[ "$(lines "$ERR")" = 1 ]; check $? "16 a credential path below a line with an invalid byte prints one line on stderr"
+grep -q "^second-opinion-codex refused: packet line 4 names a credential path: " "$ERR"; check $? "16 a credential path below a line with an invalid byte names its class and line"
+grep -qF -- ".env" "$ERR"; check $? "16 a credential path below a line with an invalid byte names the matching path .env"
 
 summary

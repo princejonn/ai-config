@@ -2,7 +2,9 @@
 set -euo pipefail
 
 # Each alternative opening with a negated class leans on the leading space the scan's sed prepends.
-SECRET_PATTERN='[^A-Za-z0-9_]\.env|-----BEGIN|[^A-Za-z0-9]id_rsa|id_ed25519|[^A-Za-z0-9_]\.ssh/'
+CREDENTIAL_PATTERN='[^A-Za-z0-9_]\.env|-----BEGIN|[^A-Za-z0-9]id_rsa|id_ed25519|[^A-Za-z0-9_]\.ssh/'
+PERSONAL_PATTERN='[^A-Za-z0-9_](pii|gdpr|personal[-_]data|customer[-_]data|customer[-_]export|user[-_]export)([^A-Za-z0-9_]|$)'
+CONFIDENTIAL_FILE=.confidential
 UNAVAILABLE_PATTERN='usage limit (reached|exceeded)|hit your usage limit|quota exceeded|rate limit (reached|exceeded)|not logged in|codex login|log ?in (is )?required'
 
 usage() {
@@ -26,6 +28,35 @@ PARAGRAPH
   echo
 }
 
+scan() {
+  local pattern="$1"
+  shift
+  LC_ALL=C sed 's/\.env\.example//g; s/^/ /' "$packet" | LC_ALL=C grep -n -o -E "$@" -e "$pattern" | head -n 1 || true
+}
+
+refuse() {
+  local class="$1" hit="$2" match
+  match="${hit#*:}"
+  echo "second-opinion-codex refused: packet line ${hit%%:*} names $class: ${match# }" >&2
+  exit 2
+}
+
+glob_to_ere() { printf '%s' "$1" | LC_ALL=C sed -e 's/[][\.^$+(){}|]/\\&/g' -e 's/\*/[^ ]*/g' -e 's/?/./g'; }
+
+confidential_pattern() {
+  local root file line pattern=""
+  root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+  file="$root/$CONFIDENTIAL_FILE"
+  [ -f "$file" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line#"${line%%[![:space:]]*}"}"
+    line="${line%"${line##*[![:space:]]}"}"
+    case "$line" in ''|'#'*) continue ;; esac
+    pattern="${pattern:+$pattern|}$(glob_to_ere "$line")"
+  done < "$file"
+  printf '%s' "$pattern"
+}
+
 mode="${1:-}"
 case "$mode" in
   diff|plan) shift ;;
@@ -44,19 +75,23 @@ done
 { [ -n "$packet" ] && [ -n "$out" ]; } || usage
 [ -f "$packet" ] || usage
 
-offender="$(sed 's/\.env\.example//g; s/^/ /' "$packet" | grep -n -E "$SECRET_PATTERN" | head -n 1 || true)"
-if [ -n "$offender" ]; then
-  echo "second-opinion refused: packet line ${offender%%:*} names a secret path" >&2
-  exit 2
+hit="$(scan "$CREDENTIAL_PATTERN")"
+if [ -n "$hit" ]; then refuse "a credential path" "$hit"; fi
+hit="$(scan "$PERSONAL_PATTERN" -i)"
+if [ -n "$hit" ]; then refuse "personal data" "$hit"; fi
+marked="$(confidential_pattern)"
+if [ -n "$marked" ]; then
+  hit="$(scan "$marked")"
+  if [ -n "$hit" ]; then refuse "a path $CONFIDENTIAL_FILE marks" "$hit"; fi
 fi
 
 if ! ( : >>"$out" ) 2>/dev/null; then
-  echo "second-opinion: cannot write $out" >&2
+  echo "second-opinion-codex: cannot write $out" >&2
   exit 2
 fi
 
-assembled="$(mktemp "${TMPDIR:-/tmp}/second-opinion.XXXXXX")" \
-  || { rm -f "$out"; echo "second-opinion: cannot create a temp file" >&2; exit 2; }
+assembled="$(mktemp "${TMPDIR:-/tmp}/second-opinion-codex.XXXXXX")" \
+  || { rm -f "$out"; echo "second-opinion-codex: cannot create a temp file" >&2; exit 2; }
 trap 'rm -f "$assembled"' EXIT
 { contract "$mode"; cat "$packet"; } > "$assembled"
 
@@ -68,6 +103,6 @@ if [ "$status" != 0 ] || [ ! -s "$out" ]; then
   reason="$(grep -i -E "$UNAVAILABLE_PATTERN" "$out.stderr" 2>/dev/null | sed -n '/./{p;q;}' || true)"
   [ -n "$reason" ] || reason="$(sed -n '/./{p;q;}' "$out.stderr" 2>/dev/null || true)"
   rm -f "$out"
-  echo "second-opinion unavailable: ${reason:-no output from codex}" >&2
+  echo "second-opinion-codex unavailable: ${reason:-no output from codex}" >&2
   exit 1
 fi

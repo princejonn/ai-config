@@ -58,7 +58,7 @@ pair research-complex \
 pair review-change \
   'Review the staged change-set against its brief and give me ACCEPTED or NOT ACCEPTED.' \
   'Get Codex to look at this diff.'
-pair second-opinion \
+pair second-opinion-codex \
   'Get Codex to attack the premises of this plan before we accept it.' \
   'Review this change-set against its brief and tell me whether it is acceptable.'
 pair test \

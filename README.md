@@ -36,7 +36,7 @@ absent `~/.codex` is skipped.
 paths.
 
 `apply.sh` links `bin/second-opinion-codex` into `~/.local/bin` and prints one `warn:` line when
-that directory is not on `PATH`. The `second-opinion` skill calls it and adjudicates what it
+that directory is not on `PATH`. The `second-opinion-codex` skill calls it and adjudicates what it
 returns.
 
 Hooks: `claude/settings.json` maps the scripts in `claude/hooks/` to `PreToolUse`, `SubagentStop`

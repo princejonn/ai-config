@@ -61,7 +61,7 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "test": {},
     "deliver": {},
     "diagnose-root-cause": {},
-    "second-opinion": {},
+    "second-opinion-codex": {},
     "author-skill": {},
     "issue-write": {},
     "issue-next": {},
@@ -114,7 +114,8 @@ ONE_HOME_PHRASES = {
     "every claim about what exists today cites": "claude/skills/design-surface/SKILL.md",
     "root cause": "claude/skills/diagnose-root-cause/SKILL.md",
     "not discriminated from a material alternative": "claude/skills/diagnose-root-cause/SKILL.md",
-    "decorrelation": "claude/skills/second-opinion/SKILL.md",
+    "decorrelation": "claude/skills/second-opinion-codex/SKILL.md",
+    "One attempt per item": "claude/skills/second-opinion-codex/SKILL.md",
     "the brief is incomplete and the question is above": "claude/skills/review-change/SKILL.md",
     "it is not a round": "claude/skills/deliver/SKILL.md",
     "tier of the code it touches": "claude/skills/deliver/references/tiers.md",
@@ -145,6 +146,7 @@ ABSENT_PHRASES = {
     "Expected values traceable to the brief or spec": SKILLS,
     "this skill writes nothing but": SKILLS,
     "Never describe an action you did not perform": SKILLS,
+    "free Codex tier": CLAUDE,
 }
 
 MEANING_CHANGE_EXAMPLES = "or the meaning of one (what an operator does, which boundary a predicate uses, whether a value counts as absent)"
@@ -167,6 +169,7 @@ SAMPLED_RUN_FIELDS = ("budget", "samples", "environment", "uncertainty")
 SAMPLED_RUN_OUTPUT_FIELDS = "per sampled run, its budget, samples, environment and uncertainty"
 TESTER_SAMPLED_RUN_KINDS = "a statistical, fuzz, chaos or flake-diagnosis sampled run a brief names with its budget"
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
+BOUNDARY_CLASSES = ("Secrets and credentials", "Customer or personal data", "Any path the repository marks confidential")
 CHANGE_SET_PER_COMMIT = "One commit per accepted change-set through `/commit-item`; an item may land in several, each reviewed"
 CLOSE_AFTER_PUSH = 'the issue closes after that commit is pushed, never before: pushed to the default branch, GitHub closes it; pushed to another branch, `gh issue close N --comment "<hash> <subject>"` runs once the push succeeds.'
 COMPLETING_COMMIT_FOOTER = "`Closes #N` only on the commit that completes the item, `Refs #N` on a change-set that leaves it open"
@@ -589,6 +592,13 @@ class SkillPassagesTest(unittest.TestCase):
     def test_implement_method_puts_correctness_before_speed(self):
         _, body = skill_docs()["implement"]
         self.assertIn(CORRECTNESS_FIRST, section(body, "Method"))
+
+    def test_second_opinion_codex_boundary_names_the_three_classes_and_the_confidential_file(self):
+        _, body = skill_docs()["second-opinion-codex"]
+        boundary = section(body, "Boundary")
+        for passage in (*BOUNDARY_CLASSES, "`.confidential`"):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, boundary)
 
     def test_issue_write_gives_each_issue_body_heading_once(self):
         _, body = skill_docs()["issue-write"]

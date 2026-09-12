@@ -377,7 +377,7 @@ run_apply
 ln -s /nonexistent/x "$BIN_DIR/other"
 rm "$FIX/bin/second-opinion-codex"
 run_apply
-[ "$status" = 0 ]; check $? "32 a dangling second-opinion link: apply exits 0"
+[ "$status" = 0 ]; check $? "32 a dangling second-opinion-codex link: apply exits 0"
 printf '%s\n' '#!/bin/bash' 'exit 0' > "$FIX/bin/second-opinion-codex"
 grep -q "^  prune: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-codex$" "$OUT"; check $? "32 the prune of the second-opinion link is reported"
 [ ! -L "$BIN_DIR/second-opinion-codex" ]; check $? "32 the dangling second-opinion link is pruned"
