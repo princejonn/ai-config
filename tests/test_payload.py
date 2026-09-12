@@ -170,6 +170,10 @@ CLOSE_AFTER_PUSH = 'the issue closes after that commit is pushed, never before: 
 COMPLETING_COMMIT_FOOTER = "`Closes #N` only on the commit that completes the item, `Refs #N` on a change-set that leaves it open"
 COMPLETES_THE_ITEM_INPUT = "The brief says whether this change-set completes the item; unsaid, the footer is `Refs #N`."
 COMMIT_PUSH_CLOSE = "The order is commit, push, close, per `rules/git.md`"
+DELIVER_TIERS_EVERY_ITEM = "Tier every item per `references/tiers.md` before it runs"
+DELIVER_TRIVIAL_INLINE = "A one-liner tiered `trivial` runs `implement` inline; every other item gets a brief."
+DELIVER_TIERING_BYPASS = "runs `implement` directly"
+DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat records it where the project keeps plans and hands it to `deliver`."
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
 REPOSITORY_LABELS = (
@@ -682,6 +686,18 @@ class SkillPassagesTest(unittest.TestCase):
     def test_deliver_before_commit_orders_commit_push_close_by_the_git_rule(self):
         _, body = skill_docs()["deliver"]
         self.assertIn(COMMIT_PUSH_CLOSE, section(body, "Before commit"))
+
+    def test_deliver_intake_tiers_every_item_and_runs_only_a_trivial_one_liner_inline(self):
+        _, body = skill_docs()["deliver"]
+        intake = section(body, "Intake and tiering")
+        self.assertIn(DELIVER_TIERS_EVERY_ITEM, intake)
+        self.assertIn(DELIVER_TRIVIAL_INLINE, intake)
+        self.assertNotIn(DELIVER_TIERING_BYPASS, body)
+
+    def test_design_surface_exit_returns_the_locked_design_and_instructs_no_write(self):
+        _, body = skill_docs()["design-surface"]
+        self.assertIn(DESIGN_EXIT_RETURNS_THE_DESIGN, section(body, "Exit"))
+        self.assertNotIn("writ", body.lower())
 
     def test_research_complex_points_at_research_and_restates_none_of_its_procedure(self):
         docs = skill_docs()

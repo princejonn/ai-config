@@ -36,4 +36,4 @@ Talk interfaces, not internals; concrete type/signature sketches every round. Lo
 
 ## Exit
 
-When the surface is locked, write it to the project's plan location, point the work queue at it, then hand it to `deliver` — internals are Claude's to decide. The hand-off's guard is the deviation ledger in `skills/deliver/SKILL.md`.
+When the surface is locked, return it in the message — internals are Claude's to decide. The chat records it where the project keeps plans and hands it to `deliver`. The hand-off's guard is the deviation ledger in `skills/deliver/SKILL.md`.

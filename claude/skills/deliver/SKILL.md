@@ -14,8 +14,8 @@ Explore → plan → implement → verify. Code is committable when a reviewer a
 
 ## Intake and tiering
 
-- A one-sentence diff runs `implement` directly; anything beyond it gets a brief.
-- Tier the item per `references/tiers.md`: the tier sets whether `plan-phases` runs first, what the brief carries and where review sits.
+- Tier every item per `references/tiers.md` before it runs: the tier sets whether `plan-phases` runs first, what the brief carries and where review sits.
+- A one-liner tiered `trivial` runs `implement` inline; every other item gets a brief.
 
 ## Living brief and ledgers
 
