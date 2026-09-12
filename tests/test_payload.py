@@ -126,6 +126,8 @@ ONE_HOME_PHRASES = {
     "never a brief line": "claude/rules/git.md",
     "Goal or Acceptance cannot be written": "claude/skills/issue-write/SKILL.md",
     "Depends on #N": "claude/skills/issue-write/SKILL.md",
+    "addSubIssue": "claude/skills/issue-write/SKILL.md",
+    "addBlockedBy": "claude/skills/issue-write/SKILL.md",
     "have to be weighed for": "claude/skills/deliver/references/tiers.md",
     "bug, feature, enhancement, documentation": "claude/skills/issue-next/SKILL.md",
     "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
@@ -179,6 +181,7 @@ REPOSITORY_LABELS = (
     "help wanted",
 )
 OUT_OF_QUEUE_LABELS = ("parked", "blocked", "question", "duplicate", "invalid", "wontfix")
+RELATION_MUTATIONS = ("addSubIssue", "addBlockedBy")
 ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Tier:", "Out of scope:")
 ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
 ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")
@@ -543,11 +546,27 @@ class SkillPassagesTest(unittest.TestCase):
         offsets = [line.index(f"`{label}`") for label in OUT_OF_QUEUE_LABELS]
         self.assertEqual(offsets, sorted(offsets))
 
+    def test_issue_write_create_carries_each_relation_mutation_once(self):
+        _, body = skill_docs()["issue-write"]
+        create = section(body, "Create")
+        for mutation in RELATION_MUTATIONS:
+            with self.subTest(mutation=mutation):
+                self.assertEqual(body.count(mutation), 1)
+                self.assertIn(mutation, create)
+
     def test_issue_next_skip_names_out_of_queue_labels_in_order(self):
         _, body = skill_docs()["issue-next"]
         skip = section(body, "Skip")
         offsets = [skip.index(f"`{label}`") for label in OUT_OF_QUEUE_LABELS]
         self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_next_skip_reads_blockers_and_pieces_from_the_relations(self):
+        _, body = skill_docs()["issue-next"]
+        skip = section(body, "Skip")
+        for field in ("blockedBy", "subIssues"):
+            with self.subTest(field=field):
+                self.assertIn(field, skip)
+        self.assertNotIn("--json state", body)
 
     def test_issue_next_output_names_every_brief_field_it_fills(self):
         _, body = skill_docs()["issue-next"]
@@ -576,6 +595,17 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn("gh issue view", section(body, "Input"))
         self.assertEqual(body.count("gh issue list"), 1)
         self.assertIn("gh issue list", section(body, "Duplicate"))
+
+    def test_issue_triage_split_files_pieces_as_sub_issues_and_leaves_the_calls_to_issue_write(self):
+        _, body = skill_docs()["issue-triage"]
+        rulings = section(body, "Apply")
+        split = next(l for l in rulings.splitlines() if l.startswith("- split —"))
+        self.assertIn("sub-issue of the original", split)
+        self.assertIn("blocked-by relation", split)
+        self.assertIn("the two calls in `issue-write` § Create", rulings)
+        for mutation in RELATION_MUTATIONS:
+            with self.subTest(mutation=mutation):
+                self.assertNotIn(mutation, body)
 
     def test_deliver_rounds_name_both_review_routes_and_point_at_tiers(self):
         _, body = skill_docs()["deliver"]

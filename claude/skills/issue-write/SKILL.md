@@ -21,7 +21,7 @@ The body is these five headings, in this order, and nothing else:
 ## Related     one line per dependency, then the notes
 ```
 
-A dependency is a line that begins `Depends on #N` after any list marker, several numbers allowed: `Depends on #4, #7`. Every other line in § Related is a note — out of scope, a sibling, background — and names items freely.
+A dependency is a line that begins `Depends on #N` after any list marker, several numbers allowed: `Depends on #4, #7`; the line is the readable form of the blocked-by relation § Create writes. Every other line in § Related is a note — out of scope, a sibling, background — and names items freely.
 
 A `story` item keeps the five headings and changes two: § Goal is the three-part statement `As a <who>, I want <what>, so that <why>`, and each § Acceptance line is one Given/When/Then scenario — one line, one observable result, so the Acceptance form above holds. A story spanning several features is one item at `tier: complex`, or one `Depends on` line per feature issue it splits into. A description that opens `As a …`, and any request for a story, takes this shape and the `story` label beside `feature` or `enhancement`; one that reports a defect is a `bug` in the plain shape, without `story`.
 
@@ -47,7 +47,10 @@ One refusal per description. If the answer still leaves the same sentence missin
 1. The draft goes to the user first; creating an item is an external call, so it runs on their word (`rules/git.md`).
 2. Write the body to the session scratchpad with the Write tool — never a shell heredoc.
 3. `gh issue create --title <t> --label <type> --label <priority> --label <tier> --body-file <scratchpad file>`, with a further `--label story` when the item is one.
+4. The relations the item stands in, node ids from `gh issue view <N> --json id --jq .id`:
+   - a piece of a split, under the item it was split from: `gh api graphql -f query='mutation { addSubIssue(input: {issueId: "<parent id>", subIssueId: "<piece id>"}) { issue { number } subIssue { number } } }'`
+   - one per number a `Depends on #N` line names: `gh api graphql -f query='mutation { addBlockedBy(input: {issueId: "<item id>", blockingIssueId: "<blocker id>"}) { issue { number } blockingIssue { number } } }'`
 
 ## Output
 
-The item's number and its URL. Or the question, with nothing created.
+The item's number and its URL, with the relations step 4 wrote. Or the question, with nothing created.
