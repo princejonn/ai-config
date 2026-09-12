@@ -69,12 +69,12 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
 }
 SKILLS_WITH_INPUT = {"design-surface", "implement", "issue-next", "issue-triage", "issue-write", "plan-phases", "research", "research-complex", "review-change", "test", "verify-claim"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
-DEVELOPER_AGENTS = {"developer-trivial", "developer-standard", "developer-complex"}
+DEVELOPER_AGENTS = {"developer-trivial", "developer", "developer-complex"}
 RESEARCHER_AGENTS = {"researcher-trivial", "researcher-complex"}
 EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "root-cause"] for name in DEVELOPER_AGENTS}, "tester": ["test"], "reviewer-complex": ["review-change"]}
 EXPECTED_AGENT_MODELS = {
     "developer-trivial": "sonnet",
-    "developer-standard": "opus",
+    "developer": "opus",
     "developer-complex": "fable",
     "researcher-trivial": "sonnet",
     "researcher-complex": "fable",
@@ -83,7 +83,7 @@ EXPECTED_AGENT_MODELS = {
     "tester": "opus",
     "verifier": "opus",
 }
-EXPECTED_AGENTS = {"developer-trivial", "developer-standard", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
+EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
 ROUTED_ONLY_AGENTS = {"researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
 RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
 CIRCUIT_BREAKER_PASSAGES = (
@@ -94,7 +94,7 @@ CIRCUIT_BREAKER_PASSAGES = (
 )
 TIER_ROUTING_ROWS = (
     "| `trivial` | `developer-trivial` | `reviewer` |",
-    "| `standard` | `developer-standard` | `reviewer` |",
+    "| `standard` | `developer` | `reviewer` |",
     "| `complex` | `developer-complex` | `reviewer-complex` |",
 )
 

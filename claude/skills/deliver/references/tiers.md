@@ -27,7 +27,7 @@ A fix inherits the tier of the code it touches, runs in a fresh agent window wit
 | Tier | Developer | Reviewer |
 |---|---|---|
 | `trivial` | `developer-trivial` | `reviewer` |
-| `standard` | `developer-standard` | `reviewer` |
+| `standard` | `developer` | `reviewer` |
 | `complex` | `developer-complex` | `reviewer-complex` |
 
 ## Research routing (Claude Code)
@@ -39,4 +39,4 @@ A lane enumerates when its answer is a list the sources already contain, and int
 | `trivial` | enumerates | `researcher-trivial` |
 | `complex` | interprets | `researcher-complex` |
 
-An agent's name says its tier, never its model; `max` is deliberately unused.
+A suffix on an agent's name says its tier, never its model, and an unmarked name is the default tier; `max` is deliberately unused.
