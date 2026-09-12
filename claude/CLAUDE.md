@@ -44,7 +44,7 @@ agent type inherits the session's model, so pass `model: opus`.
 | `design-surface` | a public surface or its meaning changes — with the user, before code |
 | `plan-phases` | the item touches an invariant, state boundary, security or several packages |
 | `implement` | any code change, inline for a one-off, otherwise in the tier's developer agent |
-| `root-cause` | behaviour is wrong and the cause is unknown — before implement |
+| `diagnose-root-cause` | behaviour is wrong and the cause is unknown — before implement |
 | `second-opinion` | a diff or a plan needs a different model family's attack — Codex, read-only |
 | `author-skill` | a skill, rule or agent in the config repo changes |
 | `test` | tests are the deliverable (`tester`) or need their red-before-green proof |

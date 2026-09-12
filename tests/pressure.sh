@@ -31,6 +31,9 @@ pair deliver \
 pair design-surface \
   'Compare the option shapes and error contracts for a strict mode on render before we change the surface.' \
   'Implement the strict mode on render exactly as agreed: an empty name raises ValueError.'
+pair diagnose-root-cause \
+  'render returns the wrong string for an empty name and the cause is not known — find it.' \
+  'Prove the pinning test for render goes red before the fix.'
 pair implement \
   'Add a strict keyword to render in widget.py that raises ValueError on an empty name.' \
   'Which is the better public surface here, a strict flag on render or a separate render_strict function?'
@@ -55,9 +58,6 @@ pair research-complex \
 pair review-change \
   'Review the staged change-set against its brief and give me ACCEPTED or NOT ACCEPTED.' \
   'Get Codex to look at this diff.'
-pair root-cause \
-  'render returns the wrong string for an empty name and the cause is not known — find it.' \
-  'Prove the pinning test for render goes red before the fix.'
 pair second-opinion \
   'Get Codex to attack the premises of this plan before we accept it.' \
   'Review this change-set against its brief and tell me whether it is acceptable.'

@@ -60,7 +60,7 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "implement": {},
     "test": {},
     "deliver": {},
-    "root-cause": {},
+    "diagnose-root-cause": {},
     "second-opinion": {},
     "author-skill": {},
     "issue-write": {},
@@ -71,7 +71,7 @@ SKILLS_WITH_INPUT = {"design-surface", "implement", "issue-next", "issue-triage"
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_AGENTS = {"developer-trivial", "developer", "developer-complex"}
 RESEARCHER_AGENTS = {"researcher-trivial", "researcher-complex"}
-EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "root-cause"] for name in DEVELOPER_AGENTS}, "tester": ["test"], "reviewer-complex": ["review-change"]}
+EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "diagnose-root-cause"] for name in DEVELOPER_AGENTS}, "tester": ["test"], "reviewer-complex": ["review-change"]}
 EXPECTED_AGENT_MODELS = {
     "developer-trivial": "sonnet",
     "developer": "opus",
@@ -112,8 +112,8 @@ ONE_HOME_PHRASES = {
     "never an action not performed": "claude/rules/brief.md",
     "anything inferred rather than run": "claude/rules/brief.md",
     "every claim about what exists today cites": "claude/skills/design-surface/SKILL.md",
-    "root cause": "claude/skills/root-cause/SKILL.md",
-    "not discriminated from a material alternative": "claude/skills/root-cause/SKILL.md",
+    "root cause": "claude/skills/diagnose-root-cause/SKILL.md",
+    "not discriminated from a material alternative": "claude/skills/diagnose-root-cause/SKILL.md",
     "decorrelation": "claude/skills/second-opinion/SKILL.md",
     "the brief is incomplete and the question is above": "claude/skills/review-change/SKILL.md",
     "it is not a round": "claude/skills/deliver/SKILL.md",
