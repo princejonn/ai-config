@@ -1,6 +1,6 @@
 ---
 name: test
-description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, and the sampled run a brief budgets: statistical, fuzz, chaos or flake diagnosis — including the red-before-green proof. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement), reviewing it (review-change), or a wrong result whose cause is unknown and no sampled run is named with its budget (diagnose-root-cause)."
+description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, and the sampled run a brief budgets: statistical, fuzz, chaos or flake diagnosis — including the red-before-green proof. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement), reviewing it (review-change), a feature file (author-gherkin), or a wrong result whose cause is unknown and no sampled run is named with its budget (diagnose-root-cause)."
 ---
 
 # Test

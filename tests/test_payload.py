@@ -181,6 +181,8 @@ SAMPLED_RUN_BOUND = "Zero failures in N bounds the rate; it never shows absence.
 SAMPLED_RUN_FIELDS = ("budget", "samples", "environment", "uncertainty")
 SAMPLED_RUN_OUTPUT_FIELDS = "per sampled run, its budget, samples, environment and uncertainty"
 TESTER_SAMPLED_RUN_KINDS = "a statistical, fuzz, chaos or flake-diagnosis sampled run a brief names with its budget"
+DIAGNOSE_ROOT_CAUSE_FLAKE_EXCLUSION = "diagnosing a budgeted flake (test)"
+TEST_FEATURE_FILE_EXCLUSION = "a feature file (author-gherkin)"
 AUTHOR_GHERKIN_STEP_WORDS = "no class, method, file or type name in a step"
 AUTHOR_GHERKIN_UNDEFINED_STEPS = "Undefined steps are the expected result"
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
@@ -630,6 +632,14 @@ class SkillPassagesTest(unittest.TestCase):
         _, body = skill_docs()["author-gherkin"]
         self.assertIn(AUTHOR_GHERKIN_STEP_WORDS, section(body, "Scenario shape"))
         self.assertIn(AUTHOR_GHERKIN_UNDEFINED_STEPS, section(body, "Output"))
+
+    def test_diagnose_root_cause_description_excludes_a_budgeted_flake_to_test(self):
+        fields, _ = skill_docs()["diagnose-root-cause"]
+        self.assertIn(DIAGNOSE_ROOT_CAUSE_FLAKE_EXCLUSION, fields["description"])
+
+    def test_test_description_excludes_a_feature_file_to_author_gherkin(self):
+        fields, _ = skill_docs()["test"]
+        self.assertIn(TEST_FEATURE_FILE_EXCLUSION, fields["description"])
 
     def test_implement_method_puts_correctness_before_speed(self):
         _, body = skill_docs()["implement"]
