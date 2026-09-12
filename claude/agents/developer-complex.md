@@ -1,7 +1,7 @@
 ---
 name: developer-complex
 description: Use for complex-tier items — novel algorithms, subtle concurrency or state, security or privacy boundaries, architectural change — implementing a defined change to production quality and verifying with the project's own checks. Runs Fable. Not for open-ended design (design-surface), planning (plan-phases), or when tests are the primary deliverable (tester).
-color: purple
+color: blue
 model: fable
 effort: xhigh
 tools: Bash, Read, Edit, Write, Grep, Glob

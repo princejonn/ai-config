@@ -84,6 +84,17 @@ EXPECTED_AGENT_MODELS = {
     "tester": "opus",
     "verifier": "opus",
 }
+EXPECTED_AGENT_COLORS = {
+    "developer-trivial": "blue",
+    "developer": "blue",
+    "developer-complex": "blue",
+    "researcher-trivial": "red",
+    "researcher-complex": "red",
+    "reviewer": "yellow",
+    "reviewer-complex": "yellow",
+    "tester": "cyan",
+    "verifier": "green",
+}
 EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
 ROUTED_ONLY_AGENTS = {"researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
 RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
@@ -390,6 +401,19 @@ class AgentsTest(unittest.TestCase):
                 assert_description(self, fields["description"])
                 if stem in EXPECTED_AGENT_SKILLS:
                     self.assertEqual(fields["skills"], EXPECTED_AGENT_SKILLS[stem])
+
+    def test_every_agent_carries_the_color_it_is_pinned_to(self):
+        for stem, (fields, _) in agent_docs().items():
+            with self.subTest(agent=stem):
+                self.assertEqual(fields["color"], EXPECTED_AGENT_COLORS[stem])
+
+    def test_agents_sharing_a_family_stem_share_one_color(self):
+        families = {}
+        for stem, (fields, _) in agent_docs().items():
+            families.setdefault(stem.split("-", 1)[0], set()).add(fields["color"])
+        for family, colors in families.items():
+            with self.subTest(family=family):
+                self.assertEqual(len(colors), 1, f"{family} agents do not share one color: {colors}")
 
     def test_each_routed_only_agent_description_is_one_sentence_under_200_characters(self):
         docs = agent_docs()

@@ -1,7 +1,7 @@
 ---
 name: researcher-complex
 description: Runs one Fable research lane that interprets specifications, dependencies and corpora into a compact evidence memo; dispatched through /research-complex, not invoked directly.
-color: pink
+color: red
 model: fable
 effort: high
 tools: Read, Grep, Glob, WebFetch, WebSearch
