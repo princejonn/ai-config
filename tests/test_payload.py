@@ -193,6 +193,8 @@ COMMIT_PUSH_CLOSE = "The order is commit, push, close, per `rules/git.md`"
 DELIVER_TIERS_EVERY_ITEM = "Tier every item per `references/tiers.md` before it runs"
 DELIVER_TRIVIAL_INLINE = "A one-liner tiered `trivial` runs `implement` inline; every other item gets a brief."
 DELIVER_TIERING_BYPASS = "runs `implement` directly"
+IMPLEMENT_ROW_TIER_GATE = "inline for a one-liner tiered `trivial`, otherwise"
+IMPLEMENT_DESCRIPTION_TIER_GATE = "inline for a one-liner tiered trivial, otherwise"
 DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat records it where the project keeps plans and hands it to `deliver`."
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
@@ -525,6 +527,13 @@ class ClaudeMdTest(unittest.TestCase):
         for skill in skill_dirs():
             with self.subTest(skill=skill.name):
                 self.assertEqual(body.count(f"| `{skill.name}` |"), 1)
+
+    def test_implement_row_and_description_both_gate_the_inline_path_on_trivial_tier(self):
+        body = read(CLAUDE / "CLAUDE.md")
+        row = next(line for line in body.splitlines() if line.startswith("| `implement` |"))
+        self.assertIn(IMPLEMENT_ROW_TIER_GATE, row)
+        fields, _ = skill_docs()["implement"]
+        self.assertIn(IMPLEMENT_DESCRIPTION_TIER_GATE, fields["description"])
 
     def test_built_in_agent_types_are_dispatched_with_opus(self):
         self.assertIn("a built-in agent type inherits the session's model, so pass `model: opus`", re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
