@@ -1,6 +1,6 @@
 ---
 name: test
-description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, flaky-test diagnosis — including the red-before-green proof. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement) or reviewing it (review-change)."
+description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, and the sampled run a brief budgets: statistical, fuzz, chaos or flake diagnosis — including the red-before-green proof. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement), reviewing it (review-change), or a wrong result whose cause is unknown and no sampled run is named with its budget (diagnose-root-cause)."
 ---
 
 # Test
@@ -8,6 +8,8 @@ description: "Writes and proves tests in any language — coverage for new code,
 ## Input
 
 The brief takes the shape `rules/brief.md` defines; its acceptance lines are the behaviour to pin. When the brief does not say what a behaviour must produce, stop and return with the question rather than settling it from the implementation.
+
+A sampled run is one acceptance line of the form `<kind>, <budget> → <result>`: `flake diagnosis, 200 runs of test_render_empty within 10 min → the variable it is sensitive to, or "not reproduced" with the bound`. Every other line pins a deterministic test; a line that names a sampled run without its budget returns as a question.
 
 ## Grounding
 
@@ -18,7 +20,7 @@ The brief takes the shape `rules/brief.md` defines; its acceptance lines are the
 
 - **Test intended behaviour, from the brief and spec — not observed behaviour, from the implementation.** Every expected value comes from the brief or the specification, never from running the code and recording what it returned — a suite derived from the implementation stays green when the implementation is wrong. If the code disagrees with its spec, report the bug; never enshrine it in a passing test.
 - **Cover the full square:** happy path; edge cases (empty, null, boundary values, large inputs, unusual encodings); failure modes (errors, timeouts, invalid input); concurrency or ordering where relevant.
-- **Deterministic always:** no timing races, no inter-test dependence, no order sensitivity; clean setup and teardown.
+- **Deterministic unless the brief names a sampled run:** no timing races, no inter-test dependence, no order sensitivity; clean setup and teardown. A sampled run's result lives in its report, never in the gate; a defect it finds enters the suite as a deterministic reproducer, with the seed, input or fault recorded.
 - **Measure at the public door.** A test driving an internal function proves that function, not the library. Where a behaviour is reachable through several doors, pin it at each.
 - **Assert on the thing, not on a rendering of it.** A serialisation, formatter or summary can hide the defect under test. Read the property, the type, the descriptor.
 - **Prove environment-dependent behaviour on the real thing** where the project provides for it (integration suites, real services); mocks only per the project's established patterns.
@@ -33,6 +35,15 @@ A test that cannot fail reports coverage it does not have. Over-broad mocks, tau
 - The aside copy and any scratch repository live in the session scratchpad and stay there; deleting them buys nothing and costs a permission prompt.
 - Where reverting is genuinely impractical, say so and state which tests are therefore reasoned rather than demonstrated. That is never the default.
 
+## Sampled runs
+
+- **Statistical:** N samples or seeds, reported as the observed rate.
+- **Fuzz:** inputs from a recorded seed; a failing input is minimised and recorded with it.
+- **Chaos:** the faults the brief lists, injected one at a time, reported as what the code did under each.
+- **Flake diagnosis:** reproduce within the budget, then vary one thing at a time until one variable discriminates — that variable, or "not reproduced" with the bound. A variable that is a defect in the code under test goes to `diagnose-root-cause` with its reproducer.
+
+Load and soak are performance tests, not this skill's work. A run harness proves it can fail before the budget runs. Every run reports its budget, samples, environment and uncertainty. Zero failures in N bounds the rate; it never shows absence.
+
 ## Verification
 
 Done requires the new or changed tests green, then the surrounding suite for the package you touched, then the project's full gate, each reported with its command and the runner's own printed counts.
@@ -42,4 +53,4 @@ Done requires the new or changed tests green, then the surrounding suite for the
 
 ## Output
 
-The report per `rules/brief.md`, plus: what is covered (test names); red-before-green evidence per test (failing name + assertion, and the method used); gaps that remain; bugs in the code under test that testing surfaced; and that the tests conform to the instruction files read, or where they deviate and why.
+The report per `rules/brief.md`, plus: what is covered (test names); red-before-green evidence per test (failing name + assertion, and the method used); per sampled run, its budget, samples, environment and uncertainty; gaps that remain; bugs in the code under test that testing surfaced; and that the tests conform to the instruction files read, or where they deviate and why.

@@ -150,6 +150,20 @@ EXPECTED_VALUES_RATIONALE = "a suite derived from the implementation stays green
 PINNING_TEST_FIRST = "Write the test, run it against the tree with no source file edited yet, and record the failure — test name and the assertion that failed. Only then write the fix and rerun it green."
 COPY_ASIDE_ONLY_WHEN_FIX_PRESENT = "only when the fix is already in the tree"
 STAGED_FAILURE_WARNING = "A failure staged afterwards by reverting does not count: the helpers and structure the fix introduced stay standing, so what fails is one line's sensitivity, not the defect."
+SAMPLED_RUN_LINE_FORM = "A sampled run is one acceptance line of the form `<kind>, <budget> → <result>`"
+SAMPLED_RUN_FLAKE_EXAMPLE = '`flake diagnosis, 200 runs of test_render_empty within 10 min → the variable it is sensitive to, or "not reproduced" with the bound`'
+SAMPLED_RUN_MISSING_BUDGET = "names a sampled run without its budget returns as a question"
+SAMPLED_RUN_DEFAULT = "- **Deterministic unless the brief names a sampled run:**"
+SAMPLED_RUN_OUT_OF_THE_GATE = "A sampled run's result lives in its report, never in the gate; a defect it finds enters the suite as a deterministic reproducer, with the seed, input or fault recorded."
+SAMPLED_RUN_KINDS = ("Statistical", "Fuzz", "Chaos", "Flake diagnosis")
+SAMPLED_RUN_NEIGHBOURS = ("\n## Red-before-green proof\n", "\n## Sampled runs\n", "\n## Verification\n")
+SAMPLED_RUN_PERFORMANCE = "Load and soak are performance tests"
+SAMPLED_RUN_HARNESS = "A run harness proves it can fail before the budget runs."
+SAMPLED_RUN_REPORT = "Every run reports its budget, samples, environment and uncertainty."
+SAMPLED_RUN_BOUND = "Zero failures in N bounds the rate; it never shows absence."
+SAMPLED_RUN_FIELDS = ("budget", "samples", "environment", "uncertainty")
+SAMPLED_RUN_OUTPUT_FIELDS = "per sampled run, its budget, samples, environment and uncertainty"
+TESTER_SAMPLED_RUN_KINDS = "a statistical, fuzz, chaos or flake-diagnosis sampled run a brief names with its budget"
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
 CHANGE_SET_PER_COMMIT = "One commit per accepted change-set through `/commit-item`; an item may land in several, each reviewed"
 CLOSE_AFTER_PUSH = 'the issue closes after that commit is pushed, never before: pushed to the default branch, GitHub closes it; pushed to another branch, `gh issue close N --comment "<hash> <subject>"` runs once the push succeeds.'
@@ -377,6 +391,15 @@ class AgentsTest(unittest.TestCase):
             with self.subTest(agent=stem):
                 self.assertEqual(sentence_count(body), 2)
 
+    def test_tester_names_the_four_sampled_run_kinds_and_returns_their_four_report_fields(self):
+        fields, body = agent_docs()["tester"]
+        self.assertIn(TESTER_SAMPLED_RUN_KINDS, fields["description"])
+        self.assertLess(len(fields["description"]), 200)
+        self.assertEqual(sentence_count(fields["description"]), 1)
+        for field in SAMPLED_RUN_FIELDS:
+            with self.subTest(field=field):
+                self.assertIn(field, body)
+
     def test_each_tiered_agent_is_named_once_in_tiers_and_its_description_names_its_frontmatter_model(self):
         docs = agent_docs()
         tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
@@ -521,6 +544,41 @@ class SkillPassagesTest(unittest.TestCase):
             self.assertIn(passage, proof)
         self.assertLess(proof.index(PINNING_TEST_FIRST), proof.index(COPY_ASIDE_ONLY_WHEN_FIX_PRESENT))
         self.assertLess(proof.index(COPY_ASIDE_ONLY_WHEN_FIX_PRESENT), proof.index(STAGED_FAILURE_WARNING))
+
+    def test_test_input_gives_a_sampled_run_its_line_form_and_returns_a_missing_budget_as_a_question(self):
+        _, body = skill_docs()["test"]
+        acceptance = section(body, "Input")
+        for passage in (SAMPLED_RUN_LINE_FORM, SAMPLED_RUN_FLAKE_EXAMPLE, SAMPLED_RUN_MISSING_BUDGET):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, acceptance)
+
+    def test_test_principles_are_deterministic_unless_the_brief_names_a_sampled_run(self):
+        _, body = skill_docs()["test"]
+        principles = section(body, "Principles")
+        self.assertEqual([line.startswith(SAMPLED_RUN_DEFAULT) for line in principles.splitlines()].count(True), 1)
+        self.assertIn(SAMPLED_RUN_OUT_OF_THE_GATE, principles)
+
+    def test_test_sampled_runs_names_each_kind_once_and_leaves_load_and_soak_to_performance_tests(self):
+        _, body = skill_docs()["test"]
+        for heading in SAMPLED_RUN_NEIGHBOURS:
+            self.assertIn(heading, body)
+        offsets = [body.index(heading) for heading in SAMPLED_RUN_NEIGHBOURS]
+        self.assertEqual(offsets, sorted(offsets))
+        runs = section(body, "Sampled runs")
+        for kind in SAMPLED_RUN_KINDS:
+            with self.subTest(kind=kind):
+                self.assertIn(f"- **{kind}:**", runs)
+                self.assertEqual(len(re.findall(rf"(?<![\w-]){kind}(?![\w-])", runs, re.IGNORECASE)), 1)
+        self.assertIn(SAMPLED_RUN_PERFORMANCE, runs)
+
+    def test_test_reports_each_sampled_run_with_its_budget_samples_environment_and_uncertainty(self):
+        _, body = skill_docs()["test"]
+        runs = section(body, "Sampled runs")
+        output = section(body, "Output")
+        for passage in (SAMPLED_RUN_HARNESS, SAMPLED_RUN_REPORT, SAMPLED_RUN_BOUND):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, runs)
+        self.assertIn(SAMPLED_RUN_OUTPUT_FIELDS, output)
 
     def test_implement_method_puts_correctness_before_speed(self):
         _, body = skill_docs()["implement"]

@@ -62,8 +62,8 @@ pair second-opinion \
   'Get Codex to attack the premises of this plan before we accept it.' \
   'Review this change-set against its brief and tell me whether it is acceptable.'
 pair test \
-  'Write tests for render covering the empty-name edge case, with the red-before-green proof.' \
-  'Add the empty-name guard to render in widget.py.'
+  'test_render_empty fails one run in twenty on CI — diagnose the flake within 200 runs.' \
+  'render returns the wrong string for an empty name and the cause is not known — find it.'
 pair verify-claim \
   'Before I rely on it: is it true that nothing else calls render? Check that claim.' \
   'Find every function defined in this repository.'
