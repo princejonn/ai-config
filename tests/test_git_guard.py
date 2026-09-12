@@ -32,6 +32,10 @@ PAGER_PERMITTED = 'redirect: <command> > "$TMPDIR/out.txt" 2>&1, then read the f
 STASH_RULE = "git stash silently destroys uncommitted work in a shared tree."
 CLEAN_RULE = "git clean deletes untracked work in a shared tree."
 STDIN_RULE = "git commit -F - takes the message from a pipe or stdin the guard cannot read."
+PUSH_RULE = "a push in any other form can reach the default branch without the prompt its name carries."
+PUSH_NESTED_RULE = "a push inside a subshell, a command substitution or a find action reaches the default branch with no prompt at all."
+PUSH_PERMITTED = "git push origin <branch>."
+PUSH_NESTED_PERMITTED = "git push origin <branch> as its own command."
 FAKE_GIT = f"""#!{sys.executable}
 import os, sys, time
 time.sleep(float(os.environ["FAKE_GIT_SLEEP"]))
@@ -207,10 +211,155 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
 
 
 class GitPushTests(unittest.TestCase):
-    def test_permits_push_the_permission_layer_asks(self):
-        for command in ("git push", "git push --force-with-lease origin HEAD", "git push origin main"):
+    def assert_denied(self, commands, expected=PUSH_RULE, alternative=PUSH_PERMITTED):
+        for command in commands:
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), expected)
+                self.assertEqual(permitted(result), alternative)
+
+    def test_permits_a_push_that_names_its_branch(self):
+        for command in ("git push origin feature/x", "git push origin main", "git push origin release-1.2"):
             with self.subTest(command=command):
                 self.assertIsNone(evaluate(command))
+
+    def test_denies_a_push_that_names_no_branch(self):
+        self.assert_denied(("git push", "git push origin"))
+
+    def test_denies_pushing_the_current_head(self):
+        self.assert_denied(("git push origin HEAD", "git push origin @"))
+
+    def test_denies_a_source_destination_refspec(self):
+        self.assert_denied(("git push origin HEAD:main", "git push origin feature/x:main", "git push origin :feature/x"))
+
+    def test_denies_a_force_push(self):
+        self.assert_denied(
+            (
+                "git push --force origin main",
+                "git push -f origin feature/x",
+                "git push --force-with-lease origin HEAD",
+                "git push origin +main",
+            )
+        )
+
+    def test_denies_setting_the_upstream(self):
+        self.assert_denied(("git push -u origin main", "git push --set-upstream origin feature/x"))
+
+    def test_denies_pushing_every_ref(self):
+        self.assert_denied(("git push --all origin", "git push --mirror origin", "git push --tags origin"))
+
+    def test_denies_deleting_a_remote_branch(self):
+        self.assert_denied(("git push origin --delete feature/x", "git push --delete origin feature/x"))
+
+    def test_denies_a_flag_anywhere_in_the_push(self):
+        self.assert_denied(
+            (
+                "git push --quiet origin feature/x",
+                "git push origin feature/x --quiet",
+                "git push origin feature/x --no-verify",
+                "git -C packages/aegis push origin feature/x",
+            )
+        )
+
+    def test_denies_a_remote_other_than_origin(self):
+        self.assert_denied(("git push upstream feature/x", "git push git@github.com:princejonn/ai-config.git main"))
+
+    def test_denies_more_than_one_refspec(self):
+        self.assert_denied(("git push origin feature/x feature/y", "git push origin main feature/x"))
+
+    def test_denies_a_qualified_ref_in_place_of_a_branch(self):
+        self.assert_denied(("git push origin refs/heads/main", "git push origin heads/main", "git push origin tags/v1"))
+
+    def test_denies_a_push_whose_text_is_not_the_permitted_form(self):
+        self.assert_denied(
+            (
+                'git push origin "main"',
+                "git push origin $(git branch --show-current)",
+                "git push  origin  main",
+                "git push origin main # ship it",
+                "sudo git push origin main",
+            )
+        )
+
+    def test_denies_a_push_a_subshell_or_a_substitution_runs(self):
+        self.assert_denied(
+            (
+                "(git push origin main)",
+                "$(git push origin feature/x)",
+                "echo `git push origin main`",
+                'bash -c "git push origin main"',
+                'eval "git push origin main"',
+            ),
+            expected=PUSH_NESTED_RULE,
+            alternative=PUSH_NESTED_PERMITTED,
+        )
+
+    def test_denies_a_push_a_find_action_runs(self):
+        self.assert_denied(
+            ("find . -name '*.ts' -exec git push origin main \\;", "find . -type f -execdir git push origin feature/x \\;"),
+            expected=PUSH_NESTED_RULE,
+            alternative=PUSH_NESTED_PERMITTED,
+        )
+
+    def test_denies_a_push_a_subshell_runs_after_a_case_statement(self):
+        self.assert_denied(
+            (
+                "case x in a) echo 1;; esac\n(git push origin main)",
+                "(case x in a) echo 1;; esac; git push origin main)",
+            ),
+            expected=PUSH_NESTED_RULE,
+            alternative=PUSH_NESTED_PERMITTED,
+        )
+
+    def test_denies_a_push_a_shell_reads_from_a_heredoc(self):
+        self.assert_denied(
+            (
+                "bash <<'EOF'\ngit push origin main\nEOF",
+                "bash <<'EOF'\ngit push --force origin main\nEOF",
+                "cat <<'EOF' | bash\ngit push --force origin main\nEOF",
+                "cat <<'EOF' | bash -s\ngit push origin main\nEOF",
+            ),
+            expected=PUSH_NESTED_RULE,
+            alternative=PUSH_NESTED_PERMITTED,
+        )
+
+    def test_permits_a_commit_whose_message_quotes_a_push(self):
+        self.assertIsNone(evaluate("git commit -F - -- a <<'EOF'\nfeat: x\n\nOnly `git push origin main` passes.\nEOF"))
+        self.assertIsNone(evaluate("git commit -F - -- a <<'EOF'\nfeat: x\n\n$(git push --force origin main)\nEOF"))
+        self.assert_denied(("echo $(git push origin main)",), expected=PUSH_NESTED_RULE, alternative=PUSH_NESTED_PERMITTED)
+
+    def test_permits_a_commit_whose_message_names_a_push(self):
+        self.assertIsNone(
+            evaluate(
+                "git commit -F - -- claude <<'EOF'\n"
+                "feat(settings): ask gains Bash(git push origin main *)\n"
+                "\n"
+                "git push --force origin main is denied.\n"
+                "EOF"
+            )
+        )
+
+    def test_judges_a_push_after_the_heredoc_terminator(self):
+        self.assertIsNone(evaluate("git commit -F - -- claude <<'EOF'\nfeat: x\nEOF\ngit push origin main"))
+        self.assert_denied(("git commit -F - -- claude <<'EOF'\nfeat: x\nEOF\ngit push --force origin main",))
+
+    def test_permits_a_push_with_its_output_redirected(self):
+        for command in (
+            "git push origin main 2>&1",
+            "git push origin feature/x > log",
+            "git push origin main >> log",
+            "git push origin feature/x 2>/dev/null",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_denies_a_word_after_the_redirect_target(self):
+        self.assert_denied(("git push origin main > log extra", "git push origin main 2>&1 --force"))
+
+    def test_permits_a_push_beside_another_command(self):
+        self.assertIsNone(evaluate('git commit -m "feat(aegis): add thing" -- packages/aegis && git push origin feature/x'))
+        self.assertIsNone(evaluate("git push origin feature/x; git log -1"))
 
     def test_permits_fetch_pull_log_diff(self):
         self.assertIsNone(evaluate("git fetch origin"))
@@ -736,6 +885,7 @@ class ProgramPositionTests(unittest.TestCase):
         self.assertIsNone(evaluate("man git stash"))
         self.assertIsNone(evaluate("grep -rn 'git stash' docs"))
         self.assertIsNone(evaluate("cat <<'EOF' > notes.md\nnever run git stash here\nEOF"))
+        self.assertIsNone(evaluate("cat <<'EOF' > notes.md\ngit stash is destructive\nEOF"))
 
     def test_wrappers_are_stripped_before_the_program(self):
         for command in (
@@ -829,6 +979,31 @@ class ShellIndirectionTests(unittest.TestCase):
         self.assertIsNone(evaluate('sh -c "git status"'))
         self.assertIsNone(evaluate("echo $(git rev-parse HEAD)"))
         self.assertIsNone(evaluate("eval ls"))
+
+
+class HeredocBodyTests(unittest.TestCase):
+    def test_denies_a_command_a_shell_reads_from_a_heredoc(self):
+        for command in (
+            f"cat <<'EOF' | bash\nrm -rf {MONOREPO}/src\nEOF",
+            "cat <<'EOF' | sh\ngit stash\nEOF",
+            "cat <<'EOF' | bash -s\ngit clean -fd\nEOF",
+            "cat <<'EOF' | zsh\ngit stash\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(decision(evaluate(command)), "deny")
+
+    def test_denies_a_pager_a_shell_reads_from_a_heredoc(self):
+        self.assertEqual(rule(evaluate("cat <<'EOF' | bash\nnpm test | tail -5\nEOF")), PAGER_RULE)
+
+    def test_permits_a_command_a_heredoc_carries_as_text(self):
+        for command in (
+            f"cat <<'EOF' > notes.md\nrm -rf {MONOREPO}/src\nEOF",
+            "cat <<'EOF' > notes.md\nfind . -name x -delete\nEOF",
+            "cat <<'EOF' > notes.md\nnpm test | tail -5\nEOF",
+            f"git commit -F - -- a <<'EOF'\nfeat: x\n\nrm -rf {MONOREPO}/src is denied.\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
 
 
 class ShellReadingTests(unittest.TestCase):

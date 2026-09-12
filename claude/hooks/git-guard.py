@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook (Bash): denies destructive git forms, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, and a test run piped through a pager; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
+"""PreToolUse hook (Bash): denies destructive git forms, a push in any form but git push origin <branch>, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, and a test run piped through a pager; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
 
 import json
 import os
@@ -42,6 +42,7 @@ TREE_WIDE_PATHSPECS = {".", ":", ":/", "*", "**", "..", "../..", "$PWD", "${PWD}
 PATHSPEC_MAGIC = re.compile(r"^:\(([^)]*)\)")
 NEGATIVE_PATHSPEC_PREFIXES = (":!", ":^")
 STASH_READ_ONLY_SUBCOMMANDS = {"list", "show"}
+PUSH_COMMAND = re.compile(r"^git push origin (?!HEAD$|@$|(?:refs|heads|remotes|tags)/)\w[\w./-]*$")
 COMMIT_SHORT_VALUE_LETTERS = "mFCct"
 COMMIT_LONG_VALUE_OPTIONS = {"--message": "m", "--file": "F", "--reuse-message": "C", "--reedit-message": "c", "--template": "t"}
 CONVENTIONAL_SUBJECT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9./,-]*\))?: \S")
@@ -256,8 +257,82 @@ def quote_removed(text, span):
     return ansi_decoded(inner) if span.kind == ANSI else inner
 
 
+def delimiter_line_end(command, start, delimiter):
+    """Where the line closing the heredoc ends, or the end of the command when the delimiter never comes."""
+    position = start
+    while position < len(command):
+        line_end = command.find("\n", position)
+        stop = len(command) if line_end == -1 else line_end
+        if command[position:stop].strip() == delimiter:
+            return stop
+        if line_end == -1:
+            break
+        position = line_end + 1
+    return len(command)
+
+
+def fragment_program(text):
+    """The program a piece of a segment runs."""
+    _, tokens = strip_wrappers(tokenize(text))
+    return program(tokens)
+
+
+def heredoc_readers(command, scanned, index):
+    """Yields the program of every stage the body of the heredoc operator at index reaches: the stage carrying it, then the pipeline's."""
+    start = max((span.end for span in scanned if span.kind == OPERATOR and span.end <= index), default=0)
+    yield fragment_program(command[start:index])
+    stage, piped = [], False
+    for span in scanned:
+        if span.end <= index:
+            continue
+        chunk = command[span.start : span.end]
+        if span.kind == OPERATOR:
+            if chunk not in PIPE_OPERATORS:
+                break
+            if piped:
+                yield fragment_program("".join(stage))
+            stage, piped = [], True
+        elif piped:
+            stage.append(chunk)
+    if piped:
+        yield fragment_program("".join(stage))
+
+
+def heredoc_bodies(command):
+    """Yields (start, end, script) for every heredoc body: where it lies, and whether a shell in its pipeline runs it as a script."""
+    scanned = spans(command)
+    covered = 0
+    for position, span in enumerate(scanned):
+        if span.kind != HEREDOC_OPERATOR or span.start < covered:
+            continue
+        delimiter = heredoc_delimiter(command, scanned[position + 1 :])
+        if delimiter is None or not HEREDOC_DELIMITER.match(delimiter):
+            continue
+        line_end = command.find("\n", span.end)
+        if line_end == -1:
+            continue
+        covered = delimiter_line_end(command, line_end + 1, delimiter)
+        yield line_end + 1, covered, any(reader in SHELLS for reader in heredoc_readers(command, scanned, span.start))
+
+
+def heredocs_masked(command):
+    """The command with every heredoc body blanked, its length kept so offsets still address the command."""
+    masked = command
+    for start, end, _ in heredoc_bodies(command):
+        masked = masked[:start] + " " * (end - start) + masked[end:]
+    return masked
+
+
+def heredoc_scripts(command):
+    """Yields the text of every heredoc body a shell runs."""
+    for start, end, script in heredoc_bodies(command):
+        if script:
+            yield command[start:end]
+
+
 def operator_parts(command):
     """Returns [text, operator, text, …] split on the list operators and parentheses outside quotes, substitutions and comments; an unterminated span falls back to a plain split."""
+    command = heredocs_masked(command)
     parts, current = [], []
     for span in spans(command):
         if not span.closed:
@@ -288,11 +363,15 @@ def split_pipelines(command):
 
 
 def segment_offsets(command):
-    """Yields (offset, segment): where each segment's text starts in the command."""
-    offset = 0
-    for index, part in enumerate(operator_parts(command)):
-        if index % 2 == 0 and part.strip():
-            yield offset + len(part) - len(part.lstrip()), part.strip()
+    """Yields (offset, segment, enclosed): where each segment's text starts in the command, and whether a subshell's parentheses enclose it; a case pattern's ) reads as a subshell's, so parentheses that do not pair leave every segment enclosed."""
+    parts = operator_parts(command)
+    paired = sum(part == "(" for part in parts[1::2]) == sum(part == ")" for part in parts[1::2])
+    offset, depth = 0, 0
+    for index, part in enumerate(parts):
+        if index % 2:
+            depth = max(0, depth + (part == "(") - (part == ")"))
+        elif part.strip():
+            yield offset + len(part) - len(part.lstrip()), part.strip(), depth > 0 or not paired
         offset += len(part)
 
 
@@ -358,16 +437,21 @@ def program(tokens):
     return os.path.basename(tokens[0]) if tokens else ""
 
 
-def command_substitutions(text, context=COMMAND):
+def command_substitutions(text, source, context=COMMAND):
+    """Yields the command of every substitution the shell runs; text is scanned and source, of the same length, is read, so a substitution a heredoc body carries is text."""
     for span in spans(text, context):
         if span.kind == BACKTICK:
-            yield BACKTICK_ESCAPE.sub(r"\1", body(text, span))
+            yield BACKTICK_ESCAPE.sub(r"\1", body(source, span))
         elif span.kind in (SUBSTITUTION, PROCESS):
-            yield body(text, span)
+            yield body(source, span)
         elif span.kind == DOUBLE:
-            yield from command_substitutions(body(text, span), DOUBLE)
+            yield from command_substitutions(body(text, span), body(source, span), DOUBLE)
         elif span.kind == EXPANSION:
-            yield from command_substitutions(body(text, span), expansion_context(context))
+            yield from command_substitutions(body(text, span), body(source, span), expansion_context(context))
+
+
+def substitutions(command):
+    return command_substitutions(heredocs_masked(command), command)
 
 
 def nested_commands(tokens):
@@ -382,21 +466,23 @@ def nested_commands(tokens):
 
 
 def located_segments(command, depth=0):
-    """Yields (wrappers, tokens, segment, remainder) for every segment, including shell indirection; segment is its text, remainder the enclosing command from the segment on."""
+    """Yields (wrappers, tokens, segment, remainder, nested) for every segment, including shell indirection; segment is its text, remainder the enclosing command from the segment on, nested whether a subshell, a substitution or a shell string runs it."""
     if depth > MAX_DEPTH:
         return
-    for offset, segment in segment_offsets(command):
+    for offset, segment, enclosed in segment_offsets(command):
         wrappers, tokens = strip_wrappers(tokenize(segment))
-        yield wrappers, tokens, segment, command[offset:]
+        yield wrappers, tokens, segment, command[offset:], depth > 0 or enclosed
         for nested in nested_commands(tokens):
             yield from located_segments(nested, depth + 1)
-    for substitution in command_substitutions(command):
+    for script in heredoc_scripts(command):
+        yield from located_segments(script, depth + 1)
+    for substitution in substitutions(command):
         yield from located_segments(substitution, depth + 1)
 
 
 def segments(command, depth=0):
     """Yields (wrappers, tokens) for every segment, including shell indirection."""
-    for wrappers, tokens, _, _ in located_segments(command, depth):
+    for wrappers, tokens, _, _, _ in located_segments(command, depth):
         yield wrappers, tokens
 
 
@@ -410,7 +496,9 @@ def pipelines(command, depth=0):
         for _, tokens in stages:
             for nested in nested_commands(tokens):
                 yield from pipelines(nested, depth + 1)
-    for substitution in command_substitutions(command):
+    for script in heredoc_scripts(command):
+        yield from pipelines(script, depth + 1)
+    for substitution in substitutions(command):
         yield from pipelines(substitution, depth + 1)
 
 
@@ -624,7 +712,46 @@ def check_commit_message(args, remainder):
     return None
 
 
-def check_git(subcommand, args, global_options, cwd):
+def target_end(segment, following):
+    """Where the word a redirection writes to ends."""
+    started = False
+    for span in following:
+        if span.kind in TOKEN_BOUNDARIES:
+            return span.start
+        if span.kind == WORD:
+            for offset, char in enumerate(segment[span.start : span.end]):
+                if char not in WHITESPACE:
+                    started = True
+                elif started:
+                    return span.start + offset
+        else:
+            started = True
+    return len(segment)
+
+
+def descriptor_start(segment, index):
+    """Where the file descriptor a redirection carries begins, else the operator's own start."""
+    start = index
+    while start and segment[start - 1].isdigit():
+        start -= 1
+    return start if start < index and (start == 0 or segment[start - 1] in WHITESPACE) else index
+
+
+def redirections_removed(segment):
+    """The segment's text with each redirection, its file descriptor and its target word taken out."""
+    scanned = spans(segment)
+    kept, end = [], 0
+    for position, span in enumerate(scanned):
+        if span.kind != REDIRECTION:
+            continue
+        kept.append(segment[end : descriptor_start(segment, span.start)])
+        end = target_end(segment, scanned[position + 1 :])
+    kept.append(segment[end:])
+    return "".join(kept).strip()
+
+
+def check_git(subcommand, args, global_options, cwd, text):
+    """text is the segment's own text; None when a subshell, a substitution, a shell string or a find action runs it."""
     if defines_alias(global_options):
         return deny("git -c alias.* defines a command the guard cannot see.", "the plain git subcommand.")
     if subcommand == "stash" and not stash_reads_only(args):
@@ -668,6 +795,18 @@ def check_git(subcommand, args, global_options, cwd):
             return deny(
                 "git switch --discard-changes/-f throws away uncommitted work.",
                 "git switch <branch> or git switch -c <branch>.",
+            )
+        return None
+    if subcommand == "push":
+        if text is None:
+            return deny(
+                "a push inside a subshell, a command substitution or a find action reaches the default branch with no prompt at all.",
+                "git push origin <branch> as its own command.",
+            )
+        if not PUSH_COMMAND.match(redirections_removed(text)):
+            return deny(
+                "a push in any other form can reach the default branch without the prompt its name carries.",
+                "git push origin <branch>.",
             )
         return None
     if subcommand == "commit":
@@ -848,7 +987,7 @@ def find_action_git_decision(tokens, cwd):
     if invocation is None:
         return None
     subcommand, args, _ = invocation
-    decision = check_git(*invocation, cwd)
+    decision = check_git(*invocation, cwd, None)
     if decision is not None:
         return decision
     if subcommand == "commit" or (subcommand in ("checkout", "restore") and any(FIND_MATCH in spec for spec in pathspecs(args))):
@@ -1065,11 +1204,11 @@ def evaluate(hook_input):
     commits = False
     deadline = time.monotonic() + BUDGET_SECONDS
 
-    for wrappers, tokens, segment, remainder in located_segments(command):
+    for wrappers, tokens, segment, remainder, nested in located_segments(command):
         invocation = git_invocation(tokens)
         if invocation is not None:
             subcommand, args, global_options = invocation
-            decision = check_git(subcommand, args, global_options, cwd)
+            decision = check_git(subcommand, args, global_options, cwd, None if nested else segment)
             if decision is not None:
                 return decision
             if subcommand == "commit":

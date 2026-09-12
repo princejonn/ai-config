@@ -22,8 +22,8 @@ tests/
 `./apply.sh` links every owned path, prunes dangling links into this repo, merges the manifest
 hooks and defaults into `~/.claude/settings.json` and lists foreign entries in the owned dirs. A
 list default merges by union: the entries a machine lacks are appended and nothing is ever removed.
-An object default present, even partial, is left as it is. A `Bash(git push:*)` entry in a machine's
-`deny` list must be removed by hand for the manifest's `git push` ask to take effect. `apply.sh`
+An object default present, even partial, is left as it is. A `Bash(git push origin main *)` entry in a
+machine's `deny` list must be removed by hand for the manifest's ask to take effect. `apply.sh`
 refuses to overwrite a file it does not own: a differing file is reported as `CONFLICT` and must be
 moved aside by hand. A byte-identical file is adopted as a symlink.
 

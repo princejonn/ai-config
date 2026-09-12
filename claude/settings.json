@@ -14,7 +14,7 @@
   },
   "defaults": {
     "attribution": {"commit": "", "pr": "", "sessionUrl": false},
-    "permissions.allow": ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)", "Bash(mv:*)"],
-    "permissions.ask": ["Bash(git push:*)"]
+    "permissions.allow": ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)", "Bash(mv:*)", "Bash(git push origin *)"],
+    "permissions.ask": ["Bash(git push origin main *)"]
   }
 }

@@ -22,8 +22,8 @@ MANIFEST_HOOKS = {
     ],
 }
 LIVE_ATTRIBUTION = {"commit": "", "pr": "", "sessionUrl": False}
-LIVE_ALLOW = ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)", "Bash(mv:*)"]
-LIVE_ASK = ["Bash(git push:*)"]
+LIVE_ALLOW = ["Bash(git commit:*)", "Bash(rm:*)", "Bash(find:*)", "Bash(mv:*)", "Bash(git push origin *)"]
+LIVE_ASK = ["Bash(git push origin main *)"]
 MANIFEST = {
     "hooks": MANIFEST_HOOKS,
     "defaults": {
@@ -247,14 +247,14 @@ class MergeSettingsTest(unittest.TestCase):
         self.settings.write_text(rendered({"permissions": {"allow": allow}}), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(self.read()["permissions"]["allow"], [*allow, "Bash(find:*)", "Bash(mv:*)"])
+        self.assertEqual(self.read()["permissions"]["allow"], [*allow, "Bash(find:*)", "Bash(mv:*)", "Bash(git push origin *)"])
 
     def test_manifest_entry_the_user_removed_comes_back(self):
         allow = ["Bash(git commit:*)", "Bash(find:*)", "Bash(mv:*)"]
         self.settings.write_text(rendered({"permissions": {"allow": allow}}), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(self.read()["permissions"]["allow"], [*allow, "Bash(rm:*)"])
+        self.assertEqual(self.read()["permissions"]["allow"], [*allow, "Bash(rm:*)", "Bash(git push origin *)"])
 
     def test_duplicate_in_the_user_list_is_not_deduplicated(self):
         allow = ["Bash(rm:*)", "Bash(rm:*)"]
@@ -263,23 +263,23 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(
             self.read()["permissions"]["allow"],
-            [*allow, "Bash(git commit:*)", "Bash(find:*)", "Bash(mv:*)"],
+            [*allow, "Bash(git commit:*)", "Bash(find:*)", "Bash(mv:*)", "Bash(git push origin *)"],
         )
 
     def test_ask_created_with_the_push_rule_when_absent(self):
         self.settings.write_text(rendered({"permissions": {"allow": ["Bash(ls:*)"]}}), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(self.read()["permissions"]["ask"], ["Bash(git push:*)"])
+        self.assertEqual(self.read()["permissions"]["ask"], ["Bash(git push origin main *)"])
 
     def test_present_ask_gains_the_push_rule(self):
         self.settings.write_text(rendered({"permissions": {"ask": ["Bash(curl:*)"]}}), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(self.read()["permissions"]["ask"], ["Bash(curl:*)", "Bash(git push:*)"])
+        self.assertEqual(self.read()["permissions"]["ask"], ["Bash(curl:*)", "Bash(git push origin main *)"])
 
     def test_present_ask_carrying_the_push_rule_is_untouched(self):
-        ask = ["Bash(git push:*)", "Bash(curl:*)"]
+        ask = ["Bash(git push origin main *)", "Bash(curl:*)"]
         self.settings.write_text(rendered({"permissions": {"ask": ask}}), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
