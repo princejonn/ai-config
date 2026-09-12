@@ -131,6 +131,7 @@ ONE_HOME_PHRASES = {
     "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
     "carries no orchestration": "claude/skills/author-skill/SKILL.md",
+    "corrected from the evidence": "claude/rules/writing.md",
 }
 ABSENT_PHRASES = {
     "@lindorm": CLAUDE,

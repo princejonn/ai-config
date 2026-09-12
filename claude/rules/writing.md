@@ -4,7 +4,9 @@
   trust without checking, and trusted prose is where hallucination comes from. Spend the effort on
   a name, a type that makes the wrong state unwritable, or a test whose name states the rule. Write
   a comment only for a hazard a reasonable edit would break, and then one traced sentence.
-- **A wrong comment is fixed by deleting it, never by rewriting it.**
+- **A wrong comment is deleted**, except one that is the only home of a contract — the hazard
+  above, the specification address below — which is corrected from the evidence. Documentation
+  files are not comments.
 - **No history in any repo.** GitHub carries the history; a repository carries only the present.
   Nothing in it — comment, docstring, type, test name, fixture, data table — records what the code
   used to do: no `used to`, `previously`, `no longer`, `legacy`, `renamed from`, no comment that

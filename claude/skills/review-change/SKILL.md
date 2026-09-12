@@ -27,7 +27,7 @@ The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and add
 
 **Layer 3 — does the code explain itself?**
 - A comment doing a **name's**, a **type's** or a **test name's** job is a finding against the code — say which rename, type or test name replaces it.
-- A statement that is false, or whose falsity would make nothing go red, is a finding whose remedy is **DELETE** — never "rewrite it to say X".
+- A statement that is false, or whose falsity would make nothing go red, is a finding; its remedy follows `rules/writing.md`.
 - Report every one; they are filtered at the verdict, not during the read.
 
 **Layer 4 — strategy passes** (only after 1–3): scenario composition (multi-step workflows end to end) · state machine analysis (unreachable or unhandled transitions) · contract/reference verification (ownership, mutation leaks, aliasing) · error/cleanup path audit (every exit path) · API symmetry (sibling methods and drivers).
@@ -48,7 +48,7 @@ The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and add
   - **Blocker** — correctness, security, or data loss.
   - **Fix** — must change before acceptance: design flaws, missing coverage, blind tests, repository-instruction violations, traps left for the next person.
   - **File** — worth recording, does not block: owner decisions, follow-on work, judgment calls.
-  - **Prose** — a comment that is false, unfalsifiable, or doing a name's/type's/test's job. Never blocks. Remedy: deletion, or the rename that makes it unnecessary.
+  - **Prose** — a comment that is false, unfalsifiable, or doing a name's/type's/test's job. Never blocks. Remedy: per `rules/writing.md`, or the rename that makes it unnecessary.
 - Zero findings is a valid result. Never pad a review, never invent a finding to justify the round.
 
 ## Re-review and the adjudication ledger
