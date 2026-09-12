@@ -33,4 +33,6 @@ One verdict per claim — **VERIFIED**, **DISPROVEN**, or **UNVERIFIABLE** — p
 - For **UNVERIFIABLE**: exactly which artefact or access was missing.
 - **Leads**: material out-of-scope discoveries.
 
+A population claim: a counterexample is DISPROVEN; an enumeration that cannot close is UNVERIFIABLE with the reach stated — what was enumerated, what could not be — never VERIFIED.
+
 "Plausible", "likely", and unlabelled inference are not verdicts.

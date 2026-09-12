@@ -25,7 +25,7 @@ The memo is compact, structured, and complete enough to be used without re-fetch
 
 - **Findings**: each with its evidence — URL or file path, plus the load-bearing quote or datum. State publication or last-updated dates where freshness matters.
 - **Contradictions**: sources that disagree, stated side by side; never silently pick one.
-- **Confidence**: well-sourced vs thinly sourced vs could not be confirmed.
+- **Confidence**: well-sourced vs thinly sourced vs could not be confirmed, and the reach: which corpus was searched, with what, and what was not.
 - **Leads**: material out-of-scope trails worth a follow-up lane.
 
 Never return raw page content wholesale, and never present an unverified claim as established.

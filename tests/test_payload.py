@@ -134,6 +134,8 @@ ONE_HOME_PHRASES = {
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
     "carries no orchestration": "claude/skills/author-skill/SKILL.md",
     "corrected from the evidence": "claude/rules/writing.md",
+    "cannot close is UNVERIFIABLE": "claude/skills/verify-claim/SKILL.md",
+    "the reach: which corpus was searched": "claude/skills/research/SKILL.md",
 }
 ABSENT_PHRASES = {
     "@lindorm": CLAUDE,
