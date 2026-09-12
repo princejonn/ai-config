@@ -992,6 +992,19 @@ class HeredocBodyTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(decision(evaluate(command)), "deny")
 
+    def test_denies_a_command_a_shell_named_by_a_variable_or_a_substitution_reads_from_a_heredoc(self):
+        for command in (
+            f"cat <<'EOF' | $SHELL\nrm -rf {MONOREPO}/src\nEOF",
+            f"cat <<'EOF' | \"$(which bash)\"\nrm -rf {MONOREPO}/src\nEOF",
+            f"cat <<'EOF' | `which bash`\nrm -rf {MONOREPO}/src\nEOF",
+            f"cat <<'EOF' | $(echo /bin/bash)\nrm -rf {MONOREPO}/src\nEOF",
+            f"cat <<'EOF' | `echo /bin/bash`\nrm -rf {MONOREPO}/src\nEOF",
+            f"$RUNNER <<'EOF'\nrm -rf {MONOREPO}/src\nEOF",
+            f"$HOME/bin/runner <<'EOF'\nrm -rf {MONOREPO}/src\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command)), RM_RULE)
+
     def test_denies_a_pager_a_shell_reads_from_a_heredoc(self):
         self.assertEqual(rule(evaluate("cat <<'EOF' | bash\nnpm test | tail -5\nEOF")), PAGER_RULE)
 
@@ -1001,6 +1014,14 @@ class HeredocBodyTests(unittest.TestCase):
             "cat <<'EOF' > notes.md\nfind . -name x -delete\nEOF",
             "cat <<'EOF' > notes.md\nnpm test | tail -5\nEOF",
             f"git commit -F - -- a <<'EOF'\nfeat: x\n\nrm -rf {MONOREPO}/src is denied.\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_permits_a_heredoc_redirected_to_a_path_the_guard_cannot_resolve(self):
+        for command in (
+            f"cat <<'EOF' > $NOTES\nrm -rf {MONOREPO}/src\nEOF",
+            f"cat <<'EOF' > \"$(mktemp)\"\nrm -rf {MONOREPO}/src\nEOF",
         ):
             with self.subTest(command=command):
                 self.assertIsNone(evaluate(command))
@@ -1860,6 +1881,17 @@ class ScannerTests(unittest.TestCase):
                 self.assertEqual(starts, [0] + ends[:-1] if ends else [])
                 self.assertEqual(ends[-1:], [len(text)] if text else [])
                 self.assertIn(decision(evaluate(text, cwd="")), {None, "deny"})
+
+    def test_every_character_construct_returns_a_span_for_is_a_construct_head(self):
+        contexts = (git_guard.COMMAND, git_guard.EXPANSION, git_guard.DOUBLE, git_guard.QUOTED_EXPANSION)
+        suffixes = ("", "x", "'", '"', "(", ")", "{", "}", "<", ">", "&", "|", ";", "\n", "\\", "$", "`", "#")
+        heads = {
+            char
+            for char in map(chr, range(0x300))
+            for context, start, suffix in itertools.product(contexts, (True, False), suffixes)
+            if git_guard.construct(char + suffix, 0, context, start) is not None
+        }
+        self.assertEqual(heads, git_guard.CONSTRUCT_HEADS)
 
     def test_an_unterminated_span_reaches_the_end_of_the_text_without_raising(self):
         for text in ("$(echo", "${X", "<(echo", ">(echo", "`echo", "$'a", "'a", '"a', '"$(a', "$(a '", "$(a \"", '${X:-"', "$'\\"):

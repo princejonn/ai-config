@@ -18,6 +18,7 @@ TMPDIR_VARIABLE = re.compile(r"^\$(\{TMPDIR\}|TMPDIR)(?=/|$)")
 UNRESOLVABLE_TARGET = re.compile(r"^~|[*?\[]|\$(?!TMPDIR(?=/|$)|\{TMPDIR\}(?=/|$))|`")
 UNRESOLVABLE_NAME = re.compile(r"^~|\$|`")
 UNRESOLVABLE_PATHSPEC = re.compile(r"\$(?!PWD(?=/|$)|\{PWD\})|`")
+UNRESOLVABLE_PROGRAM = re.compile(r"^[$`]")
 SEGMENT_SPLIT = re.compile(r"(\|\||&&|\|&|;|\n|\||(?<![&<>])&(?![&>]))")
 PIPE_OPERATORS = {"|", "|&"}
 GIT_GLOBAL_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source"}
@@ -106,6 +107,7 @@ COMMAND_OPERATORS = (
     ("(", OPERATOR),
     (")", OPERATOR),
 )
+CONSTRUCT_HEADS = set("'\"\\$`#") | {operator[0] for operator, _ in COMMAND_OPERATORS}
 WHITESPACE = " \t\n"
 WORD_HEAD = re.compile(r"[^ \t\n]*")
 BACKTICK_ESCAPE = re.compile(r"\\([$`\\])")
@@ -167,8 +169,12 @@ def scan(text, index, context, closer=None):
     """Returns (spans, end): the spans from index up to the context's closer, and the index just past it; end is None when the closer never comes and len(text) when there is none to find."""
     found, word, depth, boundary = [], index, 0, True
     while index < len(text):
-        if text[index] == closer and depth == 0:
+        char = text[index]
+        if char == closer and depth == 0:
             break
+        if char not in CONSTRUCT_HEADS:
+            index += 1
+            continue
         span = construct(text, index, context, text[index - 1] in WHITESPACE if word < index else boundary)
         if span is None:
             index += 1
@@ -271,16 +277,16 @@ def delimiter_line_end(command, start, delimiter):
     return len(command)
 
 
-def fragment_program(text):
-    """The program a piece of a segment runs."""
+def fragment_token(text):
+    """The token naming the program a piece of a segment runs."""
     _, tokens = strip_wrappers(tokenize(text))
-    return program(tokens)
+    return tokens[0] if tokens else ""
 
 
 def heredoc_readers(command, scanned, index):
-    """Yields the program of every stage the body of the heredoc operator at index reaches: the stage carrying it, then the pipeline's."""
+    """Yields the program token of every stage the body of the heredoc operator at index reaches: the stage carrying it, then the pipeline's."""
     start = max((span.end for span in scanned if span.kind == OPERATOR and span.end <= index), default=0)
-    yield fragment_program(command[start:index])
+    yield fragment_token(command[start:index])
     stage, piped = [], False
     for span in scanned:
         if span.end <= index:
@@ -290,16 +296,21 @@ def heredoc_readers(command, scanned, index):
             if chunk not in PIPE_OPERATORS:
                 break
             if piped:
-                yield fragment_program("".join(stage))
+                yield fragment_token("".join(stage))
             stage, piped = [], True
         elif piped:
             stage.append(chunk)
     if piped:
-        yield fragment_program("".join(stage))
+        yield fragment_token("".join(stage))
+
+
+def reads_as_script(token):
+    """Whether the stage this program token names runs a heredoc body as a script: the token's basename is a shell, or the token begins with a variable or a substitution."""
+    return os.path.basename(token) in SHELLS or bool(UNRESOLVABLE_PROGRAM.search(token))
 
 
 def heredoc_bodies(command):
-    """Yields (start, end, script) for every heredoc body: where it lies, and whether a shell in its pipeline runs it as a script."""
+    """Yields (start, end, script) for every heredoc body: where it lies, and whether a stage in its pipeline runs it as a script."""
     scanned = spans(command)
     covered = 0
     for position, span in enumerate(scanned):
@@ -312,32 +323,26 @@ def heredoc_bodies(command):
         if line_end == -1:
             continue
         covered = delimiter_line_end(command, line_end + 1, delimiter)
-        yield line_end + 1, covered, any(reader in SHELLS for reader in heredoc_readers(command, scanned, span.start))
+        yield line_end + 1, covered, any(reads_as_script(token) for token in heredoc_readers(command, scanned, span.start))
 
 
 def heredocs_masked(command):
-    """The command with every heredoc body blanked, its length kept so offsets still address the command."""
-    masked = command
-    for start, end, _ in heredoc_bodies(command):
-        masked = masked[:start] + " " * (end - start) + masked[end:]
-    return masked
-
-
-def heredoc_scripts(command):
-    """Yields the text of every heredoc body a shell runs."""
+    """Returns (masked, scripts): the command with every heredoc body blanked, its length kept so offsets still address the command, and the text of every body a stage runs as a script."""
+    masked, scripts = command, []
     for start, end, script in heredoc_bodies(command):
+        masked = masked[:start] + " " * (end - start) + masked[end:]
         if script:
-            yield command[start:end]
+            scripts.append(command[start:end])
+    return masked, scripts
 
 
-def operator_parts(command):
+def operator_parts(masked):
     """Returns [text, operator, text, …] split on the list operators and parentheses outside quotes, substitutions and comments; an unterminated span falls back to a plain split."""
-    command = heredocs_masked(command)
     parts, current = [], []
-    for span in spans(command):
+    for span in spans(masked):
         if not span.closed:
-            return SEGMENT_SPLIT.split(command)
-        chunk = command[span.start : span.end]
+            return SEGMENT_SPLIT.split(masked)
+        chunk = masked[span.start : span.end]
         if span.kind == OPERATOR:
             parts.extend(("".join(current), chunk))
             current = []
@@ -347,10 +352,10 @@ def operator_parts(command):
     return parts
 
 
-def split_pipelines(command):
+def split_pipelines(masked):
     """Groups the segments into pipelines: a segment joins the one before it when a | or |& lies between them."""
     pipelines, piped = [], False
-    for index, part in enumerate(operator_parts(command)):
+    for index, part in enumerate(operator_parts(masked)):
         if index % 2:
             piped = piped or part in PIPE_OPERATORS
         elif part.strip():
@@ -362,9 +367,9 @@ def split_pipelines(command):
     return pipelines
 
 
-def segment_offsets(command):
+def segment_offsets(masked):
     """Yields (offset, segment, enclosed): where each segment's text starts in the command, and whether a subshell's parentheses enclose it; a case pattern's ) reads as a subshell's, so parentheses that do not pair leave every segment enclosed."""
-    parts = operator_parts(command)
+    parts = operator_parts(masked)
     paired = sum(part == "(" for part in parts[1::2]) == sum(part == ")" for part in parts[1::2])
     offset, depth = 0, 0
     for index, part in enumerate(parts):
@@ -450,8 +455,8 @@ def command_substitutions(text, source, context=COMMAND):
             yield from command_substitutions(body(text, span), body(source, span), expansion_context(context))
 
 
-def substitutions(command):
-    return command_substitutions(heredocs_masked(command), command)
+def substitutions(masked, command):
+    return command_substitutions(masked, command)
 
 
 def nested_commands(tokens):
@@ -469,14 +474,15 @@ def located_segments(command, depth=0):
     """Yields (wrappers, tokens, segment, remainder, nested) for every segment, including shell indirection; segment is its text, remainder the enclosing command from the segment on, nested whether a subshell, a substitution or a shell string runs it."""
     if depth > MAX_DEPTH:
         return
-    for offset, segment, enclosed in segment_offsets(command):
+    masked, scripts = heredocs_masked(command)
+    for offset, segment, enclosed in segment_offsets(masked):
         wrappers, tokens = strip_wrappers(tokenize(segment))
         yield wrappers, tokens, segment, command[offset:], depth > 0 or enclosed
         for nested in nested_commands(tokens):
             yield from located_segments(nested, depth + 1)
-    for script in heredoc_scripts(command):
+    for script in scripts:
         yield from located_segments(script, depth + 1)
-    for substitution in substitutions(command):
+    for substitution in substitutions(masked, command):
         yield from located_segments(substitution, depth + 1)
 
 
@@ -490,15 +496,16 @@ def pipelines(command, depth=0):
     """Yields each pipeline as a list of (wrappers, tokens) stages, including shell indirection."""
     if depth > MAX_DEPTH:
         return
-    for pipeline in split_pipelines(command):
+    masked, scripts = heredocs_masked(command)
+    for pipeline in split_pipelines(masked):
         stages = [strip_wrappers(tokenize(segment)) for segment in pipeline]
         yield stages
         for _, tokens in stages:
             for nested in nested_commands(tokens):
                 yield from pipelines(nested, depth + 1)
-    for script in heredoc_scripts(command):
+    for script in scripts:
         yield from pipelines(script, depth + 1)
-    for substitution in substitutions(command):
+    for substitution in substitutions(masked, command):
         yield from pipelines(substitution, depth + 1)
 
 
