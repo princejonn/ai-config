@@ -59,6 +59,7 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "plan-phases": {},
     "implement": {},
     "test": {},
+    "author-gherkin": {},
     "deliver": {},
     "diagnose-root-cause": {},
     "second-opinion-codex": {},
@@ -67,11 +68,11 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "issue-next": {},
     "issue-triage": {},
 }
-SKILLS_WITH_INPUT = {"design-surface", "implement", "issue-next", "issue-triage", "issue-write", "plan-phases", "research", "research-complex", "review-change", "test", "verify-claim"}
+SKILLS_WITH_INPUT = {"author-gherkin", "design-surface", "implement", "issue-next", "issue-triage", "issue-write", "plan-phases", "research", "research-complex", "review-change", "test", "verify-claim"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_AGENTS = {"developer-trivial", "developer", "developer-complex"}
 RESEARCHER_AGENTS = {"researcher-trivial", "researcher-complex"}
-EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "diagnose-root-cause"] for name in DEVELOPER_AGENTS}, "tester": ["test"], "reviewer-complex": ["review-change"]}
+EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "diagnose-root-cause", "author-gherkin"] for name in DEVELOPER_AGENTS}, "tester": ["test", "author-gherkin"], "reviewer-complex": ["review-change"]}
 EXPECTED_AGENT_MODELS = {
     "developer-trivial": "sonnet",
     "developer": "opus",
@@ -137,6 +138,7 @@ ONE_HOME_PHRASES = {
     "corrected from the evidence": "claude/rules/writing.md",
     "cannot close is UNVERIFIABLE": "claude/skills/verify-claim/SKILL.md",
     "the reach: which corpus was searched": "claude/skills/research/SKILL.md",
+    "at least one scenario, error paths included": "claude/skills/author-gherkin/SKILL.md",
 }
 ABSENT_PHRASES = {
     "@lindorm": CLAUDE,
@@ -168,6 +170,8 @@ SAMPLED_RUN_BOUND = "Zero failures in N bounds the rate; it never shows absence.
 SAMPLED_RUN_FIELDS = ("budget", "samples", "environment", "uncertainty")
 SAMPLED_RUN_OUTPUT_FIELDS = "per sampled run, its budget, samples, environment and uncertainty"
 TESTER_SAMPLED_RUN_KINDS = "a statistical, fuzz, chaos or flake-diagnosis sampled run a brief names with its budget"
+AUTHOR_GHERKIN_STEP_WORDS = "no class, method, file or type name in a step"
+AUTHOR_GHERKIN_UNDEFINED_STEPS = "Undefined steps are the expected result"
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
 BOUNDARY_CLASSES = ("Secrets and credentials", "Customer or personal data", "Any path the repository marks confidential")
 CHANGE_SET_PER_COMMIT = "One commit per accepted change-set through `/commit-item`; an item may land in several, each reviewed"
@@ -588,6 +592,11 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(passage=passage):
                 self.assertIn(passage, runs)
         self.assertIn(SAMPLED_RUN_OUTPUT_FIELDS, output)
+
+    def test_author_gherkin_keeps_implementation_names_out_of_steps_and_quotes_undefined_steps(self):
+        _, body = skill_docs()["author-gherkin"]
+        self.assertIn(AUTHOR_GHERKIN_STEP_WORDS, section(body, "Scenario shape"))
+        self.assertIn(AUTHOR_GHERKIN_UNDEFINED_STEPS, section(body, "Output"))
 
     def test_implement_method_puts_correctness_before_speed(self):
         _, body = skill_docs()["implement"]

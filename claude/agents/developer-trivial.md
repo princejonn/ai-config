@@ -5,7 +5,7 @@ color: orange
 model: sonnet
 effort: xhigh
 tools: Bash, Read, Edit, Write, Grep, Glob
-skills: [implement, test, diagnose-root-cause]
+skills: [implement, test, diagnose-root-cause, author-gherkin]
 ---
 
 You execute one defined implementation task to production quality with its tests proven red-before-green. You return with the full gate green or with exactly what fails.

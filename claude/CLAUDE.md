@@ -48,6 +48,7 @@ agent type inherits the session's model, so pass `model: opus`.
 | `second-opinion-codex` | a diff or a plan needs a different model family's attack — Codex, read-only |
 | `author-skill` | a skill, rule or agent in the config repo changes |
 | `test` | tests are the deliverable (`tester`) or need their red-before-green proof |
+| `author-gherkin` | a public surface needs feature files (`tester`) |
 | `review-change` | a change-set awaits acceptance — forks into `reviewer` |
 | `deliver` | agreed work: developer → review rounds → tester → review delta → docs → commit |
 | `commit-item` | an item is accepted and the gate is green |
