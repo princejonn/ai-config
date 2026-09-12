@@ -69,7 +69,7 @@ pair test \
   'render returns the wrong string for an empty name and the cause is not known — find it.'
 pair verify-claim \
   'Before I rely on it: is it true that nothing else calls render? Check that claim.' \
-  'Find every function defined in this repository.'
+  'List the arguments render takes in widget.py.'
 
 usage() {
   echo "usage: $(basename "$0") [--only <skill>] [--dry-run] [--verdict <stream> <skill> <prompt>]" >&2
