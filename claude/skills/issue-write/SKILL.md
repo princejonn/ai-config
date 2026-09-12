@@ -45,7 +45,7 @@ One refusal per description. If the answer still leaves the same sentence missin
 ## Create
 
 1. The draft goes to the user first; creating an item is an external call, so it runs on their word (`rules/git.md`).
-2. Write the body to the session scratchpad with the Write tool — never a shell heredoc.
+2. Write the body to the session scratchpad with the Write tool, as `issue-<slug>.md` with the slug from the title — never a shell heredoc, never a fixed name.
 3. `gh issue create --title <t> --label <type> --label <priority> --label <tier> --body-file <scratchpad file>`, with a further `--label story` when the item is one.
 4. The relations the item stands in, node ids from `gh issue view <N> --json id --jq .id`:
    - a piece of a split, under the item it was split from: `gh api graphql -f query='mutation { addSubIssue(input: {issueId: "<parent id>", subIssueId: "<piece id>"}) { issue { number } subIssue { number } } }'`

@@ -144,6 +144,8 @@ ONE_HOME_PHRASES = {
     "have to be weighed for": "claude/skills/deliver/references/tiers.md",
     "bug, feature, enhancement, documentation": "claude/skills/issue-next/SKILL.md",
     "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
+    "issue-<slug>.md": "claude/skills/issue-write/SKILL.md",
+    "issue-<N>-<purpose>.md": "claude/skills/issue-triage/SKILL.md",
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
     "carries no orchestration": "claude/skills/author-skill/SKILL.md",
     "corrected from the evidence": "claude/rules/writing.md",
