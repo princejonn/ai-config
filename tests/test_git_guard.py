@@ -36,6 +36,8 @@ PUSH_RULE = "a push in any other form can reach the default branch without the p
 PUSH_NESTED_RULE = "a push inside a subshell, a command substitution or a find action reaches the default branch with no prompt at all."
 PUSH_PERMITTED = "git push origin <branch>."
 PUSH_NESTED_PERMITTED = "git push origin <branch> as its own command."
+GH_REPO_RULE = "a gh --repo flag quoted with its value is one shell word that never reaches gh as a flag."
+GH_REPO_PERMITTED = "--repo <owner/name> as two shell words."
 FAKE_GIT = f"""#!{sys.executable}
 import os, sys, time
 time.sleep(float(os.environ["FAKE_GIT_SLEEP"]))
@@ -1899,6 +1901,40 @@ class ScannerTests(unittest.TestCase):
                 spans = list(git_guard.spans(text))
                 self.assertEqual(spans[-1].end, len(text))
                 self.assertFalse(spans[-1].closed)
+
+
+class GhRepoFlagTests(unittest.TestCase):
+    def test_denies_a_repo_flag_quoted_together_with_its_value(self):
+        for command in (
+            'gh issue comment 5 "--repo owner/name" --body x',
+            "gh issue comment 5 '--repo owner/name' --body x",
+            'gh issue view 5 "--repo=owner/name "',
+            'gh issue view 5 "--repo= owner/name"',
+            "gh issue view 5 --repo\\ owner/name",
+            'gh "--repo owner/name" issue view 5',
+            'timeout 30 gh issue list "--repo owner/name"',
+            'echo $(gh issue view 5 "--repo owner/name")',
+            'git status && gh issue edit 5 --add-label "question: open" "--repo owner/name"',
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), GH_REPO_RULE)
+                self.assertEqual(permitted(result), GH_REPO_PERMITTED)
+
+    def test_permits_the_repo_flag_as_two_words_or_joined_to_its_value(self):
+        for command in (
+            "gh issue comment 5 --repo owner/name --body x",
+            "gh issue view 5 --repo=owner/name",
+            "gh --repo owner/name issue view 5",
+            'gh issue edit 5 --add-label "question: open" --remove-label "question: closed" --repo owner/name',
+            "gh issue view 5 --json comments --jq '.comments[].body' --repo owner/name",
+            'gh label edit question --name "question: open" --repo owner/name',
+            'echo "--repo owner/name"',
+            'git log --oneline -- "--repo owner/name"',
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
 
 
 class FailOpenTests(unittest.TestCase):

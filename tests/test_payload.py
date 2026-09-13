@@ -67,8 +67,10 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "issue-write": {},
     "issue-next": {},
     "issue-triage": {},
+    "issue-question": {},
+    "issue-answer": {},
 }
-SKILLS_WITH_INPUT = {"author-gherkin", "design-surface", "implement", "issue-next", "issue-triage", "issue-write", "plan-phases", "research", "research-complex", "review-change", "test", "verify-claim"}
+SKILLS_WITH_INPUT = {"author-gherkin", "design-surface", "implement", "issue-answer", "issue-next", "issue-question", "issue-triage", "issue-write", "plan-phases", "research", "research-complex", "review-change", "test", "verify-claim"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_AGENTS = {"developer-trivial", "developer", "developer-complex"}
 RESEARCHER_AGENTS = {"researcher-trivial", "researcher-complex"}
@@ -77,6 +79,7 @@ EXPECTED_AGENT_MODELS = {
     "developer-trivial": "sonnet",
     "developer": "opus",
     "developer-complex": "fable",
+    "recommender": "fable",
     "researcher-trivial": "sonnet",
     "researcher-complex": "fable",
     "reviewer": "opus",
@@ -88,6 +91,7 @@ EXPECTED_AGENT_COLORS = {
     "developer-trivial": "blue",
     "developer": "blue",
     "developer-complex": "blue",
+    "recommender": "purple",
     "researcher-trivial": "red",
     "researcher-complex": "red",
     "reviewer": "yellow",
@@ -95,8 +99,9 @@ EXPECTED_AGENT_COLORS = {
     "tester": "cyan",
     "verifier": "green",
 }
-EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
-ROUTED_ONLY_AGENTS = {"researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
+EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "recommender", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
+ROUTED_ONLY_AGENTS = {"recommender", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
+RECOMMENDER_TOOLS = "Read, Grep, Glob, WebFetch, WebSearch"
 RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
 CIRCUIT_BREAKER_PASSAGES = (
     "re-tiers",
@@ -149,9 +154,13 @@ ONE_HOME_PHRASES = {
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
     "carries no orchestration": "claude/skills/author-skill/SKILL.md",
     "corrected from the evidence": "claude/rules/writing.md",
+    "RFC adherence and maximum compatibility": "claude/rules/decisions.md",
     "cannot close is UNVERIFIABLE": "claude/skills/verify-claim/SKILL.md",
     "the reach: which corpus was searched": "claude/skills/research/SKILL.md",
     "at least one scenario, error paths included": "claude/skills/author-gherkin/SKILL.md",
+    "returns the question to the recommender once": "claude/skills/issue-question/SKILL.md",
+    "One item per message": "claude/skills/issue-answer/SKILL.md",
+    "rides on every `gh` call here as two shell words": "claude/skills/issue-question/SKILL.md",
 }
 ABSENT_PHRASES = {
     "@lindorm": CLAUDE,
@@ -162,6 +171,7 @@ ABSENT_PHRASES = {
     "this skill writes nothing but": SKILLS,
     "Never describe an action you did not perform": SKILLS,
     "free Codex tier": CLAUDE,
+    "`question`": CLAUDE,
 }
 
 MEANING_CHANGE_EXAMPLES = "or the meaning of one (what an operator does, which boundary a predicate uses, whether a value counts as absent)"
@@ -216,7 +226,8 @@ REPOSITORY_LABELS = (
     "tier: complex",
     "parked",
     "blocked",
-    "question",
+    "question: open",
+    "question: closed",
     "duplicate",
     "invalid",
     "wontfix",
@@ -224,11 +235,34 @@ REPOSITORY_LABELS = (
     "good first issue",
     "help wanted",
 )
-OUT_OF_QUEUE_LABELS = ("parked", "blocked", "question", "duplicate", "invalid", "wontfix")
+OUT_OF_QUEUE_LABELS = ("parked", "blocked", "question: open", "duplicate", "invalid", "wontfix")
 RELATION_MUTATIONS = ("addSubIssue", "addBlockedBy")
-ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Tier:", "Out of scope:")
+ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Decisions made:", "Tier:", "Out of scope:")
+ISSUE_NEXT_CLOSED_QUESTION_STAYS = "`question: closed` skips nothing"
+GH_REPO_FLAG = "--repo <owner/name>"
+GH_CODE_SPAN = re.compile(r"`gh [^`]*`")
+QUESTION_COMMENT_HEADING = "## Question"
+RULING_COMMENT_HEADING = "## Ruling"
+ISSUE_QUESTION_INPUT = "One issue number and the question"
+ISSUE_QUESTION_COMMENT = "gh issue comment <N> --body-file <scratchpad file>"
+ISSUE_QUESTION_LABEL_EDIT = 'gh issue edit <N> --add-label "question: open" --remove-label "question: closed"'
+ISSUE_QUESTION_LABEL_CREATE = "gh label create"
+ISSUE_QUESTION_LABEL_RENAME = 'gh label edit question --name "question: open"'
+ISSUE_QUESTION_RETRY_ONCE = "returns the question to the recommender once, the verdict attached"
+ISSUE_QUESTION_FIX_LIST = "no recommender run"
+ISSUE_ANSWER_LABEL_EDIT = 'gh issue edit <N> --remove-label "question: open" --add-label "question: closed"'
+ISSUE_ANSWER_ONE_ITEM = "One item per message"
+ISSUE_ANSWER_RESTART = "names what restarts"
+ISSUE_ANSWER_RESTART_TARGETS = ("`issue-triage`", "`issue-next`")
+ISSUE_TRIAGE_THIN_TEXT_REFUSE = "`issue-write` § Refuse"
+ISSUE_TRIAGE_THIN_TEXT_FILED = "§ Apply's question row"
+DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, park the item and continue the loop with the next"
+DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
+CLAUDE_MD_TRACKER_QUESTION = "A question on a tracker item is filed through `issue-question` and reported in one line; one with no item is asked inline as above."
+ISSUE_NEXT_DECISIONS_FROM_RULINGS = "in comment order, or `none`"
 ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
 ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")
+DECISION_TIE_BREAKS = ("RFC adherence and maximum compatibility", "readable code", "public interfaces that are easy to use and interpret")
 
 
 def parse_value(raw):
@@ -443,6 +477,12 @@ class AgentsTest(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertIn(field, body)
 
+    def test_recommender_is_read_only_at_high_effort_and_dispatched_through_issue_question(self):
+        fields, _ = agent_docs()["recommender"]
+        self.assertEqual(fields["tools"], RECOMMENDER_TOOLS)
+        self.assertEqual(fields["effort"], "high")
+        self.assertIn("dispatched through issue-question", fields["description"])
+
     def test_each_tiered_agent_is_named_once_in_tiers_and_its_description_names_its_frontmatter_model(self):
         docs = agent_docs()
         tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
@@ -454,8 +494,8 @@ class AgentsTest(unittest.TestCase):
 
 
 class RulesTest(unittest.TestCase):
-    def test_global_rule_set_is_exactly_brief_git_and_writing(self):
-        self.assertEqual({p.name for p in rule_files()}, {"brief.md", "git.md", "writing.md"})
+    def test_global_rule_set_is_exactly_brief_decisions_git_and_writing(self):
+        self.assertEqual({p.name for p in rule_files()}, {"brief.md", "decisions.md", "git.md", "writing.md"})
 
     def test_ruleset_set_is_exactly_typescript_code_style(self):
         self.assertEqual({str(p.relative_to(RULESETS)) for p in ruleset_files()}, {"typescript/code-style.md"})
@@ -498,6 +538,20 @@ class BriefRuleTest(unittest.TestCase):
                 self.assertEqual(text.count(label), 1)
 
 
+class DecisionsRuleTest(unittest.TestCase):
+    def test_opens_with_the_decisions_heading_and_orders_the_three_tie_breaks(self):
+        text = read(RULES / "decisions.md")
+        self.assertTrue(text.startswith("# Decisions\n"))
+        offsets = [text.index(tie_break) for tie_break in DECISION_TIE_BREAKS]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_design_surface_method_points_at_the_tie_breaks_beside_its_one_recommendation_step(self):
+        _, body = skill_docs()["design-surface"]
+        method = section(body, "Method")
+        self.assertIn("rules/decisions.md", method)
+        self.assertLess(method.index("one recommendation"), method.index("rules/decisions.md"))
+
+
 class GitRuleTest(unittest.TestCase):
     def test_an_item_may_land_in_several_reviewed_commits_and_its_issue_closes_after_the_push(self):
         text = re.sub(r"\s+", " ", read(RULES / "git.md"))
@@ -538,6 +592,9 @@ class ClaudeMdTest(unittest.TestCase):
         self.assertIn(IMPLEMENT_ROW_TIER_GATE, row)
         fields, _ = skill_docs()["implement"]
         self.assertIn(IMPLEMENT_DESCRIPTION_TIER_GATE, fields["description"])
+
+    def test_a_question_on_a_tracker_item_is_filed_through_issue_question_and_one_without_is_asked_inline(self):
+        self.assertIn(CLAUDE_MD_TRACKER_QUESTION, re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
 
     def test_built_in_agent_types_are_dispatched_with_opus(self):
         self.assertIn("a built-in agent type inherits the session's model, so pass `model: opus`", re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
@@ -703,6 +760,66 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(label, output)
 
+    def test_issue_next_lets_a_closed_question_through_and_fills_decisions_made_from_its_ruling_comments(self):
+        _, body = skill_docs()["issue-next"]
+        self.assertIn(ISSUE_NEXT_CLOSED_QUESTION_STAYS, section(body, "Skip"))
+        output = section(body, "Output")
+        self.assertIn(ISSUE_NEXT_DECISIONS_FROM_RULINGS, output)
+        self.assertLess(output.index("Decisions made:"), output.index(ISSUE_NEXT_DECISIONS_FROM_RULINGS))
+
+    def test_issue_question_takes_one_item_and_every_gh_call_in_the_question_skills_carries_the_repo_as_two_words(self):
+        docs = skill_docs()
+        self.assertIn(ISSUE_QUESTION_INPUT, section(docs["issue-question"][1], "Input"))
+        for name in ("issue-question", "issue-answer"):
+            spans = GH_CODE_SPAN.findall(docs[name][1])
+            self.assertTrue(spans, name)
+            for span in spans:
+                with self.subTest(skill=name, call=span):
+                    self.assertIn(GH_REPO_FLAG, span)
+
+    def test_issue_question_files_one_comment_then_swaps_the_labels_and_repairs_the_label_set(self):
+        _, body = skill_docs()["issue-question"]
+        method = section(body, "Method")
+        for passage in (QUESTION_COMMENT_HEADING, ISSUE_QUESTION_COMMENT, ISSUE_QUESTION_LABEL_EDIT, ISSUE_QUESTION_LABEL_CREATE, ISSUE_QUESTION_LABEL_RENAME):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, method)
+        self.assertLess(method.index(ISSUE_QUESTION_COMMENT), method.index(ISSUE_QUESTION_LABEL_EDIT))
+
+    def test_issue_question_retries_the_recommender_once_on_a_disproven_claim_and_never_for_a_fix_list(self):
+        _, body = skill_docs()["issue-question"]
+        method = section(body, "Method")
+        self.assertIn("/verify-claim", method)
+        self.assertIn("DISPROVEN", method)
+        self.assertEqual(method.count(ISSUE_QUESTION_RETRY_ONCE), 1)
+        self.assertIn(ISSUE_QUESTION_FIX_LIST, method)
+
+    def test_issue_answer_presents_one_item_under_questions_then_posts_the_ruling_and_closes_the_question(self):
+        _, body = skill_docs()["issue-answer"]
+        self.assertIn("`issue-next` § Order", section(body, "Input"))
+        self.assertIn("`## Questions`", body)
+        self.assertIn(RULING_COMMENT_HEADING, body)
+        self.assertIn(ISSUE_ANSWER_LABEL_EDIT, body)
+        self.assertLess(body.index("gh issue comment"), body.index(ISSUE_ANSWER_LABEL_EDIT))
+        self.assertEqual(body.count(ISSUE_ANSWER_ONE_ITEM), 1)
+
+    def test_issue_answer_rule_names_what_restarts_after_the_label_edit_the_triage_or_the_queue(self):
+        _, body = skill_docs()["issue-answer"]
+        rule = section(body, "Rule")
+        self.assertIn(ISSUE_ANSWER_RESTART, rule)
+        self.assertLess(rule.index(ISSUE_ANSWER_LABEL_EDIT), rule.index(ISSUE_ANSWER_RESTART))
+        restart = next(line for line in rule.splitlines() if ISSUE_ANSWER_RESTART in line)
+        for target in ISSUE_ANSWER_RESTART_TARGETS:
+            with self.subTest(target=target):
+                self.assertIn(target, restart)
+
+    def test_the_ruling_comment_shape_is_fixed_in_issue_answer_and_cited_by_issue_next(self):
+        docs = skill_docs()
+        output = section(docs["issue-next"][1], "Output")
+        self.assertIn(RULING_COMMENT_HEADING, output)
+        self.assertIn("`issue-answer`", output)
+        self.assertIn(RULING_COMMENT_HEADING, docs["issue-answer"][1])
+        self.assertIn(QUESTION_COMMENT_HEADING, docs["issue-answer"][1])
+
     def test_issue_triage_names_each_of_its_eight_sections_once_and_in_order(self):
         _, body = skill_docs()["issue-triage"]
         for heading in ISSUE_TRIAGE_SECTIONS:
@@ -735,6 +852,24 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 self.assertNotIn(mutation, body)
 
+    def test_issue_triage_revise_and_question_rows_file_through_issue_question_and_add_no_label_themselves(self):
+        _, body = skill_docs()["issue-triage"]
+        rulings = section(body, "Apply")
+        for prefix in ("- revise —", "- question —"):
+            with self.subTest(row=prefix):
+                line = next(l for l in rulings.splitlines() if l.startswith(prefix))
+                self.assertIn("`issue-question`", line)
+        self.assertNotIn("-label question", body)
+        self.assertIn("`question: closed`", rulings)
+
+    def test_issue_triage_draft_borrows_refuse_only_to_name_the_missing_sentence_and_files_it_as_the_question_row_says(self):
+        _, body = skill_docs()["issue-triage"]
+        draft = section(body, "Draft")
+        bullet = next(line for line in draft.splitlines() if ISSUE_TRIAGE_THIN_TEXT_REFUSE in line)
+        self.assertIn("missing sentence", bullet)
+        self.assertIn(ISSUE_TRIAGE_THIN_TEXT_FILED, bullet)
+        self.assertNotIn("to the user", bullet)
+
     def test_issue_skills_enumerate_the_full_queue_labels_and_duplicate_set(self):
         for skill, heading, call in (
             ("issue-next", "Order", "gh issue list --state open --limit 1000 --json number,title,labels,body"),
@@ -751,6 +886,12 @@ class SkillPassagesTest(unittest.TestCase):
         for passage in ("`reviewer` through `/review-change`", "`reviewer-complex` dispatched by the chat", "`references/tiers.md`"):
             with self.subTest(passage=passage):
                 self.assertIn(passage, rounds)
+
+    def test_deliver_rounds_file_a_deviation_needing_the_user_through_issue_question_and_verify_a_ruling_premise(self):
+        _, body = skill_docs()["deliver"]
+        bullet = next(line for line in section(body, "Rounds").splitlines() if "is a deviation:" in line)
+        self.assertIn(DELIVER_DEVIATION_FILED, bullet)
+        self.assertIn(DELIVER_RULING_PREMISE, bullet)
 
     def test_commit_item_footers_the_completing_commit_and_closes_no_issue_itself(self):
         fields, body = skill_docs()["commit-item"]

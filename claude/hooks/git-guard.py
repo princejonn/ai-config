@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook (Bash): denies destructive git forms, a push in any form but git push origin <branch>, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, and a test run piped through a pager; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
+"""PreToolUse hook (Bash): denies destructive git forms, a push in any form but git push origin <branch>, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, a test run piped through a pager, and a gh --repo flag quoted together with its value; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
 
 import json
 import os
@@ -44,6 +44,7 @@ PATHSPEC_MAGIC = re.compile(r"^:\(([^)]*)\)")
 NEGATIVE_PATHSPEC_PREFIXES = (":!", ":^")
 STASH_READ_ONLY_SUBCOMMANDS = {"list", "show"}
 PUSH_COMMAND = re.compile(r"^git push origin (?!HEAD$|@$|(?:refs|heads|remotes|tags)/)\w[\w./-]*$")
+SPLIT_REPO_FLAG = re.compile(r"^--repo(?:\s|=\S*\s)")
 COMMIT_SHORT_VALUE_LETTERS = "mFCct"
 COMMIT_LONG_VALUE_OPTIONS = {"--message": "m", "--file": "F", "--reuse-message": "C", "--reedit-message": "c", "--template": "t"}
 CONVENTIONAL_SUBJECT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9./,-]*\))?: \S")
@@ -829,6 +830,12 @@ def check_git(subcommand, args, global_options, cwd, text):
     return None
 
 
+def check_gh(tokens):
+    if program(tokens) != "gh" or not any(SPLIT_REPO_FLAG.match(token) for token in tokens[1:]):
+        return None
+    return deny("a gh --repo flag quoted with its value is one shell word that never reaches gh as a flag.", "--repo <owner/name> as two shell words.")
+
+
 def resolve_rm_target(target):
     tmpdir = os.environ.get("TMPDIR", "")
     if tmpdir:
@@ -1234,6 +1241,9 @@ def evaluate(hook_input):
                 decision = check_commit_message(args, remainder)
                 if decision is not None:
                     return decision
+        decision = check_gh(tokens)
+        if decision is not None:
+            return decision
         try:
             decision = check_rm(wrappers, tokens, cwd, deadline) or check_find(tokens, cwd, deadline)
         except BudgetExhausted:

@@ -40,9 +40,15 @@ pair diagnose-root-cause \
 pair implement \
   'Add a strict keyword to render in widget.py that raises ValueError on an empty name.' \
   'Which is the better public surface here, a strict flag on render or a separate render_strict function?'
+pair issue-answer \
+  'Which questions are open on the tracker and waiting on me? Give me the first one to rule on.' \
+  'Add a docstring to render in widget.py.'
 pair issue-next \
   'What should I work on next?' \
   'Turn this finding into an issue: render accepts an empty name and returns an empty tag.'
+pair issue-question \
+  'File this question on issue #15 with a recommendation: should render raise on an empty name or return an empty tag? Take the item out of the queue until I answer.' \
+  'Add a type hint to the name argument of render in widget.py.'
 pair issue-triage \
   'Triage issue #15 — it reads complete but I want it challenged before we start.' \
   'Which open issue is the most urgent?'

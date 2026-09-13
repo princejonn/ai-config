@@ -55,13 +55,16 @@ agent type inherits the session's model, so pass `model: opus`.
 | `issue-write` | a finding, request or idea becomes a tracker item |
 | `issue-next` | what to work on next — one item, dispatches nothing |
 | `issue-triage` | a named issue is judged before work: draft, critique, duplicate, done |
+| `issue-question` | a question on a named item needs the user's word — filed with a recommendation, the item leaves the queue |
+| `issue-answer` | the open questions are asked for, or one is ruled on — one item, the ruling to the tracker |
 
 **Briefs.** An agent cannot see this conversation; every brief takes the shape `rules/brief.md`
 defines.
 
 **Questions.** One decision per message, in prose under `## Questions` at the bottom, never the
 select tool: current behaviour as a concrete input/output example per option, each option's cost,
-one recommendation, stop. Sub-questions follow one per message.
+one recommendation, stop. Sub-questions follow one per message. A question on a tracker item is
+filed through `issue-question` and reported in one line; one with no item is asked inline as above.
 <!-- /claude-only -->
 
 **Verify, then claim.** Green is the command plus the runner's own printed summary, never the exit

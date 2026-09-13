@@ -33,7 +33,8 @@ One from the type set, one priority, one tier, never two from one set; a type ou
 - `story`, beside the type: the angle the item is written from, not a kind of its own (§ Shape).
 - Priority: `priority: high`, `priority: medium` or `priority: low` — the tracker's own label descriptions decide which (`gh label list --limit 1000`).
 - Tier: `tier: trivial`, `tier: standard` or `tier: complex`, per `skills/deliver/references/tiers.md`.
-- Out of the queue, never written here: `parked`, out by decision; `blocked`, waiting on something outside the repository; `question`, `duplicate`, `invalid`, `wontfix`.
+- Out of the queue, never written here: `parked`, out by decision; `blocked`, waiting on something outside the repository; `question: open`, waiting on the user; `duplicate`, `invalid`, `wontfix`.
+- `question: closed`, in the queue, never written here: the ruling is in the item's comments.
 - Topic and hint, no effect on the queue: `accessibility`, `good first issue`, `help wanted`.
 
 ## Refuse

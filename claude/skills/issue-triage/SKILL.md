@@ -23,7 +23,7 @@ A thin item takes § Draft, a complete one takes § Critique. Both take § Dupli
 
 - Labels: one from each set the item lacks, read off the item's own text through `issue-write` § Labels.
 - Body: the headings `issue-write` § Shape gives, keeping every sentence of the original that still holds and adding only what the shape lacks. A "Done when" sentence already in the text is an acceptance line; the evidence already in the text is the § Why.
-- A text too thin for one of the two headings takes `issue-write` § Refuse: one question to the user, no guess, and no drafted body.
+- A text too thin for one of the two headings gets no drafted body and no guess: its missing sentence is named as `issue-write` § Refuse names one and filed as § Apply's question row says.
 
 ## Duplicate
 
@@ -78,19 +78,19 @@ One table, one row: the item under one ruling, by precedence — done, duplicate
 |---|---|---|---|---|---|
 | `<N>` | ready | — | — | — | — |
 
-A revise row and a question row both add `question`, which is out of the queue per `issue-write` § Labels, so `issue-next` hands on no item waiting on its author. The edit that follows an answered question — the draft edit or the split edit — carries `--remove-label question`, so the repaired item is handed on without the user touching the label; after a revise the user takes it off.
+A revise row and a question row add no label themselves: each files through `issue-question` — the fix list, or the missing sentence, as the question — and the item leaves the queue under the label that filing adds, so `issue-next` hands on no item waiting on its author. The edit that follows an answered question — the draft edit or the split edit — removes nothing: the item already carries `question: closed`, and the ruling it restarts from is the comment `issue-answer` posted there.
 
-A drafted body, a split's piece drafts and the missing sentence of a `question` row are shown under the table; the question itself is asked afterwards under `## Questions`, and an answer restarts once what the question came from — § Draft for a thin item, that piece's `issue-write` draft and then the split edit for a split piece. The user's one ruling over the table is the word `issue-write` § Create step 1 asks for, so those pieces take no second ask; the skill edits nothing before the ruling. Then the ruling alone keys the row's cells and the edit. A cell a bullet does not name is —.
+A drafted body, a split's piece drafts and the missing sentence of a question row are shown under the table; the question itself is filed afterwards through `issue-question`, and its ruling restarts once what the question came from — § Draft for a thin item, that piece's `issue-write` draft and then the split edit for a split piece. The user's one ruling over the table is the word `issue-write` § Create step 1 asks for, so those pieces take no second ask; the skill edits nothing before the ruling. Then the ruling alone keys the row's cells and the edit. A cell a bullet does not name is —.
 
 A relation an edit implies is written with the two calls in `issue-write` § Create: a split's pieces as sub-issues of the original, a dependency line as a blocked-by relation on the item that carries it.
 
 - ready — nothing.
 - draft — the labels § Draft found lacking, one from each set, and a replaced body: `gh issue edit <N> --add-label <label> --add-label <label>`, then `gh issue edit <N> --body-file <path>`, the file `issue-<N>-<purpose>.md` (`issue-75-body.md`), written as `issue-write` § Create step 2 writes one.
-- revise — the label `question`: `gh issue edit <N> --add-label question`, then `gh issue comment <N> --body-file <path>`, the file carrying the fix list for `NOT ACCEPTED` or the gap for `BLOCKED`.
+- revise — nothing added here: the fix list for `NOT ACCEPTED` or the gap for `BLOCKED` is filed through `issue-question` on the item.
 - split — § Related as the body edit: `gh issue comment <N> --body-file <path>` with the fix list, saying the original returns to the queue when its pieces close and that § Done then closes it against their commits; nothing closes it on its own. The pieces are created through `issue-write` carrying no dependency line, each filed as a sub-issue of the original, then `gh issue edit <N> --body-file <path>`, the file named as the draft bullet above, gives the original's § Related one dependency line naming the pieces, in the form `issue-write` § Shape gives, with the blocked-by relation that line stands for, so `issue-next` skips it until they close. A piece `issue-write` § Refuse would refuse makes the row a question instead, ranked where split stands.
 - duplicate — the label `duplicate`, and the original as `#<M>` under duplicate of: `gh issue edit <N> --add-label duplicate`, then `gh issue close <N> --comment <text>` naming it.
 - done — under done by the commit `<hash>` § Done's verdicts cite, with `matched closed #<K>` when § Duplicate handed a closed twin over: `gh issue close <N> --comment <text>`.
-- question — the labels § Draft found lacking, if any, and `question`, a complete item adding `question` alone: `gh issue edit <N> --add-label <label> --add-label question`.
+- question — the labels § Draft found lacking, if any: `gh issue edit <N> --add-label <label> --add-label <label>`; the missing sentence is filed through `issue-question` on the item, a complete item taking the filing alone.
 
 ## Output
 
