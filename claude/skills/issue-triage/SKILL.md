@@ -27,7 +27,7 @@ A thin item takes § Draft, a complete one takes § Critique. Both take § Dupli
 
 ## Duplicate
 
-Two Goals are the same outcome when reading both says so — never by scoring their similarity, never by a shared subject alone. `gh issue list --state open --limit 100 --json number,title,body` and the same call with `--state closed` are the comparison set, read to compare and for nothing else; one with no `## Goal`, on either side, is compared by its title.
+Two Goals are the same outcome when reading both says so — never by scoring their similarity, never by a shared subject alone. `gh issue list --state open --limit 1000 --json number,title,body` and the same call with `--state closed` are the comparison set, read to compare and for nothing else; one with no `## Goal`, on either side, is compared by its title.
 
 - An open match where the named item is the newer is a duplicate: it takes the `duplicate` label and closes with a comment naming the original, whatever labels it carries.
 - An open match where the named item is the older rules nothing: the row reports the pair, both numbers, and the twin is untouched.

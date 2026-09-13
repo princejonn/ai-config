@@ -11,7 +11,7 @@ None, or a repository: `--repo <owner/name>` then rides on every `gh issue` call
 
 ## Order
 
-`gh issue list --state open --limit 100 --json number,title,labels,body`, then sort by the vocabulary `skills/issue-write/SKILL.md` § Labels defines:
+`gh issue list --state open --limit 1000 --json number,title,labels,body`, then sort by the vocabulary `skills/issue-write/SKILL.md` § Labels defines:
 
 1. Priority label: high, then medium, then low, then unlabelled.
 2. Within a priority, type label: bug, feature, enhancement, documentation, then no type.

@@ -735,6 +735,16 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 self.assertNotIn(mutation, body)
 
+    def test_issue_skills_enumerate_the_full_queue_labels_and_duplicate_set(self):
+        for skill, heading, call in (
+            ("issue-next", "Order", "gh issue list --state open --limit 1000 --json number,title,labels,body"),
+            ("issue-triage", "Duplicate", "gh issue list --state open --limit 1000 --json number,title,body"),
+            ("issue-write", "Labels", "gh label list --limit 1000"),
+        ):
+            with self.subTest(skill=skill):
+                _, body = skill_docs()[skill]
+                self.assertIn(call, section(body, heading))
+
     def test_deliver_rounds_name_both_review_routes_and_point_at_tiers(self):
         _, body = skill_docs()["deliver"]
         rounds = section(body, "Rounds")
