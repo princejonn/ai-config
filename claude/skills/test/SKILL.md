@@ -1,6 +1,6 @@
 ---
 name: test
-description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, and the sampled run a brief budgets: statistical, fuzz, chaos or flake diagnosis — including the red-before-green proof. Use when tests are the deliverable or a change needs its proof. Not for implementing the feature (implement), reviewing it (review-change), a feature file (author-gherkin), or a wrong result whose cause is unknown and no sampled run is named with its budget (diagnose-root-cause)."
+description: "Writes and proves tests in any language — coverage for new code, regression tests for fixes, edge and failure cases, and the sampled run a brief budgets: statistical, fuzz, chaos or flake diagnosis — including the red-before-green proof and mutating a guard, fallback or branch red to show the tests bite. Use when tests are the deliverable, a change needs its proof, or someone asks whether anything would catch it. Not for implementing the feature (implement), reviewing it (review-change), a feature file (author-gherkin), or a wrong result whose cause is unknown and no sampled run is named with its budget (diagnose-root-cause)."
 ---
 
 # Test
@@ -35,6 +35,17 @@ A test that cannot fail reports coverage it does not have. Over-broad mocks, tau
 - The aside copy and any scratch repository live in the session scratchpad and stay there; deleting them buys nothing and costs a permission prompt.
 - Where reverting is genuinely impractical, say so and state which tests are therefore reasoned rather than demonstrated. That is never the default.
 
+## Mutation proof
+
+Where what must be shown is that a guard, a fallback arm or a branch bites, the proof is a mutation: make the source wrong, watch a named test go red, put the source back. `scripts/mutate.py` runs that loop under the contract `references/mutation.md` holds — one anchor, one edit, a restore from the copy taken before it, md5 on either side of the pair. Reach past the driver only for a single guard on a tree no one else is writing to.
+
+- **A mutation is a valid program or it is nothing.** One the compiler refuses, one that reddens the whole suite and one that changes what the runner collects are rejected rather than scored: each reddens everything and proves nothing about the guard.
+- **Read the verdict per test, not per suite.** A mutation no test reddens is the finding — that arm is uncovered, and the deliverable is the test that catches it.
+- **An anchor that no longer occurs exactly once is rot, and rot is loud:** it is recorded, named at every command and exits non-zero. It proves nothing until the anchor is rewritten from the source as it now reads.
+- **Stop rule:** an abort ends the run — read the marker, inspect the tree, and rewrite the anchor from the source rather than widening the driver's guards to get past it.
+
+Done when every mutation holds a verdict other than `ROTTED`, and each survivor is either covered by a new test or reported as a gap.
+
 ## Sampled runs
 
 - **Statistical:** N samples or seeds, reported as the observed rate.
@@ -53,4 +64,4 @@ Done requires the new or changed tests green, then the surrounding suite for the
 
 ## Output
 
-The report per `rules/brief.md`, plus: what is covered (test names); red-before-green evidence per test (failing name + assertion, and the method used); per sampled run, its budget, samples, environment and uncertainty; gaps that remain; bugs in the code under test that testing surfaced; and that the tests conform to the instruction files read, or where they deviate and why.
+The report per `rules/brief.md`, plus: what is covered (test names); red-before-green evidence per test (failing name + assertion, and the method used); per mutation, its verdict and the tests it reddened; per sampled run, its budget, samples, environment and uncertainty; gaps that remain; bugs in the code under test that testing surfaced; and that the tests conform to the instruction files read, or where they deviate and why.

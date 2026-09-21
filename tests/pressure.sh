@@ -73,6 +73,9 @@ pair second-opinion-codex \
 pair test \
   'test_render_empty fails one run in twenty on CI — diagnose the flake within 200 runs.' \
   'render returns the wrong string for an empty name and the cause is not known — find it.'
+pair test \
+  'Prove test_render_empty actually bites — mutate render in widget.py red and show me the test go red.' \
+  'Add a mutate helper to widget.py that returns a copy of a dict with one key changed.'
 pair verify-claim \
   'Before I rely on it: is it true that nothing else calls render? Check that claim.' \
   'List the arguments render takes in widget.py.'
@@ -111,19 +114,29 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-index_of() {
-  local wanted="$1" i=0
+# A skill may carry more than one pair, one per trigger surface; --only runs every pair it has.
+indices_of() {
+  local wanted="$1" i=0 found=1
   while [ "$i" -lt "${#SKILL[@]}" ]; do
-    if [ "${SKILL[$i]}" = "$wanted" ]; then echo "$i"; return 0; fi
+    if [ "${SKILL[$i]}" = "$wanted" ]; then echo "$i"; found=0; fi
     i=$((i + 1))
   done
-  return 1
+  return "$found"
+}
+
+tag_of() {
+  local wanted="$1" index="$2" ordinal=0 i=0
+  while [ "$i" -lt "$index" ]; do
+    [ "${SKILL[$i]}" = "$wanted" ] && ordinal=$((ordinal + 1))
+    i=$((i + 1))
+  done
+  if [ "$ordinal" = 0 ]; then echo "$wanted"; else echo "$wanted-$((ordinal + 1))"; fi
 }
 
 missing=""
 for directory in "$SKILLS_DIR"/*/; do
   name="$(basename "$directory")"
-  index_of "$name" >/dev/null || missing="$missing $name"
+  indices_of "$name" >/dev/null || missing="$missing $name"
 done
 if [ -n "$missing" ]; then
   echo "pressure: no prompt pair for:$missing" >&2
@@ -141,8 +154,8 @@ fi
 
 selected=()
 if [ -n "$only" ]; then
-  index_of "$only" >/dev/null || { echo "pressure: no prompt pair named $only" >&2; exit 2; }
-  selected=("$(index_of "$only")")
+  indices_of "$only" >/dev/null || { echo "pressure: no prompt pair named $only" >&2; exit 2; }
+  while IFS= read -r index; do selected+=("$index"); done < <(indices_of "$only")
 else
   i=0
   while [ "$i" -lt "${#SKILL[@]}" ]; do
@@ -162,7 +175,7 @@ command_line() {
 
 if $dry_run; then
   for i in "${selected[@]}"; do
-    echo "${SKILL[$i]}"
+    tag_of "${SKILL[$i]}" "$i"
     echo "  fire    $(command_line "${FIRE[$i]}")"
     echo "  no-fire $(command_line "${NOFIRE[$i]}")"
   done
@@ -295,6 +308,8 @@ STREAMS="$ROOT/streams"
 mkdir "$PROJECT" "$STREAMS"
 printf '%s\n' '# widget' '' 'A small widget library.' > "$PROJECT/README.md"
 printf '%s\n' 'def render(name):' '    return "<" + name + ">"' > "$PROJECT/widget.py"
+# A prompt naming test_render_empty is answered by challenging the premise where no such test exists.
+printf '%s\n' 'from widget import render' '' '' 'def test_render_empty():' '    assert render("") == "<>"' > "$PROJECT/test_widget.py"
 git -C "$PROJECT" init -q
 git -C "$PROJECT" add -A
 echo "scratch $ROOT"
@@ -303,20 +318,21 @@ passed=0
 failed=0
 for i in "${selected[@]}"; do
   skill="${SKILL[$i]}"
-  run_prompt "$STREAMS/$skill.fire.jsonl" "${FIRE[$i]}"
-  fire_result="$(stream_query "$STREAMS/$skill.fire.jsonl" result-subtype)"
-  if fired "$STREAMS/$skill.fire.jsonl" "$skill" "${FIRE[$i]}"; then fire=yes; else fire=no; fi
-  run_prompt "$STREAMS/$skill.nofire.jsonl" "${NOFIRE[$i]}"
-  nofire_result="$(stream_query "$STREAMS/$skill.nofire.jsonl" result-subtype)"
-  nofire="$(nofire_verdict "$STREAMS/$skill.nofire.jsonl" "$skill" "${NOFIRE[$i]}")"
+  tag="$(tag_of "$skill" "$i")"
+  run_prompt "$STREAMS/$tag.fire.jsonl" "${FIRE[$i]}"
+  fire_result="$(stream_query "$STREAMS/$tag.fire.jsonl" result-subtype)"
+  if fired "$STREAMS/$tag.fire.jsonl" "$skill" "${FIRE[$i]}"; then fire=yes; else fire=no; fi
+  run_prompt "$STREAMS/$tag.nofire.jsonl" "${NOFIRE[$i]}"
+  nofire_result="$(stream_query "$STREAMS/$tag.nofire.jsonl" result-subtype)"
+  nofire="$(nofire_verdict "$STREAMS/$tag.nofire.jsonl" "$skill" "${NOFIRE[$i]}")"
   unfinished=""
-  [ -n "$fire_result" ] || unfinished="$unfinished $STREAMS/$skill.fire.jsonl.err"
-  [ -n "$nofire_result" ] || unfinished="$unfinished $STREAMS/$skill.nofire.jsonl.err"
+  [ -n "$fire_result" ] || unfinished="$unfinished $STREAMS/$tag.fire.jsonl.err"
+  [ -n "$nofire_result" ] || unfinished="$unfinished $STREAMS/$tag.nofire.jsonl.err"
   if [ "$fire" = yes ] && [ "$nofire" = no ]; then
-    echo "PASS $skill"
+    echo "PASS $tag"
     passed=$((passed + 1))
   else
-    echo "FAIL $skill fire=$fire nofire=$nofire$unfinished"
+    echo "FAIL $tag fire=$fire nofire=$nofire$unfinished"
     failed=$((failed + 1))
   fi
 done

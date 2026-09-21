@@ -97,4 +97,15 @@ transcript_entry 'show me the git status' > "$TRANSCRIPTS/unexpanded-fixture.jso
 run_verdict "$UNEXPANDED" commit-item "$SLASH_PROMPT"
 verdict_is no "9 a /name prompt whose session transcript lacks the expanded command"
 
+DRY="$WORK/dry"
+/bin/bash "$HERE/pressure.sh" --only test --dry-run > "$DRY" 2>"$ERR"
+check $? "10 --only on a skill carrying several pairs exits 0"
+[ "$(grep -c '^test' "$DRY")" = 2 ]; check $? "10 --only runs every pair the skill carries"
+grep -q '^test$' "$DRY"; check $? "10 the first pair of a skill keeps the bare name"
+grep -q '^test-2$' "$DRY"; check $? "10 a later pair is tagged by its ordinal"
+
+/bin/bash "$HERE/pressure.sh" --only ghost --dry-run > "$DRY" 2>"$ERR"
+[ "$?" = 2 ]; check $? "11 --only naming no pair exits 2"
+grep -q '^pressure: no prompt pair named ghost$' "$ERR"; check $? "11 --only naming no pair says which"
+
 summary

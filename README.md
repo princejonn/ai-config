@@ -13,6 +13,7 @@ claude/CLAUDE.md             global instructions
 claude/settings.json         manifest: hooks (event -> [{matcher, script, timeout}]) and defaults
 claude/hooks/                hook scripts
 claude/skills/ agents/ rules/
+claude/skills/test/scripts/mutate.py  mutation driver: one mutation, one suite run, a restore verified by checksum
 claude/rulesets/typescript/  rules for TypeScript roots, linked per folder
 scripts/merge_settings.py    settings.json merge
 scripts/render_agents_md.py  AGENTS.md render

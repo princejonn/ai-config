@@ -161,6 +161,9 @@ ONE_HOME_PHRASES = {
     "returns the question to the recommender once": "claude/skills/issue-question/SKILL.md",
     "One item per message": "claude/skills/issue-answer/SKILL.md",
     "rides on every `gh` call here as two shell words": "claude/skills/issue-question/SKILL.md",
+    "A mutation is a valid program or it is nothing": "claude/skills/test/SKILL.md",
+    "cp -Rc": "claude/skills/test/references/mutation.md",
+    "1.05x on 16 cores": "claude/skills/test/references/mutation.md",
 }
 ABSENT_PHRASES = {
     "@lindorm": CLAUDE,
@@ -195,6 +198,18 @@ SAMPLED_RUN_OUTPUT_FIELDS = "per sampled run, its budget, samples, environment a
 TESTER_SAMPLED_RUN_KINDS = "a statistical, fuzz, chaos or flake-diagnosis sampled run a brief names with its budget"
 DIAGNOSE_ROOT_CAUSE_FLAKE_EXCLUSION = "diagnosing a budgeted flake (test)"
 TEST_FEATURE_FILE_EXCLUSION = "a feature file (author-gherkin)"
+TEST_DESCRIPTION_MUTATION = "mutating a guard, fallback or branch red to show the tests bite"
+MUTATION_DRIVER = "`scripts/mutate.py`"
+MUTATION_REFERENCE = "references/mutation.md"
+MUTATION_VALID_PROGRAM = "A mutation is a valid program or it is nothing."
+MUTATION_REJECTIONS = ("One the compiler refuses", "one that reddens the whole suite", "one that changes what the runner collects")
+MUTATION_ROT_IS_LOUD = "An anchor that no longer occurs exactly once is rot, and rot is loud:"
+MUTATION_STOP_RULE = "- **Stop rule:**"
+MUTATION_DONE = "Done when every mutation holds a verdict other than `ROTTED`"
+MUTATION_WORKTREE = "git worktree add --detach <path> <sha>"
+MUTATION_SEEDING = "cp -Rc"
+MUTATION_CONCURRENCY = "several suites at once measured 1.05x on 16 cores"
+MUTATION_INCREMENTAL = "--incremental --tsBuildInfoFile"
 AUTHOR_GHERKIN_STEP_WORDS = "no class, method, file or type name in a step"
 AUTHOR_GHERKIN_UNDEFINED_STEPS = "Undefined steps are the expected result"
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
@@ -700,6 +715,24 @@ class SkillPassagesTest(unittest.TestCase):
         fields, _ = skill_docs()["test"]
         self.assertIn(TEST_FEATURE_FILE_EXCLUSION, fields["description"])
 
+    def test_test_description_names_mutating_a_guard_red(self):
+        fields, _ = skill_docs()["test"]
+        self.assertIn(TEST_DESCRIPTION_MUTATION, fields["description"])
+
+    def test_test_mutation_proof_names_the_driver_its_reference_and_the_three_rejections(self):
+        _, body = skill_docs()["test"]
+        proof = section(body, "Mutation proof")
+        for passage in (MUTATION_DRIVER, MUTATION_REFERENCE, MUTATION_VALID_PROGRAM, MUTATION_ROT_IS_LOUD, *MUTATION_REJECTIONS):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, proof)
+
+    def test_test_mutation_proof_carries_a_stop_rule_and_a_done_condition(self):
+        _, body = skill_docs()["test"]
+        proof = section(body, "Mutation proof")
+        for passage in (MUTATION_STOP_RULE, MUTATION_DONE):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, proof)
+
     def test_implement_method_puts_correctness_before_speed(self):
         _, body = skill_docs()["implement"]
         self.assertIn(CORRECTNESS_FIRST, section(body, "Method"))
@@ -953,6 +986,19 @@ class DeliverReferencesTest(unittest.TestCase):
         for passage in CIRCUIT_BREAKER_PASSAGES:
             with self.subTest(passage=passage):
                 self.assertIn(passage, bullet)
+
+
+class TestReferencesTest(unittest.TestCase):
+    def test_test_carries_the_mutation_reference_and_names_it(self):
+        _, body = skill_docs()["test"]
+        self.assertTrue((SKILLS / "test" / "references" / "mutation.md").is_file())
+        self.assertIn(MUTATION_REFERENCE, body)
+
+    def test_the_mutation_reference_seeds_a_worktree_and_warns_that_concurrency_buys_nothing(self):
+        reference = read(SKILLS / "test" / "references" / "mutation.md")
+        for passage in (MUTATION_WORKTREE, MUTATION_SEEDING, MUTATION_CONCURRENCY, MUTATION_INCREMENTAL):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, reference)
 
 
 def phrase_homes(phrase, tree=CLAUDE):
