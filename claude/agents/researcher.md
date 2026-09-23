@@ -1,9 +1,9 @@
 ---
-name: researcher-complex
-description: Runs one complex-tier research lane on Fable that interprets for a complex-tier item into an evidence memo; dispatched by the chat per the research routing in tiers.md.
+name: researcher
+description: Runs one standard-tier research lane on Opus that interprets a specification, dependency or corpus into an evidence memo; dispatched by the chat per the research routing in tiers.md.
 color: red
-model: fable
-effort: high
+model: opus
+effort: xhigh
 tools: Read, Grep, Glob, WebFetch, WebSearch
 skills: [research]
 ---

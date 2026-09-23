@@ -1,10 +1,10 @@
 # Tiers
 
-A tier classifies an item's risk, never its file count: a one-line authorization or data-loss change is complex; a large mechanical rename is standard or trivial. Tie-break upward.
+A tier classifies how hard an item is to get right, never its size: a one-line authorization change is complex; a large mechanical rename is standard or trivial. Tie-break to standard; the circuit breaker in `references/review-loop.md` re-tiers an item that proves harder.
 
 - `trivial` — renames, boilerplate, config, straightforward tests, docs. Low ambiguity; blast radius contained to named files; correctness checkable by existing tests or types.
 - `standard` — the default: ordinary features, fixes and multi-file work following established patterns.
-- `complex` — novel algorithms, subtle concurrency or state, security or privacy boundaries, architectural change, high blast radius, non-obvious failure modes.
+- `complex` — novel algorithms, subtle concurrency or state, security or privacy boundaries, architectural change, non-obvious failure modes.
 
 ## Work contract
 
@@ -32,11 +32,14 @@ A fix inherits the tier of the code it touches, runs in a fresh agent window wit
 
 ## Research routing (Claude Code)
 
-A lane enumerates when its answer is a list the sources already contain, and interprets when its answer is a reading those sources have to be weighed for; a lane that does both is complex.
+A lane enumerates when its answer is a list the sources already contain, and interprets when its answer is a reading those sources have to be weighed for; a lane that does both counts as interpreting.
 
 | Tier | Lane | Agent |
 |---|---|---|
 | `trivial` | enumerates | `researcher-trivial` |
-| `complex` | interprets | `researcher-complex` |
+| `standard` | interprets | `researcher` |
+| `complex` | interprets for a complex-tier item | `researcher-complex` |
+
+An interpreting lane with no item is standard. A `researcher` report whose Left open names the reading it was asked for re-runs at complex; a `researcher-complex` report that leaves it open goes to the user.
 
 A suffix on an agent's name says its tier, never its model, and an unmarked name is the default tier; `max` is deliberately unused.

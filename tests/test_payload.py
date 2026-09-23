@@ -50,8 +50,7 @@ COLORS = {"red", "blue", "green", "yellow", "purple", "orange", "pink", "cyan"}
 EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
 SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
-    "research": {"context": "fork", "agent": "researcher-trivial"},
-    "research-complex": {"context": "fork", "agent": "researcher-complex"},
+    "research": {},
     "verify-claim": {"context": "fork", "agent": "verifier"},
     "review-change": {"context": "fork", "agent": "reviewer"},
     "commit-item": {},
@@ -70,17 +69,23 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "issue-question": {},
     "issue-answer": {},
 }
-SKILLS_WITH_INPUT = {"author-gherkin", "design-surface", "implement", "issue-answer", "issue-next", "issue-question", "issue-triage", "issue-write", "plan-phases", "research", "research-complex", "review-change", "test", "verify-claim"}
+SKILLS_WITH_INPUT = {"author-gherkin", "design-surface", "implement", "issue-answer", "issue-next", "issue-question", "issue-triage", "issue-write", "plan-phases", "research", "review-change", "test", "verify-claim"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
 DEVELOPER_AGENTS = {"developer-trivial", "developer", "developer-complex"}
-RESEARCHER_AGENTS = {"researcher-trivial", "researcher-complex"}
-EXPECTED_AGENT_SKILLS = {**{name: ["implement", "test", "diagnose-root-cause", "author-gherkin"] for name in DEVELOPER_AGENTS}, "tester": ["test", "author-gherkin"], "reviewer-complex": ["review-change"]}
+RESEARCHER_AGENTS = {"researcher-trivial", "researcher", "researcher-complex"}
+EXPECTED_AGENT_SKILLS = {
+    **{name: ["implement", "test", "diagnose-root-cause", "author-gherkin"] for name in DEVELOPER_AGENTS},
+    **{name: ["research"] for name in RESEARCHER_AGENTS},
+    "tester": ["test", "author-gherkin"],
+    "reviewer-complex": ["review-change"],
+}
 EXPECTED_AGENT_MODELS = {
     "developer-trivial": "sonnet",
     "developer": "opus",
     "developer-complex": "fable",
     "recommender": "fable",
     "researcher-trivial": "sonnet",
+    "researcher": "opus",
     "researcher-complex": "fable",
     "reviewer": "opus",
     "reviewer-complex": "fable",
@@ -93,16 +98,21 @@ EXPECTED_AGENT_COLORS = {
     "developer-complex": "blue",
     "recommender": "purple",
     "researcher-trivial": "red",
+    "researcher": "red",
     "researcher-complex": "red",
     "reviewer": "yellow",
     "reviewer-complex": "yellow",
     "tester": "cyan",
     "verifier": "green",
 }
-EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "recommender", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
-ROUTED_ONLY_AGENTS = {"recommender", "researcher-trivial", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
+EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "recommender", "researcher-trivial", "researcher", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
+ROUTED_ONLY_AGENTS = {"recommender", "researcher-trivial", "researcher", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
 RECOMMENDER_TOOLS = "Read, Grep, Glob, WebFetch, WebSearch"
-RESEARCH_PROCEDURE_HEADINGS = ("## Sweep", "## Memo")
+RESEARCHER_DISPATCH = "dispatched by the chat per the research routing in tiers.md"
+RESEARCH_LANE_KINDS = ("enumerates", "interprets")
+NOT_INVOKED_DIRECTLY = "not invoked directly"
+DISPATCHED_THROUGH_A_SKILL = re.compile(r"dispatched through /?([a-z0-9-]+)")
+BROAD_GATHERING_TO_RESEARCH = "broad source gathering (research)"
 CIRCUIT_BREAKER_PASSAGES = (
     "re-tiers",
     "`reviewer-complex`",
@@ -113,6 +123,11 @@ TIER_ROUTING_ROWS = (
     "| `trivial` | `developer-trivial` | `reviewer` |",
     "| `standard` | `developer` | `reviewer` |",
     "| `complex` | `developer-complex` | `reviewer-complex` |",
+)
+RESEARCH_ROUTING_ROWS = (
+    "| `trivial` | enumerates | `researcher-trivial` |",
+    "| `standard` | interprets | `researcher` |",
+    "| `complex` | interprets for a complex-tier item | `researcher-complex` |",
 )
 
 ONE_HOME_PHRASES = {
@@ -147,6 +162,12 @@ ONE_HOME_PHRASES = {
     "addSubIssue": "claude/skills/issue-write/SKILL.md",
     "addBlockedBy": "claude/skills/issue-write/SKILL.md",
     "have to be weighed for": "claude/skills/deliver/references/tiers.md",
+    "how hard an item is to get right": "claude/skills/deliver/references/tiers.md",
+    "Tie-break to standard": "claude/skills/deliver/references/tiers.md",
+    "counts as interpreting": "claude/skills/deliver/references/tiers.md",
+    "An interpreting lane with no item is standard": "claude/skills/deliver/references/tiers.md",
+    "re-runs at complex": "claude/skills/deliver/references/tiers.md",
+    "splits into one issue per feature": "claude/skills/issue-write/SKILL.md",
     "bug, feature, enhancement, documentation": "claude/skills/issue-next/SKILL.md",
     "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
     "issue-<slug>.md": "claude/skills/issue-write/SKILL.md",
@@ -224,6 +245,10 @@ DELIVER_TRIVIAL_INLINE = "A one-liner tiered `trivial` runs `implement` inline; 
 DELIVER_TIERING_BYPASS = "runs `implement` directly"
 IMPLEMENT_ROW_TIER_GATE = "inline for a one-liner tiered `trivial`, otherwise"
 IMPLEMENT_DESCRIPTION_TIER_GATE = "inline for a one-liner tiered trivial, otherwise"
+RESEARCH_ROW_AGENT = "in the tier's researcher agent"
+RESEARCH_DESCRIPTION_AGENT = "in a researcher agent"
+DELIVER_RESEARCH_READS = "Bulk and interpreting reads go to the tier's researcher per `references/tiers.md`"
+DELIVER_MEMO_ENTERS_THE_BRIEF = "the memo, not the material, enters the brief"
 DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat records it where the project keeps plans and hands it to `deliver`."
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
@@ -507,6 +532,55 @@ class AgentsTest(unittest.TestCase):
                 self.assertEqual(tiers.count(f"| `{stem}` |"), 1)
                 self.assertIn(fields["model"], fields["description"].lower())
 
+    def test_the_three_researcher_agents_preload_the_research_skill_share_one_body_and_differ_in_model(self):
+        docs = agent_docs()
+        researchers = [docs[stem] for stem in sorted(RESEARCHER_AGENTS)]
+        for stem, (fields, _) in zip(sorted(RESEARCHER_AGENTS), researchers):
+            with self.subTest(agent=stem):
+                self.assertEqual(fields["skills"], ["research"])
+        self.assertEqual(len({fields["model"] for fields, _ in researchers}), len(RESEARCHER_AGENTS))
+        self.assertEqual(len({fields["tools"] for fields, _ in researchers}), 1)
+        self.assertEqual(len({body for _, body in researchers}), 1)
+
+    def test_each_researcher_description_says_the_chat_dispatches_it_per_the_research_routing(self):
+        docs = agent_docs()
+        for stem in RESEARCHER_AGENTS:
+            with self.subTest(agent=stem):
+                self.assertIn(RESEARCHER_DISPATCH, docs[stem][0]["description"])
+
+    def test_each_researcher_description_names_its_research_routing_lane_and_not_the_other_lane_kind(self):
+        docs = agent_docs()
+        for row in RESEARCH_ROUTING_ROWS:
+            _, lane, stem = (cell.strip().strip("`") for cell in row.strip("|").split("|"))
+            with self.subTest(agent=stem):
+                description = docs[stem][0]["description"]
+                self.assertIn(lane, description)
+                for kind in RESEARCH_LANE_KINDS:
+                    if not lane.startswith(kind):
+                        self.assertNotIn(kind, description)
+
+    def test_an_agent_description_says_not_invoked_directly_only_when_a_skill_dispatches_it(self):
+        skills = set(skill_docs())
+        for stem, (fields, _) in agent_docs().items():
+            if NOT_INVOKED_DIRECTLY in fields["description"]:
+                with self.subTest(agent=stem):
+                    dispatch = DISPATCHED_THROUGH_A_SKILL.search(fields["description"])
+                    self.assertIsNotNone(dispatch)
+                    self.assertIn(dispatch.group(1), skills)
+
+    def test_verify_claim_and_the_verifier_send_broad_source_gathering_to_the_research_skill(self):
+        for door, text in (("verify-claim", skill_docs()["verify-claim"][0]["description"]), ("verifier", agent_docs()["verifier"][1])):
+            with self.subTest(door=door):
+                self.assertIn(BROAD_GATHERING_TO_RESEARCH, text)
+
+    def test_no_fork_target_preloads_a_skill(self):
+        docs = agent_docs()
+        targets = {fields["agent"] for fields, _ in skill_docs().values() if fields.get("context") == "fork"}
+        self.assertTrue(targets)
+        for stem in targets:
+            with self.subTest(agent=stem):
+                self.assertNotIn("skills", docs[stem][0])
+
 
 class RulesTest(unittest.TestCase):
     def test_global_rule_set_is_exactly_brief_decisions_git_and_writing(self):
@@ -607,6 +681,13 @@ class ClaudeMdTest(unittest.TestCase):
         self.assertIn(IMPLEMENT_ROW_TIER_GATE, row)
         fields, _ = skill_docs()["implement"]
         self.assertIn(IMPLEMENT_DESCRIPTION_TIER_GATE, fields["description"])
+
+    def test_research_row_and_description_both_run_the_lane_in_a_researcher_agent(self):
+        body = read(CLAUDE / "CLAUDE.md")
+        row = next(line for line in body.splitlines() if line.startswith("| `research` |"))
+        self.assertIn(RESEARCH_ROW_AGENT, row)
+        fields, _ = skill_docs()["research"]
+        self.assertIn(RESEARCH_DESCRIPTION_AGENT, fields["description"])
 
     def test_a_question_on_a_tracker_item_is_filed_through_issue_question_and_one_without_is_asked_inline(self):
         self.assertIn(CLAUDE_MD_TRACKER_QUESTION, re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
@@ -949,15 +1030,12 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(DESIGN_EXIT_RETURNS_THE_DESIGN, section(body, "Exit"))
         self.assertNotIn("writ", body.lower())
 
-    def test_research_complex_points_at_research_and_restates_none_of_its_procedure(self):
-        docs = skill_docs()
-        _, research = docs["research"]
-        _, interpreting = docs["research-complex"]
-        self.assertIn("skills/research/SKILL.md", interpreting)
-        for heading in RESEARCH_PROCEDURE_HEADINGS:
-            with self.subTest(heading=heading):
-                self.assertIn(heading, research)
-                self.assertNotIn(heading, interpreting)
+    def test_deliver_rounds_send_bulk_and_interpreting_reads_to_the_tier_researcher_and_brief_the_memo(self):
+        _, body = skill_docs()["deliver"]
+        rounds = section(body, "Rounds")
+        for passage in (DELIVER_RESEARCH_READS, DELIVER_MEMO_ENTERS_THE_BRIEF):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, rounds)
 
     def test_every_skill_input_section_references_the_brief_rule(self):
         docs = skill_docs()
@@ -980,6 +1058,19 @@ class DeliverReferencesTest(unittest.TestCase):
         for row in TIER_ROUTING_ROWS:
             with self.subTest(row=row):
                 self.assertEqual(tiers.count(row), 1)
+
+    def test_research_routing_sends_an_enumerating_lane_to_trivial_and_an_interpreting_lane_by_its_item_tier(self):
+        tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
+        for row in RESEARCH_ROUTING_ROWS:
+            with self.subTest(row=row):
+                self.assertEqual(tiers.count(row), 1)
+
+    def test_blast_radius_keeps_an_item_out_of_trivial_and_never_makes_it_complex(self):
+        lines = read(SKILLS / "deliver" / "references" / "tiers.md").splitlines()
+        trivial = next(line for line in lines if line.startswith("- `trivial` —"))
+        complex_ = next(line for line in lines if line.startswith("- `complex` —"))
+        self.assertIn("blast radius", trivial)
+        self.assertNotIn("blast radius", complex_)
 
     def test_circuit_breaker_re_tiers_a_defect_trip_and_ends_the_run_on_a_disagreement(self):
         bullet = next(line for line in read(SKILLS / "deliver" / "references" / "review-loop.md").splitlines() if line.startswith("- **Circuit breaker.**"))

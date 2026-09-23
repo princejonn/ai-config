@@ -1,15 +1,13 @@
 ---
 name: research
-description: "Runs one bounded research lane that enumerates — a repository survey for files, call sites, consumers and occurrences, or a web sweep for what exists — and returns a compact evidence memo with citations. Use when the orchestrator needs the findings without the page or file content landing in its context. Not for a lane that interprets what the sources mean (research-complex), checking one specific claim (verify-claim) or reviewing code (review-change)."
-context: fork
-agent: researcher-trivial
+description: "Runs one bounded research lane and returns a compact evidence memo with citations. A lane enumerates — a repository survey for files, call sites, consumers and occurrences, or a web sweep for what exists — or interprets: what a specification section requires, what a dependency behaviour actually is, which reading a corpus supports. Use in a researcher agent when the orchestrator needs the findings without the page or file content landing in its context, or when a design or a verdict will rest on the answer. Not for checking one specific claim (verify-claim) or reviewing code (review-change)."
 ---
 
 # Research
 
 ## Input
 
-The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and adds the question, the sources to sweep and what freshness matters.
+The brief takes the shape `rules/brief.md` defines, and adds the question — for an interpreting lane, the one a design or a verdict will rest on — the sources to sweep or where to start, and what freshness matters.
 
 ## Sweep
 

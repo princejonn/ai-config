@@ -11,6 +11,11 @@ SLASH_PROMPT='/commit-item'
 CONFIG="$WORK/config"
 TRANSCRIPTS="$CONFIG/projects/-tmp-widget"
 mkdir -p "$TRANSCRIPTS"
+HOME_DIR="$WORK/home"
+for agents in "$CONFIG/agents" "$HOME_DIR/.claude/agents"; do
+  mkdir -p "$agents"
+  printf '%s\n' '---' 'name: scout' 'skills: [research]' '---' > "$agents/scout.md"
+done
 
 init_event() {
   printf '{"type":"system","subtype":"init","session_id":"%s"}\n' "${1:-pressure-fixture}"
@@ -28,6 +33,14 @@ bare_skill_event() {
   printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{}}]}}\n'
 }
 
+agent_event() {
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"description":"lane","prompt":"brief","subagent_type":"%s"}}]}}\n' "$1"
+}
+
+untyped_agent_event() {
+  printf '{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Agent","input":{"description":"lane","prompt":"brief"}}]}}\n'
+}
+
 result_event() {
   printf '{"type":"result","subtype":"%s"}\n' "$1"
 }
@@ -39,7 +52,7 @@ transcript_entry() {
 verdict=""
 status=0
 run_verdict() {
-  verdict="$(CLAUDE_CONFIG_DIR="$CONFIG" /bin/bash "$HERE/pressure.sh" --verdict "$1" "$2" "$3" 2>"$ERR")"
+  verdict="$(HOME="$HOME_DIR" CLAUDE_CONFIG_DIR="$CONFIG" /bin/bash "${4:-$HERE/pressure.sh}" --verdict "$1" "$2" "$3" 2>"$ERR")"
   status=$?
 }
 
@@ -107,5 +120,51 @@ grep -q '^test-2$' "$DRY"; check $? "10 a later pair is tagged by its ordinal"
 /bin/bash "$HERE/pressure.sh" --only ghost --dry-run > "$DRY" 2>"$ERR"
 [ "$?" = 2 ]; check $? "11 --only naming no pair exits 2"
 grep -q '^pressure: no prompt pair named ghost$' "$ERR"; check $? "11 --only naming no pair says which"
+
+for agent in researcher-trivial researcher researcher-complex; do
+  DEDICATED="$WORK/dedicated-$agent.jsonl"
+  { init_event; agent_event "$agent"; result_event success; } > "$DEDICATED"
+  run_verdict "$DEDICATED" research "$PROMPT"
+  verdict_is yes "12 a dispatch to $agent, whose skills are exactly the skill under test"
+done
+
+DEDICATED_SIBLING="$WORK/dedicated-sibling.jsonl"
+{ init_event; agent_event researcher-trivial; result_event error_max_turns; } > "$DEDICATED_SIBLING"
+run_verdict "$DEDICATED_SIBLING" verify-claim "$PROMPT"
+verdict_is no "13 a dispatch to an agent whose skills are exactly a sibling, in a stream cut at the turn cap"
+
+SHARED="$WORK/shared.jsonl"
+{ init_event; agent_event developer; result_event error_max_turns; } > "$SHARED"
+for skill in implement test diagnose-root-cause author-gherkin; do
+  run_verdict "$SHARED" "$skill" "$PROMPT"
+  verdict_is cut "14 a dispatch to developer, which carries several skills, fires none of them: $skill"
+done
+
+for agent in general-purpose Explore Plan; do
+  BUILT_IN="$WORK/built-in-$agent.jsonl"
+  { init_event; agent_event "$agent"; result_event error_max_turns; } > "$BUILT_IN"
+  run_verdict "$BUILT_IN" research "$PROMPT"
+  verdict_is cut "15 a dispatch to $agent, which has no file in the tree's agents, fires no skill"
+done
+
+DECOY="$WORK/decoy.jsonl"
+{ init_event; agent_event scout; result_event error_max_turns; } > "$DECOY"
+run_verdict "$DECOY" research "$PROMPT"
+verdict_is cut "16 an agent's skills are read from the tree, never from the config dir or ~/.claude"
+
+TREE="$WORK/tree"
+mkdir -p "$TREE/tests" "$TREE/claude/agents"
+cp "$HERE/pressure.sh" "$TREE/tests/pressure.sh"
+ln -s "$HERE/../claude/skills" "$TREE/claude/skills"
+printf '%s\n' '---' 'name: lookout' '---' '' 'skills: [research]' > "$TREE/claude/agents/lookout.md"
+BODY="$WORK/body.jsonl"
+{ init_event; agent_event lookout; result_event error_max_turns; } > "$BODY"
+run_verdict "$BODY" research "$PROMPT" "$TREE/tests/pressure.sh"
+verdict_is cut "17 an agent's skills are read from its frontmatter, never from its body"
+
+UNTYPED="$WORK/untyped.jsonl"
+{ init_event; untyped_agent_event; result_event error_max_turns; } > "$UNTYPED"
+run_verdict "$UNTYPED" research "$PROMPT"
+verdict_is cut "18 an Agent call carrying no subagent type in a stream cut at the turn cap"
 
 summary

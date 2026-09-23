@@ -23,7 +23,7 @@ The body is these five headings, in this order, and nothing else:
 
 A dependency is a line that begins `Depends on #N` after any list marker, several numbers allowed: `Depends on #4, #7`; the line is the readable form of the blocked-by relation § Create writes. Every other line in § Related is a note — out of scope, a sibling, background — and names items freely.
 
-A `story` item keeps the five headings and changes two: § Goal is the three-part statement `As a <who>, I want <what>, so that <why>`, and each § Acceptance line is one Given/When/Then scenario — one line, one observable result, so the Acceptance form above holds. A story spanning several features is one item at `tier: complex`, or one `Depends on` line per feature issue it splits into. A description that opens `As a …`, and any request for a story, takes this shape and the `story` label beside `feature` or `enhancement`; one that reports a defect is a `bug` in the plain shape, without `story`.
+A `story` item keeps the five headings and changes two: § Goal is the three-part statement `As a <who>, I want <what>, so that <why>`, and each § Acceptance line is one Given/When/Then scenario — one line, one observable result, so the Acceptance form above holds. A story spanning several features splits into one issue per feature, the story carrying one `Depends on` line per feature issue. A description that opens `As a …`, and any request for a story, takes this shape and the `story` label beside `feature` or `enhancement`; one that reports a defect is a `bug` in the plain shape, without `story`.
 
 ## Labels
 

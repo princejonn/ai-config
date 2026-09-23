@@ -2,10 +2,13 @@
 # Pressure-tests skill triggering: per skill one prompt that must fire it and one that must not, run
 # through `claude -p` in a fresh scratch project. Spends tokens; on demand.
 # A `/name` prompt the CLI expands emits no Skill event, so its proxy is the session transcript entry.
+# A skill preloaded in an agent emits none either: a dispatch to an agent whose `skills:` in this tree
+# is that one skill counts as it firing.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
 SKILLS_DIR="$HERE/../claude/skills"
+AGENTS_DIR="$HERE/../claude/agents"
 TIMEOUT=120
 GRACE=5
 MAX_TURNS=2
@@ -60,10 +63,10 @@ pair plan-phases \
   'Rename widget.py to renderer.py and update the README.'
 pair research \
   'Find every call site of render in this repository and list them.' \
-  'Read widget.py and tell me what render returns when name is empty.'
-pair research-complex \
+  'Before I rely on it: is it true that nothing else calls render? Check that claim.'
+pair research \
   'Work out what RFC 3986 section 2.3 requires of unreserved characters; the design rests on the answer.' \
-  'List every Python file in this repository.'
+  'Review the staged change-set against its brief and give me ACCEPTED or NOT ACCEPTED.'
 pair review-change \
   'Review the staged change-set against its brief and give me ACCEPTED or NOT ACCEPTED.' \
   'Get Codex to look at this diff.'
@@ -207,11 +210,26 @@ run_prompt() {
 }
 
 stream_query() {
-  python3 - "$1" "$2" "${3-}" <<'PY'
+  python3 - "$AGENTS_DIR" "$1" "$2" "${3-}" <<'PY'
 import json
+import re
 import sys
+from pathlib import Path
 
-stream, question, skill = sys.argv[1], sys.argv[2], sys.argv[3]
+agents, stream, question, skill = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+
+
+def preloaded(path):
+    frontmatter = path.read_text(encoding="utf-8").split("\n---\n", 1)[0]
+    line = re.search(r"^skills:(.*)$", frontmatter, re.MULTILINE)
+    return re.findall(r"[a-z0-9-]+", line.group(1)) if line else []
+
+
+dedicated = {}
+for path in Path(agents).glob("*.md"):
+    skills = preloaded(path)
+    if len(skills) == 1:
+        dedicated[path.stem] = skills[0]
 
 session = None
 subtype = ""
@@ -240,12 +258,15 @@ for line in open(stream, encoding="utf-8", errors="replace"):
     for block in content:
         if not isinstance(block, dict) or block.get("type") != "tool_use":
             continue
-        if block.get("name") != "Skill":
-            continue
         argument = block.get("input")
         if not isinstance(argument, dict):
             continue
-        name = argument.get("skill")
+        if block.get("name") == "Skill":
+            name = argument.get("skill")
+        elif block.get("name") == "Agent" and isinstance(argument.get("subagent_type"), str):
+            name = dedicated.get(argument["subagent_type"])
+        else:
+            continue
         if isinstance(name, str):
             chosen.append(name)
 
