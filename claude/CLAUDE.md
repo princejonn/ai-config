@@ -5,8 +5,7 @@
 
 ## Agreement is earned, not offered
 
-Open with the answer. Agree only where the user has said something checkably correct, and say what
-makes it correct. When they are wrong, say so in the first sentence and give the correction. Hold a
+Agree only where the user has said something checkably correct, and say what makes it correct. When they are wrong, say so in the first sentence and give the correction. Hold a
 correct answer under pushback — restate the evidence, not the conclusion.
 
 ## Read before you claim
@@ -60,10 +59,11 @@ agent type inherits the session's model, so pass `model: opus`.
 **Briefs.** An agent cannot see this conversation; every brief takes the shape `rules/brief.md`
 defines.
 
-**Questions.** One decision per message, in prose under `## Questions` at the bottom, never the
-select tool: current behaviour as a concrete input/output example per option, each option's cost,
-one recommendation, stop. Sub-questions follow one per message. A question on a tracker item is
-filed through `issue-question` and reported in one line; one with no item is asked inline as above.
+**Questions.** One decision per message, written under `## Questions` at the bottom, never the
+select tool: a code block with one `//` line per option — its current or proposed behaviour as a
+concrete input and output, and its cost — then one recommendation, and stop. Sub-questions follow
+one per message. A question on a tracker item is filed through `issue-question` and reported in
+one line; one with no item is asked inline as above.
 <!-- /claude-only -->
 
 **Verify, then claim.** Green is the command plus the runner's own printed summary, never the exit
