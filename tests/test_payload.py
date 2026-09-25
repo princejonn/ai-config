@@ -136,6 +136,7 @@ ONE_HOME_PHRASES = {
     "enumerating the population": "claude/CLAUDE.md",
     "structured capability": "claude/CLAUDE.md",
     "re-read the evidence": "claude/CLAUDE.md",
+    "which the user prefers to prose": "claude/CLAUDE.md",
     "a decision not made": "claude/rules/brief.md",
     "Unclear in the brief": "claude/rules/brief.md",
     "copy it aside": "claude/skills/test/SKILL.md",
@@ -175,6 +176,7 @@ ONE_HOME_PHRASES = {
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
     "carries no orchestration": "claude/skills/author-skill/SKILL.md",
     "corrected from the evidence": "claude/rules/writing.md",
+    "with the answer": "claude/rules/writing.md",
     "RFC adherence and maximum compatibility": "claude/rules/decisions.md",
     "cannot close is UNVERIFIABLE": "claude/skills/verify-claim/SKILL.md",
     "the reach: which corpus was searched": "claude/skills/research/SKILL.md",
@@ -299,6 +301,8 @@ ISSUE_TRIAGE_THIN_TEXT_FILED = "§ Apply's question row"
 DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, park the item and continue the loop with the next"
 DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
 CLAUDE_MD_TRACKER_QUESTION = "A question on a tracker item is filed through `issue-question` and reported in one line; one with no item is asked inline as above."
+QUESTION_TODAY_IN_CODE = "a code block of today's behaviour"
+QUESTION_OPTION_IN_CODE = "a code block of how it would be solved"
 ISSUE_NEXT_DECISIONS_FROM_RULINGS = "in comment order, or `none`"
 ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
 ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")
@@ -915,6 +919,21 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(ISSUE_ANSWER_LABEL_EDIT, body)
         self.assertLess(body.index("gh issue comment"), body.index(ISSUE_ANSWER_LABEL_EDIT))
         self.assertEqual(body.count(ISSUE_ANSWER_ONE_ITEM), 1)
+
+    def test_every_place_that_puts_a_question_to_the_user_shows_today_and_each_option_as_code_blocks(self):
+        docs = skill_docs()
+        method = section(docs["issue-question"][1], "Method")
+        places = {
+            "claude/CLAUDE.md": next(p for p in read(CLAUDE / "CLAUDE.md").split("\n\n") if p.startswith("**Questions.**")),
+            "recommender": agent_docs()["recommender"][1],
+            "issue-question recommender return": method[: method.index("```text")],
+            "issue-question comment": re.search(r"```text\n(.*?)```", method, re.S).group(1),
+            "issue-answer": section(docs["issue-answer"][1], "Present"),
+        }
+        for place, text in places.items():
+            for passage in (QUESTION_TODAY_IN_CODE, QUESTION_OPTION_IN_CODE):
+                with self.subTest(place=place, passage=passage):
+                    self.assertIn(passage, re.sub(r"\s+", " ", text))
 
     def test_issue_answer_rule_names_what_restarts_after_the_label_edit_the_triage_or_the_queue(self):
         _, body = skill_docs()["issue-answer"]

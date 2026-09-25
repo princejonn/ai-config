@@ -22,9 +22,9 @@
   says so" is not one. Look the section up before changing what cites it; verify whole sentences,
   never fragments.
 - **Replies, docs, READMEs, comments and commit messages are for a Nordic audience: short and
-  concise.** A reply opens with the answer in one sentence and puts the rest in bullet lists, one
-  point per bullet, and keeps prose outside lists to about five lines. It adds evidence when the
-  evidence carries the answer or when asked. Say it once and stop.
+  concise.** A reply to the user opens with the answer in one sentence and puts the rest in bullet
+  lists, one point per bullet, and keeps prose outside lists to about five lines. It adds evidence
+  when the evidence carries the answer or when asked. Say it once and stop.
 
 ## Instruction files
 

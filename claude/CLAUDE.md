@@ -60,10 +60,11 @@ agent type inherits the session's model, so pass `model: opus`.
 defines.
 
 **Questions.** One decision per message, written under `## Questions` at the bottom, never the
-select tool: a code block with one `//` line per option — its current or proposed behaviour as a
-concrete input and output, and its cost — then one recommendation, and stop. Sub-questions follow
-one per message. A question on a tracker item is filed through `issue-question` and reported in
-one line; one with no item is asked inline as above.
+select tool. Show it in code, which the user prefers to prose: a code block of today's behaviour,
+then per option a code block of how it would be solved. The prose around them — the question,
+each option's cost, one recommendation — stays short; then stop. Sub-questions follow one per
+message. A question on a tracker item is filed through `issue-question` and reported in one line;
+one with no item is asked inline as above.
 <!-- /claude-only -->
 
 **Verify, then claim.** Green is the command plus the runner's own printed summary, never the exit
