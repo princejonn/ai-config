@@ -70,6 +70,8 @@ report_foreign() {
   for path in "$@"; do
     { [ -e "$path" ] || [ -L "$path" ]; } || continue
     [ -L "$path" ] && [ "$(resolved_link_target "$path")" = "$source_dir/$(basename "$path")" ] && continue
+    # Claude Code syncs claude.ai account skills into skills/synced; it is not foreign.
+    [ "$path" = "${CLAUDE_HOME:-}/skills/synced" ] && [ -d "$path" ] && [ ! -L "$path" ] && continue
     echo "  foreign: $path"
     pending=1
   done

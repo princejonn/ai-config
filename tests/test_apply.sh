@@ -385,4 +385,29 @@ grep -q "^  prune: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-code
 [ -L "$BIN_DIR/other" ]; check $? "32 a link the repo does not own is left alone"
 ! grep -q "^  prune: $BIN_DIR/other" "$OUT"; check $? "32 a link the repo does not own is not reported pruned"
 
+fresh_home
+run_apply
+mkdir -p "$HOME_DIR/skills/synced"
+echo "account skill" > "$HOME_DIR/skills/synced/SKILL.md"
+run_apply
+[ "$status" = 0 ]; check $? "33 account-synced skills dir alone: apply exits 0"
+! grep -q "^  foreign: $HOME_DIR/skills/synced$" "$OUT"; check $? "33 the synced skills dir is not reported foreign"
+! grep -Eq '^  (link|adopt|prune): .*/skills/synced' "$OUT"; check $? "33 the synced skills dir is neither linked, adopted nor pruned"
+[ -d "$HOME_DIR/skills/synced" ]; check $? "33 the synced skills dir is left in place"
+[ ! -L "$HOME_DIR/skills/synced" ]; check $? "33 the synced skills dir stays a real directory"
+[ "$(cat "$HOME_DIR/skills/synced/SKILL.md")" = "account skill" ]; check $? "33 the synced skills dir content is untouched"
+run_apply --check
+[ "$status" = 0 ]; check $? "33 account-synced skills dir alone passes check"
+! grep -q '^  foreign:' "$OUT"; check $? "33 check reports no drift for the synced skills dir"
+
+fresh_home
+run_apply
+mkdir -p "$HOME_DIR/skills/synced" "$HOME_DIR/skills/stray"
+run_apply
+[ "$status" = 0 ]; check $? "34 a stray entry alongside the synced skills dir: apply exits 0"
+! grep -q "^  foreign: $HOME_DIR/skills/synced$" "$OUT"; check $? "34 the synced skills dir is still not reported foreign"
+grep -q "^  foreign: $HOME_DIR/skills/stray$" "$OUT"; check $? "34 the stray entry is reported foreign"
+run_apply --check
+[ "$status" = 1 ]; check $? "34 a stray entry alongside the synced skills dir fails check"
+
 summary
