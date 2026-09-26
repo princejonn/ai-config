@@ -170,6 +170,7 @@ ONE_HOME_PHRASES = {
     "re-runs at complex": "claude/skills/deliver/references/tiers.md",
     "splits into one issue per feature": "claude/skills/issue-write/SKILL.md",
     "bug, feature, enhancement, documentation": "claude/skills/issue-next/SKILL.md",
+    "overriding what it names": "claude/skills/issue-next/SKILL.md",
     "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
     "issue-<slug>.md": "claude/skills/issue-write/SKILL.md",
     "issue-<N>-<purpose>.md": "claude/skills/issue-triage/SKILL.md",
@@ -305,6 +306,17 @@ QUESTION_EXAMPLE_PER_OPTION = "a concrete example and its cost"
 QUESTION_CODE_WHEN = "an option that changes code or a file"
 QUESTION_REAL_TEXT_IN_CODE = "the real text today and the real text proposed, each in a code block"
 ISSUE_NEXT_DECISIONS_FROM_RULINGS = "in comment order, or `none`"
+ISSUE_NEXT_EVENT_LOG = (
+    "`gh issue view <N> --json body,comments` reads it as an event log",
+    "the body is the starting state, and each comment applies in order",
+    "a later one overriding what it names in the body or an earlier comment",
+    "Every field carries the state after the last comment",
+)
+ISSUE_NEXT_SKIP_READS_THE_STATE = "read as § Output reads it"
+ISSUE_TRIAGE_VIEW = "`gh issue view <N> --json number,title,labels,body,comments`"
+ISSUE_TRIAGE_STATE_CITES_ISSUE_NEXT = "its state is its body and comments read as `issue-next` § Output reads them"
+ISSUE_TRIAGE_THIN_BY_STATE = "is missing from its state"
+ISSUE_TRIAGE_CRITIQUE_STATE = "the item's state verbatim"
 ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
 ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")
 DECISION_TIE_BREAKS = ("RFC adherence and maximum compatibility", "readable code", "public interfaces that are easy to use and interpret")
@@ -885,6 +897,27 @@ class SkillPassagesTest(unittest.TestCase):
         output = section(body, "Output")
         self.assertIn(ISSUE_NEXT_DECISIONS_FROM_RULINGS, output)
         self.assertLess(output.index("Decisions made:"), output.index(ISSUE_NEXT_DECISIONS_FROM_RULINGS))
+
+    def test_issue_next_fills_every_brief_field_from_the_body_and_each_comment_in_order_a_later_one_overriding(self):
+        _, body = skill_docs()["issue-next"]
+        output = section(body, "Output")
+        for passage in ISSUE_NEXT_EVENT_LOG:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, output)
+        offsets = [output.index(passage) for passage in ISSUE_NEXT_EVENT_LOG]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertLess(offsets[-1], output.index("```text"))
+        self.assertEqual(body.count("gh issue view"), 1)
+        blocked = next(line for line in section(body, "Skip").splitlines() if "`BLOCKED`" in line)
+        self.assertIn(ISSUE_NEXT_SKIP_READS_THE_STATE, blocked)
+
+    def test_issue_triage_judges_the_state_issue_next_reads_and_cites_that_read_rather_than_restating_it(self):
+        _, body = skill_docs()["issue-triage"]
+        view = next(line for line in section(body, "Input").splitlines() if "gh issue view" in line)
+        self.assertIn(ISSUE_TRIAGE_VIEW, view)
+        self.assertIn(ISSUE_TRIAGE_STATE_CITES_ISSUE_NEXT, view)
+        self.assertIn(ISSUE_TRIAGE_THIN_BY_STATE, section(body, "State"))
+        self.assertIn(ISSUE_TRIAGE_CRITIQUE_STATE, section(body, "Critique"))
 
     def test_issue_question_takes_one_item_and_every_gh_call_in_the_question_skills_carries_the_repo_as_two_words(self):
         docs = skill_docs()

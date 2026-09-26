@@ -27,11 +27,11 @@ Walk the sorted list from the top and stop at the first item § Skip lets throug
 
 - An open item carrying `parked`, `blocked`, `question: open`, `duplicate`, `invalid` or `wontfix` is out of the queue: skipped and reported with the label that skipped it, before any dependency is checked. `question: closed` skips nothing: the ruling is in the item's comments, and § Output carries it.
 - One read per candidate gives its blockers and its pieces: `gh api graphql -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){issue(number:<N>){blockedBy(first:50){nodes{number state}} subIssues(first:50){nodes{number state}}}}}' -F owner=<owner> -F name=<name>`. An open node under `blockedBy` skips the item, reported with the number that skipped it; an open node under `subIssues` skips it the same way, a split parent closing against its pieces. A number named by a dependency line in § Related, in the form `issue-write` § Shape gives, that neither `blockedBy` nor `subIssues` carries is reported beside the winner as a malformed dependency line.
-- The item that survives, when it carries no § Acceptance section: return `BLOCKED` with the sentence `issue-write` would need — the scenario and the exact result it must produce — and stop. The item is repaired before anything is dispatched.
+- The item that survives, read as § Output reads it, when it carries no § Acceptance section: return `BLOCKED` with the sentence `issue-write` would need — the scenario and the exact result it must produce — and stop. The item is repaired before anything is dispatched.
 
 ## Output
 
-The winner as brief fields, filled from the item, its comments and nothing else:
+The winner as brief fields, filled from the item and nothing else. `gh issue view <N> --json body,comments` reads it as an event log: the body is the starting state, and each comment applies in order, a later one overriding what it names in the body or an earlier comment. Every field carries the state after the last comment:
 
 ```text
 Item:            #N and its URL
@@ -42,6 +42,6 @@ Tier:            the tier label, or standard with a note that the item carries n
 Out of scope:    what § Related says the item does not cover, or none
 ```
 
-`Decisions made:` is read with `gh issue view <N> --json comments --jq '.comments[].body'`: every comment that opens `## Ruling`, the shape `issue-answer` posts, in comment order, or `none`.
+`Decisions made:` is every comment that opens `## Ruling`, the shape `issue-answer` posts, in comment order, or `none`.
 
 Then the items skipped above it, each with the open number or the label that skipped it, and any malformed dependency line the winner carries. Nothing is dispatched here.

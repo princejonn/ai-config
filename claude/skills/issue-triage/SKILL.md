@@ -7,7 +7,7 @@ description: "Judges one tracker item the user names: a thin one — missing a l
 
 ## Input
 
-One issue number: nothing else names the subject. A repository, `--repo <owner/name>`, then rides on every `gh` call here. `gh issue view <N> --json number,title,labels,body` reads the item.
+One issue number: nothing else names the subject. A repository, `--repo <owner/name>`, then rides on every `gh` call here. `gh issue view <N> --json number,title,labels,body,comments` reads the item; its state is its body and comments read as `issue-next` § Output reads them, and every section below judges that state.
 
 With no number, one question under `## Questions` asks which issue: nothing is listed and nothing is edited.
 
@@ -15,7 +15,7 @@ What leaves this skill is an item `issue-next` can hand on as the brief fields `
 
 ## State
 
-An item is thin when it carries no label from one of the three sets `issue-write` § Labels defines, or when `## Goal` or `## Acceptance` is missing from its body or stands empty — the heading with no line under it; complete otherwise.
+An item is thin when it carries no label from one of the three sets `issue-write` § Labels defines, or when `## Goal` or `## Acceptance` is missing from its state or stands empty — the heading with no line under it; complete otherwise.
 
 A thin item takes § Draft, a complete one takes § Critique. Both take § Duplicate and § Done, in the order the sections stand.
 
@@ -40,7 +40,7 @@ The item goes to `/review-change` as this brief, in the shape `rules/brief.md` d
 ```text
 Goal:            judge item #N — the right change, at a stated cost, observable when done
 Item:            #N and its URL
-Change-set:      the item's body verbatim, and the comparison set § Duplicate gathered
+Change-set:      the item's state verbatim, and the comparison set § Duplicate gathered
 Acceptance:      each § Why claim verifies at the file:line or probe it cites
                  each § Acceptance line names a result that can be observed
                  the § Proposal reaches the § Goal
