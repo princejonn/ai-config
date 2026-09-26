@@ -293,6 +293,9 @@ ISSUE_QUESTION_LABEL_CREATE = "gh label create"
 ISSUE_QUESTION_LABEL_RENAME = 'gh label edit question --name "question: open"'
 ISSUE_QUESTION_RETRY_ONCE = "returns the question to the recommender once, the verdict attached"
 ISSUE_QUESTION_FIX_LIST = "no recommender run"
+ISSUE_QUESTION_VIEW = "`gh issue view <N> --json body,comments --repo <owner/name>`"
+ISSUE_QUESTION_STATE_CITES_ISSUE_NEXT = "its state is its body and every comment, read as `issue-next` § Output reads them"
+ISSUE_QUESTION_RECOMMENDER_STATE = "the item's state, the question and the files it turns on"
 ISSUE_ANSWER_LABEL_EDIT = 'gh issue edit <N> --remove-label "question: open" --add-label "question: closed"'
 ISSUE_ANSWER_ONE_ITEM = "One item per message"
 ISSUE_ANSWER_RESTART = "names what restarts"
@@ -944,6 +947,16 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn("DISPROVEN", method)
         self.assertEqual(method.count(ISSUE_QUESTION_RETRY_ONCE), 1)
         self.assertIn(ISSUE_QUESTION_FIX_LIST, method)
+
+    def test_issue_question_briefs_the_recommender_with_the_state_issue_next_reads_and_cites_that_read_rather_than_restating_it(self):
+        _, body = skill_docs()["issue-question"]
+        step = next(line for line in section(body, "Method").splitlines() if line.startswith("1. "))
+        for passage in (ISSUE_QUESTION_VIEW, ISSUE_QUESTION_STATE_CITES_ISSUE_NEXT, ISSUE_QUESTION_RECOMMENDER_STATE):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, step)
+        self.assertLess(step.index(ISSUE_QUESTION_VIEW), step.index(ISSUE_QUESTION_RECOMMENDER_STATE))
+        self.assertEqual(body.count("gh issue view"), 1)
+        self.assertNotIn("the item's body", body)
 
     def test_issue_answer_presents_one_item_under_questions_then_posts_the_ruling_and_closes_the_question(self):
         _, body = skill_docs()["issue-answer"]
