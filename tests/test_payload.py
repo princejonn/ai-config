@@ -136,7 +136,7 @@ ONE_HOME_PHRASES = {
     "enumerating the population": "claude/CLAUDE.md",
     "structured capability": "claude/CLAUDE.md",
     "re-read the evidence": "claude/CLAUDE.md",
-    "which the user prefers to prose": "claude/CLAUDE.md",
+    "as the user prefers": "claude/CLAUDE.md",
     "a decision not made": "claude/rules/brief.md",
     "Unclear in the brief": "claude/rules/brief.md",
     "copy it aside": "claude/skills/test/SKILL.md",
@@ -301,8 +301,9 @@ ISSUE_TRIAGE_THIN_TEXT_FILED = "§ Apply's question row"
 DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, park the item and continue the loop with the next"
 DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
 CLAUDE_MD_TRACKER_QUESTION = "A question on a tracker item is filed through `issue-question` and reported in one line; one with no item is asked inline as above."
-QUESTION_TODAY_IN_CODE = "a code block of today's behaviour"
-QUESTION_OPTION_IN_CODE = "a code block of how it would be solved"
+QUESTION_EXAMPLE_PER_OPTION = "a concrete example and its cost"
+QUESTION_CODE_WHEN = "an option that changes code or a file"
+QUESTION_REAL_TEXT_IN_CODE = "the real text today and the real text proposed, each in a code block"
 ISSUE_NEXT_DECISIONS_FROM_RULINGS = "in comment order, or `none`"
 ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
 ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")
@@ -920,7 +921,7 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertLess(body.index("gh issue comment"), body.index(ISSUE_ANSWER_LABEL_EDIT))
         self.assertEqual(body.count(ISSUE_ANSWER_ONE_ITEM), 1)
 
-    def test_every_place_that_puts_a_question_to_the_user_shows_today_and_each_option_as_code_blocks(self):
+    def test_every_place_that_puts_a_question_to_the_user_gives_each_option_a_concrete_example_and_code_blocks_only_for_the_real_text_of_a_file_change(self):
         docs = skill_docs()
         method = section(docs["issue-question"][1], "Method")
         places = {
@@ -931,7 +932,7 @@ class SkillPassagesTest(unittest.TestCase):
             "issue-answer": section(docs["issue-answer"][1], "Present"),
         }
         for place, text in places.items():
-            for passage in (QUESTION_TODAY_IN_CODE, QUESTION_OPTION_IN_CODE):
+            for passage in (QUESTION_EXAMPLE_PER_OPTION, QUESTION_CODE_WHEN, QUESTION_REAL_TEXT_IN_CODE):
                 with self.subTest(place=place, passage=passage):
                     self.assertIn(passage, re.sub(r"\s+", " ", text))
 

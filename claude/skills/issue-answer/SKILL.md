@@ -13,7 +13,7 @@ An item under no `question: open`, or a tracker with none, is reported in one li
 
 ## Present
 
-That one item's question, a code block of today's behaviour, per option a code block of how it would be solved and its cost, and its recommendation, under `## Questions` in the form `claude/CLAUDE.md` § Questions gives, then stop. One item per message: with several `question: open` items, one is presented and nothing else; the next waits for the next message.
+That one item's question, per option a concrete example and its cost — for an option that changes code or a file, the real text today and the real text proposed, each in a code block — and its recommendation, under `## Questions` in the form `claude/CLAUDE.md` § Questions gives, then stop. One item per message: with several `question: open` items, one is presented and nothing else; the next waits for the next message.
 
 ## Rule
 

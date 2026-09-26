@@ -11,7 +11,7 @@ One issue number and the question: nothing else names the subject. What filed it
 
 ## Method
 
-1. A fix list from `issue-triage` § Critique, or the missing sentence of a question row, is filed as its own recommendation with no recommender run: the question is whether the item is revised as the list says. Every other question goes to `recommender` as a brief in the shape `rules/brief.md` defines — the item's body, the question and the files it turns on — and comes back as a code block of today's behaviour, per option a code block of how it would be solved and its cost, and one recommendation in the order `rules/decisions.md` gives.
+1. A fix list from `issue-triage` § Critique, or the missing sentence of a question row, is filed as its own recommendation with no recommender run: the question is whether the item is revised as the list says. Every other question goes to `recommender` as a brief in the shape `rules/brief.md` defines — the item's body, the question and the files it turns on — and comes back with one recommendation in the order `rules/decisions.md` gives and, per option, a concrete example and its cost; for an option that changes code or a file, the real text today and the real text proposed, each in a code block.
 2. Each claim the recommendation rests on — a citation, a count, a "nothing else calls this" — goes through `/verify-claim`. One `DISPROVEN` verdict returns the question to the recommender once, the verdict attached; the second memo is filed whatever its verdicts, a verdict still `DISPROVEN` standing beside its claim in the comment.
 3. One comment, written to the session scratchpad with the Write tool as `issue-<N>-question.md` and posted with `gh issue comment <N> --body-file <scratchpad file> --repo <owner/name>`:
 
@@ -19,10 +19,8 @@ One issue number and the question: nothing else names the subject. What filed it
    ## Question
    <the question, one paragraph>
 
-   <a code block of today's behaviour>
-
    ### Options
-   <per option: a code block of how it would be solved, and its cost>
+   <per option: a concrete example and its cost; for an option that changes code or a file, the real text today and the real text proposed, each in a code block>
 
    ### Recommendation
    <the one option, and the tie-break that decided it>
