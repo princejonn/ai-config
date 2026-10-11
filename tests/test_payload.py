@@ -175,6 +175,7 @@ ONE_HOME_PHRASES = {
     "issue-<slug>.md": "claude/skills/issue-write/SKILL.md",
     "issue-<N>-<purpose>.md": "claude/skills/issue-triage/SKILL.md",
     "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
+    "git branch -r --contains": "claude/skills/issue-triage/SKILL.md",
     "carries no orchestration": "claude/skills/author-skill/SKILL.md",
     "corrected from the evidence": "claude/rules/writing.md",
     "with the answer": "claude/rules/writing.md",
@@ -320,6 +321,17 @@ ISSUE_TRIAGE_VIEW = "`gh issue view <N> --json number,title,labels,body,comments
 ISSUE_TRIAGE_STATE_CITES_ISSUE_NEXT = "its state is its body and comments read as `issue-next` § Output reads them"
 ISSUE_TRIAGE_THIN_BY_STATE = "is missing from its state"
 ISSUE_TRIAGE_CRITIQUE_STATE = "the item's state verbatim"
+ISSUE_TRIAGE_PUSH_CHECK = "git branch -r --contains"
+ISSUE_TRIAGE_DONE_NO_COMMIT = "When no verdict cites a commit, the item is not done either: it stays open"
+ISSUE_TRIAGE_DONE_ORDER = (
+    "`VERIFIED` for every line",
+    "`git branch -r --contains <hash>` on each commit the verdicts cite, against the remote-tracking refs as they stand, with no fetch",
+    "A branch printed for every commit is done: on the user's word the item closes with a comment carrying those commits",
+    "Nothing printed for one of them is not done: the item stays open, each commit without a branch unpushed",
+)
+ISSUE_TRIAGE_DONE_ROW_CLOSE = ("each commit `<hash>` § Done's verdicts cite", "`gh issue close <N> --comment <text>`")
+ISSUE_TRIAGE_OUTPUT_UNVERIFIED = "the acceptance lines no verdict returned `VERIFIED` for"
+ISSUE_TRIAGE_OUTPUT_UNPUSHED = "the commits § Done found on no remote branch, each named as unpushed, or that no verdict cited a commit"
 ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
 ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")
 DECISION_TIE_BREAKS = ("RFC adherence and maximum compatibility", "readable code", "public interfaces that are easy to use and interpret")
@@ -1041,6 +1053,40 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertIn("`issue-question`", line)
         self.assertNotIn("-label question", body)
         self.assertIn("`question: closed`", rulings)
+
+    def test_issue_triage_done_closes_on_the_users_word_only_once_a_remote_branch_contains_every_cited_commit(self):
+        _, body = skill_docs()["issue-triage"]
+        done = section(body, "Done")
+        for passage in ISSUE_TRIAGE_DONE_ORDER:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, done)
+        offsets = [done.index(passage) for passage in ISSUE_TRIAGE_DONE_ORDER]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertEqual(body.count(ISSUE_TRIAGE_PUSH_CHECK), 1)
+        row = next(line for line in section(body, "Apply").splitlines() if line.startswith("- done —"))
+        for passage in ISSUE_TRIAGE_DONE_ROW_CLOSE:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, row)
+
+    def test_issue_triage_done_keeps_an_item_open_when_no_verdict_cites_a_commit(self):
+        _, body = skill_docs()["issue-triage"]
+        self.assertIn(ISSUE_TRIAGE_DONE_NO_COMMIT, section(body, "Done"))
+
+    def test_issue_triage_done_has_exactly_one_close_sentence_and_it_follows_the_push_check(self):
+        _, body = skill_docs()["issue-triage"]
+        done = section(body, "Done")
+        sentences = re.split(r"(?<=\.)\s+", done)
+        closing = [sentence for sentence in sentences if re.search(r"\bclos", sentence)]
+        ruling_done = [sentence for sentence in sentences if re.search(r"\bis done\b", sentence)]
+        self.assertEqual(len(closing), 1, closing)
+        self.assertEqual(ruling_done, closing)
+        self.assertLess(done.index(ISSUE_TRIAGE_PUSH_CHECK), done.index(closing[0]))
+
+    def test_issue_triage_output_names_each_unpushed_commit_or_that_none_was_cited_after_the_lines_no_verdict_verified(self):
+        _, body = skill_docs()["issue-triage"]
+        output = section(body, "Output")
+        self.assertIn(ISSUE_TRIAGE_OUTPUT_UNPUSHED, output)
+        self.assertLess(output.index(ISSUE_TRIAGE_OUTPUT_UNVERIFIED), output.index(ISSUE_TRIAGE_OUTPUT_UNPUSHED))
 
     def test_issue_triage_draft_borrows_refuse_only_to_name_the_missing_sentence_and_files_it_as_the_question_row_says(self):
         _, body = skill_docs()["issue-triage"]

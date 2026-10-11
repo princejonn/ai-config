@@ -68,7 +68,7 @@ Findings come back in the reviewer's fix-list form, and the verdict is the rulin
 
 ## Done
 
-Each acceptance line of the item or its draft goes to `/verify-claim` as one claim against the tree and `git log`. `VERIFIED` for every line is done: on the user's word the item closes with a comment carrying the commit the verdicts cite, and the closed twin too when § Duplicate handed one over. One `DISPROVEN` or `UNVERIFIABLE` line is not: the item stays open. An item with no acceptance line, in body or draft, has no § Done.
+Each acceptance line of the item or its draft goes to `/verify-claim` as one claim against the tree and `git log`. One `DISPROVEN` or `UNVERIFIABLE` line is not done: the item stays open. When no verdict cites a commit, the item is not done either: it stays open. `VERIFIED` for every line runs `git branch -r --contains <hash>` on each commit the verdicts cite, against the remote-tracking refs as they stand, with no fetch. A branch printed for every commit is done: on the user's word the item closes with a comment carrying those commits, and the closed twin too when § Duplicate handed one over. Nothing printed for one of them is not done: the item stays open, each commit without a branch unpushed. An item with no acceptance line, in body or draft, has no § Done.
 
 ## Apply
 
@@ -89,9 +89,9 @@ A relation an edit implies is written with the two calls in `issue-write` § Cre
 - revise — nothing added here: the fix list for `NOT ACCEPTED` or the gap for `BLOCKED` is filed through `issue-question` on the item.
 - split — § Related as the body edit: `gh issue comment <N> --body-file <path>` with the fix list, saying the original returns to the queue when its pieces close and that § Done then closes it against their commits; nothing closes it on its own. The pieces are created through `issue-write` carrying no dependency line, each filed as a sub-issue of the original, then `gh issue edit <N> --body-file <path>`, the file named as the draft bullet above, gives the original's § Related one dependency line naming the pieces, in the form `issue-write` § Shape gives, with the blocked-by relation that line stands for, so `issue-next` skips it until they close. A piece `issue-write` § Refuse would refuse makes the row a question instead, ranked where split stands.
 - duplicate — the label `duplicate`, and the original as `#<M>` under duplicate of: `gh issue edit <N> --add-label duplicate`, then `gh issue close <N> --comment <text>` naming it.
-- done — under done by the commit `<hash>` § Done's verdicts cite, with `matched closed #<K>` when § Duplicate handed a closed twin over: `gh issue close <N> --comment <text>`.
+- done — under done by each commit `<hash>` § Done's verdicts cite, with `matched closed #<K>` when § Duplicate handed a closed twin over: `gh issue close <N> --comment <text>`.
 - question — the labels § Draft found lacking, if any: `gh issue edit <N> --add-label <label> --add-label <label>`; the missing sentence is filed through `issue-question` on the item, a complete item taking the filing alone.
 
 ## Output
 
-The row, with its ruling and what happened to it. Then one line each: the acceptance lines no verdict returned `VERIFIED` for, each with its verdict; the pair a match reported, a closed match the verdicts left unconfirmed among them; and the sentence a question row is missing.
+The row, with its ruling and what happened to it. Then one line each: the acceptance lines no verdict returned `VERIFIED` for, each with its verdict; the commits § Done found on no remote branch, each named as unpushed, or that no verdict cited a commit; the pair a match reported, a closed match the verdicts left unconfirmed among them; and the sentence a question row is missing.
