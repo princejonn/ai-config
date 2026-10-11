@@ -1,6 +1,6 @@
 ---
 name: verify-claim
-description: "Checks one load-bearing claim, or a small coupled set, before it is ratified into a design, plan or review verdict or relayed to the user as fact — 'nothing else calls this', 'the RFC requires X', 'the dependency is at version Y', 'all N sites were fixed', a bug diagnosis, a TODO premise. Returns VERIFIED, DISPROVEN or UNVERIFIABLE with falsification-grade evidence. Not for reviewing a change-set (review-change) or broad source gathering (research)."
+description: "Checks one load-bearing claim, or a small coupled set, before it is ratified into a design, plan or review verdict or relayed to the user as fact — 'nothing else calls this', 'the RFC requires X', 'the dependency is at version Y', 'all N sites were fixed', a bug diagnosis, a tracker item's premise. Returns VERIFIED, DISPROVEN or UNVERIFIABLE with falsification-grade evidence. Not for reviewing a change-set (review-change) or broad source gathering (research)."
 context: fork
 agent: verifier
 ---
@@ -13,7 +13,7 @@ The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and add
 
 ## What counts as a claim
 
-A claimed bug — from Claude, an agent, a consumer report or a TODO entry — and a dismissed one get the same treatment: the diagnosis in `file:line` terms, the fix proved red-before-green. A TODO premise is not evidence; re-derive from HEAD and correct the entry.
+A claimed bug — from Claude, an agent, a consumer report or a tracker item — and a dismissed one get the same treatment: the diagnosis in `file:line` terms, the fix proved red-before-green. A tracker item's premise is not evidence; re-derive it from HEAD.
 
 ## Method
 

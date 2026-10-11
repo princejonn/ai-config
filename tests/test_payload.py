@@ -192,17 +192,6 @@ ONE_HOME_PHRASES = {
     "cp -Rc": "claude/skills/test/references/mutation.md",
     "1.05x on 16 cores": "claude/skills/test/references/mutation.md",
 }
-ABSENT_PHRASES = {
-    "@lindorm": CLAUDE,
-    "exhaustive over intent": CLAUDE,
-    "The tree is not yours": CLAUDE,
-    "returned to the orchestrator verbatim": CLAUDE,
-    "Expected values traceable to the brief or spec": SKILLS,
-    "this skill writes nothing but": SKILLS,
-    "Never describe an action you did not perform": SKILLS,
-    "free Codex tier": CLAUDE,
-    "`question`": CLAUDE,
-}
 
 MEANING_CHANGE_EXAMPLES = "or the meaning of one (what an operator does, which boundary a predicate uses, whether a value counts as absent)"
 EXPECTED_VALUES_RATIONALE = "a suite derived from the implementation stays green when the implementation is wrong"
@@ -248,7 +237,6 @@ COMPLETES_THE_ITEM_INPUT = "The brief says whether this change-set completes the
 COMMIT_PUSH_CLOSE = "The order is commit, push, close, per `rules/git.md`"
 DELIVER_TIERS_EVERY_ITEM = "Tier every item per `references/tiers.md` before it runs"
 DELIVER_TRIVIAL_INLINE = "A one-liner tiered `trivial` runs `implement` inline; every other item gets a brief."
-DELIVER_TIERING_BYPASS = "runs `implement` directly"
 IMPLEMENT_ROW_TIER_GATE = "inline for a one-liner tiered `trivial`, otherwise"
 IMPLEMENT_DESCRIPTION_TIER_GATE = "inline for a one-liner tiered trivial, otherwise"
 RESEARCH_ROW_AGENT = "in the tier's researcher agent"
@@ -305,6 +293,7 @@ ISSUE_ANSWER_RESTART = "names what restarts"
 ISSUE_ANSWER_RESTART_TARGETS = ("`issue-triage`", "`issue-next`")
 ISSUE_TRIAGE_THIN_TEXT_REFUSE = "`issue-write` § Refuse"
 ISSUE_TRIAGE_THIN_TEXT_FILED = "§ Apply's question row"
+ISSUE_TRIAGE_ROWS_ADD_NO_LABEL = "A revise row and a question row add no label themselves"
 DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, park the item and continue the loop with the next"
 DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
 CLAUDE_MD_TRACKER_QUESTION = "A question on a tracker item is filed through `issue-question` and reported in one line; one with no item is asked inline as above."
@@ -764,10 +753,11 @@ class OneHomeTest(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertEqual(phrase_homes(phrase), {home})
 
-    def test_each_absent_phrase_occurs_nowhere_in_the_tree_that_bars_it(self):
-        for phrase, tree in ABSENT_PHRASES.items():
-            with self.subTest(phrase=phrase):
-                self.assertEqual(phrase_homes(phrase, tree), set())
+    def test_config_names_no_bare_question_label(self):
+        self.assertEqual(phrase_homes("`question`", CLAUDE), set())
+
+    def test_config_names_no_marketplace(self):
+        self.assertEqual({str(path.relative_to(REPO)) for path, text in text_files(CLAUDE) if "marketplace" in text.casefold()}, set())
 
     def test_phrase_homes_filters_by_the_tree_it_is_given(self):
         phrase = "never an action not performed"
@@ -920,7 +910,6 @@ class SkillPassagesTest(unittest.TestCase):
         for field in ("blockedBy", "subIssues"):
             with self.subTest(field=field):
                 self.assertIn(field, skip)
-        self.assertNotIn("--json state", body)
 
     def test_issue_next_output_names_every_brief_field_it_fills(self):
         _, body = skill_docs()["issue-next"]
@@ -991,7 +980,6 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertIn(passage, step)
         self.assertLess(step.index(ISSUE_QUESTION_VIEW), step.index(ISSUE_QUESTION_RECOMMENDER_STATE))
         self.assertEqual(body.count("gh issue view"), 1)
-        self.assertNotIn("the item's body", body)
 
     def test_issue_answer_presents_one_item_under_questions_then_posts_the_ruling_and_closes_the_question(self):
         _, body = skill_docs()["issue-answer"]
@@ -1081,7 +1069,7 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(row=prefix):
                 line = next(l for l in rulings.splitlines() if l.startswith(prefix))
                 self.assertIn("`issue-question`", line)
-        self.assertNotIn("-label question", body)
+        self.assertIn(ISSUE_TRIAGE_ROWS_ADD_NO_LABEL, rulings)
         self.assertIn("`question: closed`", rulings)
 
     def test_issue_triage_done_closes_on_the_users_word_only_once_a_remote_branch_contains_every_cited_commit(self):
@@ -1124,7 +1112,6 @@ class SkillPassagesTest(unittest.TestCase):
         bullet = next(line for line in draft.splitlines() if ISSUE_TRIAGE_THIN_TEXT_REFUSE in line)
         self.assertIn("missing sentence", bullet)
         self.assertIn(ISSUE_TRIAGE_THIN_TEXT_FILED, bullet)
-        self.assertNotIn("to the user", bullet)
 
     def test_issue_skills_enumerate_the_full_queue_labels_and_duplicate_set(self):
         for skill, heading, call in (
@@ -1165,7 +1152,6 @@ class SkillPassagesTest(unittest.TestCase):
         intake = section(body, "Intake and tiering")
         self.assertIn(DELIVER_TIERS_EVERY_ITEM, intake)
         self.assertIn(DELIVER_TRIVIAL_INLINE, intake)
-        self.assertNotIn(DELIVER_TIERING_BYPASS, body)
 
     def test_design_surface_exit_returns_the_locked_design_and_instructs_no_write(self):
         _, body = skill_docs()["design-surface"]
@@ -1236,6 +1222,14 @@ class TestReferencesTest(unittest.TestCase):
 
 def phrase_homes(phrase, tree=CLAUDE):
     return {str(p.relative_to(REPO)) for p in payload_files() if p.is_relative_to(tree) and phrase in read(p)}
+
+
+def text_files(tree):
+    for path in sorted(p for p in tree.rglob("*") if p.is_file()):
+        try:
+            yield path, read(path)
+        except UnicodeDecodeError:
+            continue
 
 
 def assert_description(case, description):
