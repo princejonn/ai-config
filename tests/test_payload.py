@@ -240,6 +240,17 @@ COMPLETES_THE_ITEM_INPUT = "The brief says whether this change-set completes the
 COMMIT_PUSH_CLOSE = "The order is commit, push, close, per `rules/git.md`"
 DELIVER_TIERS_EVERY_ITEM = "Tier every item per `references/tiers.md` before it runs"
 DELIVER_TRIVIAL_INLINE = "A one-liner tiered `trivial` runs `implement` inline; every other item gets a brief."
+DELIVER_INTAKE_BRIEF_FROM_ISSUE_NEXT = "A tracker item's brief is the `## Brief` comment `issue-next` hands out, later rulings under `Decisions made:` included."
+DELIVER_INTAKE_PATHS_RESOLVE_AT_THE_ROOT = "Its paths are repo-relative; the brief written for the agent resolves each against the repository root."
+DELIVER_INTAKE_PLAN_COMMENT = "For `tier: complex`, the item's latest `## Plan` comment is what `plan-phases` details into the plan the brief carries."
+DELIVER_INTAKE_CHECKS_THE_BRIEF = "Before the item runs, inline or dispatched, the brief is checked against the tree."
+DELIVER_INTAKE_CONTRADICTION = (
+    "A file it names that is gone, or a premise `/verify-claim` returns `DISPROVEN` for, contradicts the brief",
+    "filed as a question through `issue-question` on the item, `Filed from: deliver § Intake`",
+    "the filing takes `ready` off",
+    "nothing runs",
+)
+DELIVER_INTAKE_FILED_FROM = "deliver § Intake"
 IMPLEMENT_ROW_TIER_GATE = "inline for a one-liner tiered `trivial`, otherwise"
 IMPLEMENT_DESCRIPTION_TIER_GATE = "inline for a one-liner tiered trivial, otherwise"
 RESEARCH_ROW_AGENT = "in the tier's researcher agent"
@@ -292,6 +303,9 @@ ISSUE_NEXT_STATUS_GROUPS = "The sorted list then splits by status into three gro
 ISSUE_NEXT_WALK_THE_GROUPS = "Walk the groups in turn and stop at the first item § Skip lets through."
 ISSUE_NEXT_EVERY_ITEM_HELD = "When every item is held, report the list and stop."
 ISSUE_NEXT_BACKLOG_TO_TRIAGE = "A backlog winner leaves flagged as one to triage, not to deliver."
+ISSUE_NEXT_READY_LEAVES_AS_ITS_BRIEF = "A `ready` or `paused` winner leaves as its latest `## Brief` comment, in the shape `issue-triage` § Ready posts it, with each `## Ruling` posted after that comment added under `Decisions made:`."
+ISSUE_NEXT_NO_BRIEF_LEAVES_AS_BACKLOG = "One with no `## Brief` leaves as a backlog winner does."
+ISSUE_NEXT_BACKLOG_DERIVED = "A backlog winner leaves as these fields, derived from the state:"
 GH_REPO_FLAG = "--repo <owner/name>"
 GH_CODE_SPAN = re.compile(r"`gh [^`]*`")
 QUESTION_COMMENT_HEADING = "## Question"
@@ -365,10 +379,10 @@ ISSUE_TRIAGE_STOP_RULE = (
     "Stop rule, the circuit breaker `skills/deliver/references/review-loop.md` gives",
     "a finding the previous run also raised is a disagreement that survived two rounds, held",
     "two runs in a row each finding a defect the previous run's edit introduced trip it, those findings held",
-    "No other bound: the loop runs until the verdict is `ACCEPTED` or a finding is held.",
+    "No other bound: the loop runs until the verdict is `ACCEPTED`, a finding is held or the item is split.",
 )
 ISSUE_TRIAGE_RULING_SETTLES = "A finding a ruling on the item settles is applied as the ruling says, never held."
-ISSUE_TRIAGE_EMPTY_FIX_LIST = "A `NOT ACCEPTED` that holds nothing and leaves no line to apply counts as `ACCEPTED`, with no body edit."
+ISSUE_TRIAGE_EMPTY_FIX_LIST = "A `NOT ACCEPTED` that splits nothing, closes nothing, holds nothing and leaves no line to apply counts as `ACCEPTED`, with no body edit."
 ISSUE_TRIAGE_EVIDENCE_FILE = "`issue-<N>-<purpose>.md`"
 ISSUE_TRIAGE_EVIDENCE_POST = "`gh issue comment <N> --body-file <scratchpad file>`"
 ISSUE_TRIAGE_EVIDENCE_LATEST = "under each heading the latest comment is the current one"
@@ -417,6 +431,7 @@ ISSUE_NEXT_EVENT_LOG = (
     "a later one overriding what it names in the body or an earlier comment",
     "Every field carries the state after the last comment",
 )
+ISSUE_NEXT_EVIDENCE_OVERRIDES_NOTHING = "A `## Brief`, `## Plan` or `## Design` comment overrides nothing: it is evidence `issue-triage` § Ready posts, read as itself."
 ISSUE_NEXT_SKIP_READS_THE_STATE = "read as § Output reads it"
 ISSUE_TRIAGE_VIEW = "`gh issue view <N> --json number,title,labels,body,comments`"
 ISSUE_TRIAGE_STATE_CITES_ISSUE_NEXT = "its state is its body and comments read as `issue-next` § Output reads them"
@@ -1131,6 +1146,29 @@ class SkillPassagesTest(unittest.TestCase):
         blocked = next(line for line in section(body, "Skip").splitlines() if "`BLOCKED`" in line)
         self.assertIn(ISSUE_NEXT_SKIP_READS_THE_STATE, blocked)
 
+    def test_issue_next_reads_a_brief_plan_or_design_comment_as_evidence_triage_posts_that_overrides_nothing_in_the_event_log(self):
+        docs = skill_docs()
+        paragraph = next(p for p in section(docs["issue-next"][1], "Output").split("\n\n") if ISSUE_NEXT_EVENT_LOG[0] in p)
+        self.assertIn(ISSUE_NEXT_EVIDENCE_OVERRIDES_NOTHING, paragraph)
+        self.assertLess(paragraph.index(ISSUE_NEXT_EVENT_LOG[2]), paragraph.index(ISSUE_NEXT_EVIDENCE_OVERRIDES_NOTHING))
+        sentence = next(s for s in paragraph.split(". ") if "overrides nothing" in s)
+        bullets = [line for line in section(docs["issue-triage"][1], "Ready").splitlines() if line.startswith("- ")]
+        for heading in (line[2 : line.index(" —")] for line in bullets):
+            with self.subTest(heading=heading):
+                self.assertIn(heading, sentence)
+        self.assertIn("`issue-triage` § Ready", sentence)
+
+    def test_issue_next_hands_a_ready_or_paused_winner_its_latest_brief_with_later_rulings_under_decisions_made_and_derives_the_backlog_after_the_event_log_read(self):
+        _, body = skill_docs()["issue-next"]
+        output = re.sub(r"\s+", " ", section(body, "Output"))
+        passages = (ISSUE_NEXT_EVENT_LOG[-1], ISSUE_NEXT_READY_LEAVES_AS_ITS_BRIEF, ISSUE_NEXT_NO_BRIEF_LEAVES_AS_BACKLOG, ISSUE_NEXT_BACKLOG_DERIVED, "```text", ISSUE_NEXT_BACKLOG_TO_TRIAGE)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, output)
+        offsets = [output.index(passage) for passage in passages]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertEqual(output.count("```text"), 1)
+
     def test_issue_triage_judges_the_state_issue_next_reads_and_cites_that_read_rather_than_restating_it(self):
         _, body = skill_docs()["issue-triage"]
         view = next(line for line in section(body, "Input").splitlines() if "gh issue view" in line)
@@ -1533,6 +1571,48 @@ class SkillPassagesTest(unittest.TestCase):
         intake = section(body, "Intake and tiering")
         self.assertIn(DELIVER_TIERS_EVERY_ITEM, intake)
         self.assertIn(DELIVER_TRIVIAL_INLINE, intake)
+
+    def test_deliver_intake_takes_a_tracker_items_brief_from_issue_next_resolves_its_paths_at_the_root_and_hands_plan_phases_the_plan_comment(self):
+        _, body = skill_docs()["deliver"]
+        intake = re.sub(r"\s+", " ", section(body, "Intake and tiering"))
+        passages = (DELIVER_TRIVIAL_INLINE, DELIVER_INTAKE_BRIEF_FROM_ISSUE_NEXT, DELIVER_INTAKE_PATHS_RESOLVE_AT_THE_ROOT, DELIVER_INTAKE_PLAN_COMMENT)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, intake)
+        offsets = [intake.index(passage) for passage in passages]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_deliver_intake_files_a_brief_the_tree_contradicts_through_issue_question_from_intake_and_runs_nothing(self):
+        _, body = skill_docs()["deliver"]
+        bullet = next(line for line in section(body, "Intake and tiering").splitlines() if DELIVER_INTAKE_CHECKS_THE_BRIEF in line)
+        for passage in DELIVER_INTAKE_CONTRADICTION:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, bullet)
+        offsets = [bullet.index(passage) for passage in DELIVER_INTAKE_CONTRADICTION]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertLess(bullet.index(DELIVER_INTAKE_CHECKS_THE_BRIEF), offsets[0])
+
+    def test_deliver_intake_checks_the_brief_before_the_item_runs_inline_or_dispatched_so_a_trivial_item_is_checked_too(self):
+        _, body = skill_docs()["deliver"]
+        lines = section(body, "Intake and tiering").splitlines()
+        trivial = next(line for line in lines if DELIVER_TRIVIAL_INLINE in line)
+        check = next(line for line in lines if DELIVER_INTAKE_CONTRADICTION[0] in line)
+        trigger = check[: check.index(DELIVER_INTAKE_CONTRADICTION[0])]
+        self.assertTrue(trigger.startswith(f"- {DELIVER_INTAKE_CHECKS_THE_BRIEF} "), trigger)
+        inline = re.search(r"runs `implement` (\w+)", trivial).group(1)
+        for path in (inline, "dispatched"):
+            with self.subTest(path=path):
+                self.assertIn(path, trigger)
+
+    def test_deliver_intake_files_from_a_value_issue_question_accepts_and_issue_answer_routes_to_triage(self):
+        docs = skill_docs()
+        self.assertIn(f"`Filed from: {DELIVER_INTAKE_FILED_FROM}`", section(docs["deliver"][1], "Intake and tiering"))
+        template = re.search(r"```text\n(.*?)```", section(docs["issue-question"][1], "Method"), re.S).group(1)
+        allowed = re.search(r"Filed from: <(.*?)>", template).group(1).split(" | ")
+        self.assertIn(DELIVER_INTAKE_FILED_FROM, allowed)
+        restart = next(line for line in section(docs["issue-answer"][1], "Rule").splitlines() if ISSUE_ANSWER_RESTART in line)
+        clause = next(clause for clause in restart.split("; ") if f"`{DELIVER_INTAKE_FILED_FROM}`" in clause)
+        self.assertTrue(clause.startswith("`issue-triage` on the item"), clause)
 
     def test_design_surface_exit_returns_the_locked_design_hands_it_to_deliver_or_back_to_triage_and_instructs_no_write(self):
         _, body = skill_docs()["design-surface"]

@@ -69,9 +69,9 @@ Findings come back in the reviewer's fix-list form, and the verdict decides what
   - against `the § Goal is no open or closed item's outcome` — § Duplicate's bullets rule it.
   - one of the four § State holds — held, its line left out of the edit.
 - `BLOCKED` says the item's own text cannot fill an acceptance line above: that gap is held.
-- Stop rule, the circuit breaker `skills/deliver/references/review-loop.md` gives, read for this loop: a finding the previous run also raised is a disagreement that survived two rounds, held; two runs in a row each finding a defect the previous run's edit introduced trip it, those findings held. No other bound: the loop runs until the verdict is `ACCEPTED` or a finding is held.
+- Stop rule, the circuit breaker `skills/deliver/references/review-loop.md` gives, read for this loop: a finding the previous run also raised is a disagreement that survived two rounds, held; two runs in a row each finding a defect the previous run's edit introduced trip it, those findings held. No other bound: the loop runs until the verdict is `ACCEPTED`, a finding is held or the item is split.
 - A finding a ruling on the item settles is applied as the ruling says, never held.
-- A carved-out finding rules as its bullet says, and where that bullet rules nothing — a named-older pair, a closed match § Done did not confirm — it contributes no line to the fix list. A `NOT ACCEPTED` that holds nothing and leaves no line to apply counts as `ACCEPTED`, with no body edit.
+- A carved-out finding rules as its bullet says, and where that bullet rules nothing — a named-older pair, a closed match § Done did not confirm — it contributes no line to the fix list. A `NOT ACCEPTED` that splits nothing, closes nothing, holds nothing and leaves no line to apply counts as `ACCEPTED`, with no body edit.
 
 ## Done
 

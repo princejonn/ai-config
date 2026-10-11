@@ -16,6 +16,8 @@ Explore → plan → implement → verify. Code is committable when a reviewer a
 
 - Tier every item per `references/tiers.md` before it runs: the tier sets whether `plan-phases` runs first, what the brief carries and where review sits.
 - A one-liner tiered `trivial` runs `implement` inline; every other item gets a brief.
+- A tracker item's brief is the `## Brief` comment `issue-next` hands out, later rulings under `Decisions made:` included. Its paths are repo-relative; the brief written for the agent resolves each against the repository root. For `tier: complex`, the item's latest `## Plan` comment is what `plan-phases` details into the plan the brief carries.
+- Before the item runs, inline or dispatched, the brief is checked against the tree. A file it names that is gone, or a premise `/verify-claim` returns `DISPROVEN` for, contradicts the brief: the contradiction is filed as a question through `issue-question` on the item, `Filed from: deliver § Intake` — the filing takes `ready` off — and nothing runs.
 
 ## Living brief and ledgers
 
