@@ -31,7 +31,7 @@ The sorted list then splits by status into three groups, each keeping its order:
 
 ## Output
 
-The winner as brief fields, filled from the item and nothing else. `gh issue view <N> --json body,comments` reads it as an event log: the body is the starting state, and each comment applies in order, a later one overriding what it names in the body or an earlier comment. A `## Brief`, `## Plan` or `## Design` comment overrides nothing: it is evidence `issue-triage` § Ready posts, read as itself. Every field carries the state after the last comment.
+The winner as brief fields, filled from the item and nothing else. `gh issue view <N> --json body,comments` reads it as an event log: the body is the starting state, and each comment applies in order, a later one overriding what it names in the body or an earlier comment. A `## Brief`, `## Plan` or `## Design` comment overrides nothing: it is evidence the item carries, read as itself. Every field carries the state after the last comment.
 
 A `ready` or `paused` winner leaves as its latest `## Brief` comment, in the shape `issue-triage` § Ready posts it, with each `## Ruling` posted after that comment added under `Decisions made:`. One with no `## Brief` leaves as a backlog winner does. A backlog winner leaves as these fields, derived from the state:
 

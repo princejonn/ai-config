@@ -1,13 +1,13 @@
 ---
 name: issue-write
-description: "Drafts one tracker item in the shape this repository's items have, labelled for type — bug, feature, enhancement or documentation, with story for one written from the user's side — and for priority and tier, then creates it with `gh issue create`. Use when a finding, a request, an idea or a user story should become an issue; a description too vague for a goal or an observable acceptance comes back as a question instead of an item."
+description: "Drafts one tracker item in the shape this repository's items have, labelled for type — bug, feature, enhancement or documentation, with story for one written from the user's side — and for priority and tier, then creates it with `gh issue create`. Use when the user asks for a finding, a request, an idea or a user story discussed with them to become an issue; a description too vague for a goal or an observable acceptance comes back as a question instead of an item."
 ---
 
 # Write an issue
 
 ## Input
 
-A title and a description, however rough. An item is not a brief: it carries what must be true and how that is observed, and the brief `rules/brief.md` defines is written from it later.
+A title and a description, however rough, from a discussion with the user. A finding made during work is raised with the user, not filed. An item is not a brief: it carries what must be true and how that is observed, and the brief `rules/brief.md` defines is written from it later.
 
 ## Shape
 
@@ -51,7 +51,8 @@ One refusal per description. If the answer still leaves the same sentence missin
 4. The relations the item stands in, node ids from `gh issue view <N> --json id --jq .id`:
    - a piece of a split, under the item it was split from: `gh api graphql -f query='mutation { addSubIssue(input: {issueId: "<parent id>", subIssueId: "<piece id>"}) { issue { number } subIssue { number } } }'`
    - one per number a `Depends on #N` line names: `gh api graphql -f query='mutation { addBlockedBy(input: {issueId: "<item id>", blockingIssueId: "<blocker id>"}) { issue { number } blockingIssue { number } } }'`
+5. For `tier: complex`, when the discussion settled the plan: a `## Plan` comment in the shape `issue-triage` § Ready gives, its file written as step 2 writes one and named as `issue-triage` § Ready names one, posted with `gh issue comment <N> --body-file <scratchpad file>`. A plan the discussion left open is `issue-triage`'s to write.
 
 ## Output
 
-The item's number and its URL, with the relations step 4 wrote. Or the question, with nothing created.
+The item's number and its URL, with the relations step 4 wrote and the `## Plan` comment step 5 posted. Or the question, with nothing created.

@@ -51,7 +51,7 @@ they spawn bare; a built-in agent type inherits the session's model, so pass `mo
 | `review-change` | a change-set awaits acceptance — forks into `reviewer` |
 | `deliver` | agreed work: developer → review rounds → tester → review delta → docs → commit |
 | `commit-item` | an item is accepted and the gate is green |
-| `issue-write` | a finding, request or idea becomes a tracker item |
+| `issue-write` | the user asks for a finding, request, idea or story discussed with them to become a tracker item |
 | `issue-next` | what to work on next — one item, dispatches nothing |
 | `issue-triage` | a named issue is judged before work: draft, critique, duplicate, done |
 | `issue-question` | a question on a named item needs the user's word — filed with a recommendation, the item leaves the queue |

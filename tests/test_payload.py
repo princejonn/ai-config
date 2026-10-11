@@ -159,6 +159,7 @@ ONE_HOME_PHRASES = {
     "needs no ask": "claude/rules/git.md",
     "never a brief line": "claude/rules/git.md",
     "Goal or Acceptance cannot be written": "claude/skills/issue-write/SKILL.md",
+    "A finding made during work is raised with the user, not filed": "claude/skills/issue-write/SKILL.md",
     "Depends on #N": "claude/skills/issue-write/SKILL.md",
     "addSubIssue": "claude/skills/issue-write/SKILL.md",
     "addBlockedBy": "claude/skills/issue-write/SKILL.md",
@@ -293,6 +294,25 @@ ISSUE_WRITE_STATUS_LINE = "- Status, never written here:"
 ISSUE_WRITE_STATUS_AT_MOST_ONE = "An open item carries at most one of the two and is in the backlog with neither"
 ISSUE_WRITE_HOLDS_LINE = "- Holds, out of the queue whatever the status, never written here:"
 RELATION_MUTATIONS = ("addSubIssue", "addBlockedBy")
+ISSUE_WRITE_DESCRIPTION_TRIGGER = "Use when the user asks for a finding, a request, an idea or a user story discussed with them to become an issue"
+ISSUE_WRITE_ROW_TRIGGER = "the user asks for a finding, request, idea or story discussed with them to become a tracker item"
+ISSUE_WRITE_INPUT_FROM_A_DISCUSSION = "A title and a description, however rough, from a discussion with the user."
+ISSUE_WRITE_FINDING_RAISED_NOT_FILED = "A finding made during work is raised with the user, not filed."
+ISSUE_WRITE_CREATE_STEP_1 = "1. The draft goes to the user first; creating an item is an external call, so it runs on their word (`rules/git.md`)."
+ISSUE_WRITE_CREATE_STEPS = (
+    "1. The draft goes to the user first",
+    "2. Write the body to the session scratchpad",
+    "3. `gh issue create",
+    "4. The relations the item stands in",
+    "5. For `tier: complex`, when the discussion settled the plan",
+)
+ISSUE_WRITE_PLAN_STEP = (
+    "`tier: complex`",
+    "when the discussion settled the plan",
+    "a `## Plan` comment in the shape `issue-triage` § Ready gives",
+    "named as `issue-triage` § Ready names one",
+    "`gh issue comment <N> --body-file <scratchpad file>`",
+)
 ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Decisions made:", "Tier:", "Out of scope:")
 ISSUE_NEXT_HOLD_LABELS = "The holds are the labels"
 ISSUE_NEXT_HELD_WHATEVER_STATUS = "a held item is out of the queue whatever its status"
@@ -431,7 +451,8 @@ ISSUE_NEXT_EVENT_LOG = (
     "a later one overriding what it names in the body or an earlier comment",
     "Every field carries the state after the last comment",
 )
-ISSUE_NEXT_EVIDENCE_OVERRIDES_NOTHING = "A `## Brief`, `## Plan` or `## Design` comment overrides nothing: it is evidence `issue-triage` § Ready posts, read as itself."
+ISSUE_NEXT_EVIDENCE_OVERRIDES_NOTHING = "A `## Brief`, `## Plan` or `## Design` comment overrides nothing: it is evidence the item carries, read as itself."
+ISSUE_NEXT_EVIDENCE_THE_ITEM_CARRIES = "evidence the item carries"
 ISSUE_NEXT_SKIP_READS_THE_STATE = "read as § Output reads it"
 ISSUE_TRIAGE_VIEW = "`gh issue view <N> --json number,title,labels,body,comments`"
 ISSUE_TRIAGE_STATE_CITES_ISSUE_NEXT = "its state is its body and comments read as `issue-next` § Output reads them"
@@ -859,6 +880,13 @@ class ClaudeMdTest(unittest.TestCase):
         fields, _ = skill_docs()["research"]
         self.assertIn(RESEARCH_DESCRIPTION_AGENT, fields["description"])
 
+    def test_issue_write_row_and_description_both_fire_when_the_user_asks_for_a_discussed_item_to_become_one(self):
+        body = read(CLAUDE / "CLAUDE.md")
+        row = next(line for line in body.splitlines() if line.startswith("| `issue-write` |"))
+        self.assertIn(ISSUE_WRITE_ROW_TRIGGER, row)
+        fields, _ = skill_docs()["issue-write"]
+        self.assertIn(ISSUE_WRITE_DESCRIPTION_TRIGGER, fields["description"])
+
     def test_a_question_on_a_tracker_item_is_filed_through_issue_question_and_one_without_is_asked_inline(self):
         self.assertIn(CLAUDE_MD_TRACKER_QUESTION, re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
 
@@ -1088,6 +1116,29 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertEqual(body.count(mutation), 1)
                 self.assertIn(mutation, create)
 
+    def test_issue_write_input_takes_an_item_from_a_discussion_with_the_user_and_raises_a_finding_made_during_work_rather_than_filing_it(self):
+        _, body = skill_docs()["issue-write"]
+        inputs = re.sub(r"\s+", " ", section(body, "Input"))
+        for passage in (ISSUE_WRITE_INPUT_FROM_A_DISCUSSION, ISSUE_WRITE_FINDING_RAISED_NOT_FILED):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, inputs)
+        self.assertLess(inputs.index(ISSUE_WRITE_INPUT_FROM_A_DISCUSSION), inputs.index(ISSUE_WRITE_FINDING_RAISED_NOT_FILED))
+
+    def test_issue_write_create_sends_the_draft_to_the_user_first_keeps_the_steps_triage_cites_in_number_and_posts_a_settled_plan_for_a_complex_item_last(self):
+        _, body = skill_docs()["issue-write"]
+        steps = [line for line in section(body, "Create").splitlines() if re.match(r"\d+\. ", line)]
+        self.assertEqual(len(steps), len(ISSUE_WRITE_CREATE_STEPS))
+        for step, prefix in zip(steps, ISSUE_WRITE_CREATE_STEPS):
+            with self.subTest(step=prefix):
+                self.assertTrue(step.startswith(prefix), step)
+        self.assertEqual(steps[0], ISSUE_WRITE_CREATE_STEP_1)
+        plan = steps[-1]
+        for passage in ISSUE_WRITE_PLAN_STEP:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, plan)
+        offsets = [plan.index(passage) for passage in ISSUE_WRITE_PLAN_STEP]
+        self.assertEqual(offsets, sorted(offsets))
+
     def test_issue_next_skip_names_the_hold_labels_in_order_and_no_other_holds_an_item_whatever_its_status_and_reports_the_label_that_skipped_it(self):
         _, body = skill_docs()["issue-next"]
         line = next(l for l in section(body, "Skip").splitlines() if ISSUE_NEXT_HOLD_LABELS in l)
@@ -1146,7 +1197,7 @@ class SkillPassagesTest(unittest.TestCase):
         blocked = next(line for line in section(body, "Skip").splitlines() if "`BLOCKED`" in line)
         self.assertIn(ISSUE_NEXT_SKIP_READS_THE_STATE, blocked)
 
-    def test_issue_next_reads_a_brief_plan_or_design_comment_as_evidence_triage_posts_that_overrides_nothing_in_the_event_log(self):
+    def test_issue_next_reads_a_brief_plan_or_design_comment_as_evidence_the_item_carries_that_overrides_nothing_in_the_event_log(self):
         docs = skill_docs()
         paragraph = next(p for p in section(docs["issue-next"][1], "Output").split("\n\n") if ISSUE_NEXT_EVENT_LOG[0] in p)
         self.assertIn(ISSUE_NEXT_EVIDENCE_OVERRIDES_NOTHING, paragraph)
@@ -1156,7 +1207,7 @@ class SkillPassagesTest(unittest.TestCase):
         for heading in (line[2 : line.index(" —")] for line in bullets):
             with self.subTest(heading=heading):
                 self.assertIn(heading, sentence)
-        self.assertIn("`issue-triage` § Ready", sentence)
+        self.assertIn(ISSUE_NEXT_EVIDENCE_THE_ITEM_CARRIES, sentence)
 
     def test_issue_next_hands_a_ready_or_paused_winner_its_latest_brief_with_later_rulings_under_decisions_made_and_derives_the_backlog_after_the_event_log_read(self):
         _, body = skill_docs()["issue-next"]
