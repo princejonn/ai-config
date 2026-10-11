@@ -36,6 +36,8 @@ PUSH_RULE = "a push in any other form can reach the default branch without the p
 PUSH_NESTED_RULE = "a push inside a subshell, a command substitution or a find action reaches the default branch with no prompt at all."
 PUSH_PERMITTED = "git push origin <branch>."
 PUSH_NESTED_PERMITTED = "git push origin <branch> as its own command."
+PAUSED_RULE = "a chore(paused): commit lands only on a paused/<N>-<k> branch, read before the command runs."
+PAUSED_PERMITTED = "git switch -c paused/<N>-<k> as its own command, then git commit -F - -- <paths>."
 GH_REPO_RULE = "a gh --repo flag quoted with its value is one shell word that never reaches gh as a flag."
 GH_REPO_PERMITTED = "--repo <owner/name> as two shell words."
 FAKE_GIT = f"""#!{sys.executable}
@@ -368,6 +370,57 @@ class GitPushTests(unittest.TestCase):
         self.assertIsNone(evaluate("git pull --rebase"))
         self.assertIsNone(evaluate("git log --stat"))
         self.assertIsNone(evaluate("git diff HEAD~1 -- file"))
+
+    def test_permits_deleting_a_paused_branch(self):
+        for command in (
+            "git push origin --delete paused/12-1",
+            "git push origin --delete paused/1-1",
+            "git push origin --delete paused/123-45",
+            "git push origin --delete paused/12-1 2>&1",
+            "git branch -D paused/12-1 && git push origin --delete paused/12-1",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_denies_every_other_form_of_deleting_a_branch(self):
+        self.assert_denied(
+            (
+                "git push --delete origin paused/12-1",
+                "git push origin -d paused/12-1",
+                "git push -d origin paused/12-1",
+                "git push origin :paused/12-1",
+                "git push origin --delete paused/12-1 paused/12-2",
+                "git push origin --delete paused/12",
+                "git push origin --delete paused/x-1",
+                "git push origin --delete paused/12-1-1",
+                "git push origin --delete paused/12-1/x",
+                "git push origin --delete paused/",
+                "git push origin --delete main",
+                "git push origin --delete feature/x",
+                'git push origin --delete "paused/12-1"',
+                "git push origin --delete paused/12-1 --force",
+                "git push --force origin --delete paused/12-1",
+                "git push origin --delete=paused/12-1",
+                "git push upstream --delete paused/12-1",
+                "git -C packages/aegis push origin --delete paused/12-1",
+                "git push  origin  --delete paused/12-1",
+                "git push origin --delete paused/12-1 # gone",
+                "sudo git push origin --delete paused/12-1",
+                "git push origin --delete PAUSED/12-1",
+            )
+        )
+
+    def test_denies_deleting_a_paused_branch_from_a_subshell_or_a_find_action(self):
+        self.assert_denied(
+            (
+                "(git push origin --delete paused/12-1)",
+                "$(git push origin --delete paused/12-1)",
+                'bash -c "git push origin --delete paused/12-1"',
+                "find . -maxdepth 0 -exec git push origin --delete paused/12-1 \\;",
+            ),
+            expected=PUSH_NESTED_RULE,
+            alternative=PUSH_NESTED_PERMITTED,
+        )
 
 
 class GitAliasTests(unittest.TestCase):
@@ -730,6 +783,262 @@ class GitCommitSectionSignTests(unittest.TestCase):
 
     def test_subject_rule_comes_before_the_section_rule(self):
         self.assertEqual(rule(evaluate('git commit -m "Add §3" -- a')), SUBJECT_RULE)
+
+
+class GitPausedCommitTests(unittest.TestCase):
+    PAUSED = "chore(paused): paused work for #12"
+
+    @classmethod
+    def setUpClass(cls):
+        directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(directory.cleanup)
+        cls.root = os.path.realpath(directory.name)
+        environment = {"HOME": cls.root, "XDG_CONFIG_HOME": os.path.join(cls.root, ".config"), "GIT_CONFIG_SYSTEM": os.devnull}
+        patcher = mock.patch.dict(os.environ, environment)
+        patcher.start()
+        cls.addClassCleanup(patcher.stop)
+        cls.main = cls.repository("on-main", "main")
+        cls.paused = cls.repository("on-paused", "paused/12-1")
+        cls.detached = cls.repository("detached", "main")
+        cls.git(cls.detached, "-c", "user.email=fixture@example.invalid", "-c", "user.name=fixture", "commit", "-q", "--allow-empty", "-m", "chore: fixture")
+        cls.git(cls.detached, "checkout", "-q", "--detach")
+        cls.plain = os.path.join(cls.root, "plain")
+        os.makedirs(cls.plain)
+
+    @classmethod
+    def repository(cls, name, branch):
+        path = os.path.join(cls.root, name)
+        subprocess.run(["git", "init", "-q", "-b", branch, path], check=True, capture_output=True)
+        return path
+
+    @classmethod
+    def git(cls, path, *args):
+        subprocess.run(["git", "-C", path, *args], check=True, capture_output=True)
+
+    def forms(self, subject):
+        return (f'git commit -m "{subject}" -- a', f"git commit -F - -- a <<'EOF'\n{subject}\n\nRefs #12\nEOF")
+
+    def test_denies_a_paused_commit_on_a_branch_that_is_not_paused(self):
+        for command in self.forms(self.PAUSED):
+            with self.subTest(command=command):
+                result = evaluate(command, cwd=self.main)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), PAUSED_RULE)
+                self.assertEqual(permitted(result), PAUSED_PERMITTED)
+
+    def test_permits_a_paused_commit_on_a_paused_branch(self):
+        for command in self.forms(self.PAUSED) + self.forms("chore(paused): x"):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command, cwd=self.paused))
+
+    def test_a_commit_whose_subject_is_not_paused_reads_no_branch(self):
+        with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
+            for subject in ("fix(x): y", "chore(repo): x", "chore(pause): x", "chore(paused-work): x", "feat(paused): x", "chore: paused"):
+                for command in self.forms(subject):
+                    with self.subTest(command=command):
+                        self.assertIsNone(evaluate(command, cwd=self.main))
+        self.assertEqual(run.call_count, 0)
+
+    def test_the_branch_is_read_only_after_the_message_rules_pass(self):
+        with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
+            for command, expected in (
+                ('git commit -a -m "chore(paused): x"', "git commit -a/--all/--no-verify commits the whole tree or skips hooks."),
+                ('git commit -m "chore(paused): x"', "git commit without a pathspec commits the whole index."),
+                ("git commit -F msg.txt -- a", "git commit -F takes the message from outside the command."),
+                ('git commit -m "chore(paused):x" -- a', SUBJECT_RULE),
+                ("git commit -F - -- a <<'EOF'\nchore(paused): x\n\nsee §3\nEOF", SECTION_RULE),
+            ):
+                with self.subTest(command=command):
+                    self.assertEqual(rule(evaluate(command, cwd=self.main)), expected)
+            self.assertIsNone(evaluate("git commit -- a", cwd=self.main))
+        self.assertEqual(run.call_count, 0)
+
+    def test_the_branch_is_read_through_each_dash_c_in_order(self):
+        relative = os.path.relpath(self.paused, self.main)
+        with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
+            self.assertIsNone(evaluate(f'git -C {self.paused} commit -m "{self.PAUSED}" -- a', cwd=self.main))
+            self.assertIsNone(evaluate(f'git -C {relative} commit -m "{self.PAUSED}" -- a', cwd=self.main))
+            self.assertIsNone(evaluate(f'git -C {self.root} -C on-paused commit -m "{self.PAUSED}" -- a', cwd=self.main))
+            self.assertIsNone(evaluate(f'git --no-pager -C {self.paused} -c core.pager=cat commit -m "{self.PAUSED}" -- a', cwd=self.main))
+        self.assertEqual(
+            [call.args[0] for call in run.call_args_list],
+            [
+                ["git", "-C", self.main, "-C", self.paused, "branch", "--show-current"],
+                ["git", "-C", self.main, "-C", relative, "branch", "--show-current"],
+                ["git", "-C", self.main, "-C", self.root, "-C", "on-paused", "branch", "--show-current"],
+                ["git", "-C", self.main, "-C", self.paused, "branch", "--show-current"],
+            ],
+        )
+        self.assertEqual({call.kwargs["timeout"] for call in run.call_args_list}, {2})
+        for command in (
+            f'git -C {self.main} commit -m "{self.PAUSED}" -- a',
+            f'git -C .. -C on-main commit -m "{self.PAUSED}" -- a',
+            f'git -C $DIR commit -m "{self.PAUSED}" -- a',
+            f'git -C nowhere commit -m "{self.PAUSED}" -- a',
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(rule(evaluate(command, cwd=self.paused)), PAUSED_RULE)
+
+    def test_denies_a_paused_commit_that_names_its_repository_by_option(self):
+        for command in (
+            f'git --git-dir={self.paused}/.git commit -m "{self.PAUSED}" -- a',
+            f'git --git-dir {self.paused}/.git commit -m "{self.PAUSED}" -- a',
+            f'git --work-tree={self.paused} commit -m "{self.PAUSED}" -- a',
+            f'git --work-tree {self.paused} commit -m "{self.PAUSED}" -- a',
+            f'git --git-dir=.git commit -m "{self.PAUSED}" -- a',
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command, cwd=self.paused)
+                self.assertEqual(rule(result), PAUSED_RULE)
+                self.assertEqual(permitted(result), PAUSED_PERMITTED)
+
+    def test_denies_a_paused_commit_beside_another_segment(self):
+        commit = f'git commit -m "{self.PAUSED}" -- a'
+        for command in (
+            f"git add -- a && {commit} && git push origin paused/12-1",
+            f"git add -- a && {commit}",
+            f"{commit} && git push origin paused/12-1",
+            f"{commit}\ngit push origin paused/12-1",
+            f"echo popd && {commit}",
+            f"builtin echo cd && {commit}",
+            f"builtin true && {commit}",
+            f"true; {commit}",
+            f"{commit} || true",
+            f"git switch -c paused/12-2 && {commit}",
+            f"git switch main && {commit}",
+            f"git switch main; {commit}",
+            f"{commit} && git switch main",
+            f"git checkout -b paused/12-2 && {commit}",
+            f"git checkout -- a && {commit}",
+            f"git symbolic-ref HEAD refs/heads/main && {commit}",
+            f"git branch -M main && {commit}",
+            f"{commit} && git update-ref refs/heads/main HEAD",
+            f"{commit} && git branch -f main HEAD",
+            f"{commit} && git merge paused/12-1",
+            f"cd {self.main} && {commit}",
+            f"cd .. && {commit}",
+            f"pushd {self.main} && {commit}",
+            f"popd && {commit}",
+            f"popd; {commit}",
+            f"{commit} && popd",
+            f"chdir {self.main} && {commit}",
+            f"noglob cd {self.main} && {commit}",
+            f"nocorrect cd {self.main} && {commit}",
+            f"builtin cd {self.main} && {commit}",
+            f"builtin chdir {self.main} && {commit}",
+            f"builtin -- cd {self.main} && {commit}",
+            f"builtin pushd {self.main} && {commit}",
+            f"builtin popd && {commit}",
+            f"builtin builtin cd {self.main} && {commit}",
+            f"builtin command cd {self.main} && {commit}",
+            f"command builtin cd {self.main} && {commit}",
+            f"builtin eval 'cd {self.main}' && {commit}",
+            f"export GIT_DIR={self.main}/.git GIT_WORK_TREE={self.main} && {commit}",
+            f"export GIT_DIR={self.main}/.git; {commit}",
+            f"export GIT_WORK_TREE={self.main} && {commit}",
+            f"export GIT_COMMON_DIR={self.main}/.git && {commit}",
+            f"declare -x GIT_DIR={self.main}/.git && {commit}",
+            f"typeset -x GIT_DIR={self.main}/.git && {commit}",
+            f"set -a; GIT_DIR={self.main}/.git; {commit}",
+            f"set -a && GIT_WORK_TREE={self.main} && {commit}",
+            f"eval 'export GIT_DIR={self.main}/.git' && {commit}",
+            f"eval 'export GIT_COMMON_DIR={self.main}/.git' && {commit}",
+            f"find . -maxdepth 0 -exec git switch main \\; && {commit}",
+            f"if true; then {commit}; fi",
+            f"{{ {commit}; }}",
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command, cwd=self.paused)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), PAUSED_RULE)
+                self.assertEqual(permitted(result), PAUSED_PERMITTED)
+
+    def test_denies_a_paused_commit_inside_a_subshell_a_substitution_or_a_shell_string(self):
+        commit = f'git commit -m "{self.PAUSED}" -- a'
+        for command in (
+            f"({commit})",
+            f"(cd {self.main} && {commit})",
+            f"(builtin cd {self.main} && {commit})",
+            f"$({commit})",
+            f"`{commit}`",
+            f'echo "$({commit})"',
+            f"sh -c '{commit}'",
+            f"bash -c '{commit}'",
+            f"zsh -c '{commit}'",
+            f"sh -c 'cd {self.main} && {commit}'",
+            f"sh -c 'builtin cd {self.main} && {commit}'",
+            f"eval '{commit}'",
+            f'git commit -m "{self.PAUSED}" -- $(echo a)',
+            f'git commit -m "{self.PAUSED}" -- a)',
+            f"bash <<'EOF'\n{commit}\nEOF",
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command, cwd=self.paused)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), PAUSED_RULE)
+                self.assertEqual(permitted(result), PAUSED_PERMITTED)
+
+    def test_denies_a_paused_commit_whose_segment_does_not_begin_with_the_git_word(self):
+        for prefix in (
+            f"GIT_DIR={self.main}/.git GIT_WORK_TREE={self.main} ",
+            f"env -C {self.main} ",
+            f"env GIT_DIR={self.main}/.git ",
+            "GIT_DIR=.git ",
+            "env ",
+            "sudo ",
+            "command ",
+            "exec ",
+            "nice -n 5 ",
+            "timeout 10 ",
+            "nohup ",
+            "caffeinate ",
+            "doas ",
+            "xargs ",
+            "/usr/bin/",
+            "./",
+        ):
+            for command in self.forms(self.PAUSED):
+                with self.subTest(command=prefix + command):
+                    result = evaluate(prefix + command, cwd=self.paused)
+                    self.assertEqual(decision(result), "deny")
+                    self.assertEqual(rule(result), PAUSED_RULE)
+                    self.assertEqual(permitted(result), PAUSED_PERMITTED)
+        for command in self.forms(self.PAUSED):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command, cwd=self.paused))
+
+    def test_denies_a_paused_commit_whose_branch_cannot_be_read(self):
+        command = f'git commit -m "{self.PAUSED}" -- a'
+        self.assertEqual(rule(evaluate(command, cwd=self.plain)), PAUSED_RULE)
+        self.assertEqual(rule(evaluate(command, cwd=self.detached)), PAUSED_RULE)
+        for outcome in (FileNotFoundError(2, "git"), subprocess.TimeoutExpired(["git"], 2), mock.Mock(returncode=128, stdout=b""), mock.Mock(returncode=0, stdout=b"")):
+            with self.subTest(outcome=outcome):
+                patch = {"side_effect": outcome} if isinstance(outcome, BaseException) else {"return_value": outcome}
+                with mock.patch.object(git_guard.subprocess, "run", **patch):
+                    self.assertEqual(rule(evaluate(command, cwd=self.paused)), PAUSED_RULE)
+        with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run, mock.patch.object(git_guard.time, "monotonic", side_effect=itertools.count(0, 9)):
+            self.assertEqual(rule(evaluate(command, cwd=self.paused)), PAUSED_RULE)
+        self.assertEqual(run.call_count, 0)
+
+    def test_the_hook_process_reads_the_branch_of_the_cwd_it_is_given(self):
+        command = f'git commit -m "{self.PAUSED}" -- a'
+        denied = subprocess.run([sys.executable, HOOK_PATH], input=json.dumps(bash(command, self.main)), capture_output=True, text=True)
+        self.assertEqual(json.loads(denied.stdout)["hookSpecificOutput"]["permissionDecisionReason"], f"{git_guard.HOOK}: {PAUSED_RULE} Permitted: {PAUSED_PERMITTED}")
+        permitted = subprocess.run([sys.executable, HOOK_PATH], input=json.dumps(bash(command, self.paused)), capture_output=True, text=True)
+        self.assertEqual((permitted.returncode, permitted.stdout), (0, ""))
+
+    def test_a_paused_commit_with_no_cwd_is_denied_without_reading_a_branch(self):
+        command = f'git commit -m "{self.PAUSED}" -- a'
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.paused)
+        with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
+            for hook_input in ({"tool_name": "Bash", "tool_input": {"command": command}}, bash(command, cwd=""), bash(command, cwd=None)):
+                with self.subTest(hook_input=hook_input):
+                    result = git_guard.evaluate(hook_input)
+                    self.assertEqual(decision(result), "deny")
+                    self.assertEqual(rule(result), PAUSED_RULE)
+                    self.assertEqual(permitted(result), PAUSED_PERMITTED)
+        self.assertEqual(run.call_count, 0)
 
 
 class VerifyPipeTests(unittest.TestCase):

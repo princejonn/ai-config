@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook (Bash): denies destructive git forms, a push in any form but git push origin <branch>, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, a test run piped through a pager, and a gh --repo flag quoted together with its value; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
+"""PreToolUse hook (Bash): denies destructive git forms, a push in any form but git push origin <branch> or git push origin --delete paused/<N>-<k>, a chore(paused): commit that is not the whole command on a paused/* branch, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, a test run piped through a pager, and a gh --repo flag quoted together with its value; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
 
 import json
 import os
@@ -44,11 +44,15 @@ PATHSPEC_MAGIC = re.compile(r"^:\(([^)]*)\)")
 NEGATIVE_PATHSPEC_PREFIXES = (":!", ":^")
 STASH_READ_ONLY_SUBCOMMANDS = {"list", "show"}
 PUSH_COMMAND = re.compile(r"^git push origin (?!HEAD$|@$|(?:refs|heads|remotes|tags)/)\w[\w./-]*$")
+PAUSED_BRANCH_DELETE = re.compile(r"^git push origin --delete paused/[0-9]+-[0-9]+$")
 SPLIT_REPO_FLAG = re.compile(r"^--repo(?:\s|=\S*\s)")
 COMMIT_SHORT_VALUE_LETTERS = "mFCct"
 COMMIT_LONG_VALUE_OPTIONS = {"--message": "m", "--file": "F", "--reuse-message": "C", "--reedit-message": "c", "--template": "t"}
 CONVENTIONAL_SUBJECT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9./,-]*\))?: \S")
 CONVENTIONAL_TYPES = "build chore ci docs feat fix perf refactor revert style test"
+PAUSED_SUBJECT = re.compile(r"^chore\(paused\): ")
+PAUSED_BRANCH_PREFIX = "paused/"
+REPOSITORY_OPTIONS = ("--git-dir", "--work-tree")
 HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1[^\n]*\n(.*?)(?:^\s*\2\s*$|\Z)", re.MULTILINE | re.DOTALL)
 HEREDOC_DELIMITER = re.compile(r"^\w+$")
 SPEC_BEFORE_SECTION = re.compile(r"(RFC\s?\d+|OIDC|Core|Discovery|OpenID)[^§]{0,20}$")
@@ -811,7 +815,8 @@ def check_git(subcommand, args, global_options, cwd, text):
                 "a push inside a subshell, a command substitution or a find action reaches the default branch with no prompt at all.",
                 "git push origin <branch> as its own command.",
             )
-        if not PUSH_COMMAND.match(redirections_removed(text)):
+        push = redirections_removed(text)
+        if not (PUSH_COMMAND.match(push) or PAUSED_BRANCH_DELETE.match(push)):
             return deny(
                 "a push in any other form can reach the default branch without the prompt its name carries.",
                 "git push origin <branch>.",
@@ -881,6 +886,68 @@ def ignoring_patterns(root, paths, deadline):
     # check-ignore -v -z writes source NUL line NUL pattern NUL path NUL per match.
     fields = completed.stdout.split(b"\0")[:-1]
     return {os.fsdecode(fields[index + 3]): os.fsdecode(fields[index + 2]) for index in range(0, len(fields) - 3, 4)}
+
+
+def pauses_work(args, remainder):
+    texts = list(readable_message_texts(args, remainder))
+    subject = first_line(texts[0]) if texts else None
+    return subject is not None and PAUSED_SUBJECT.match(subject) is not None
+
+
+def names_repository(global_options):
+    return any(option == name or option.startswith(name + "=") for option in global_options for name in REPOSITORY_OPTIONS)
+
+
+def directory_values(global_options):
+    """The -C values in order; git resolves each against the one before it."""
+    values, index = [], 0
+    while index < len(global_options):
+        if global_options[index] == "-C" and index + 1 < len(global_options):
+            values.append(global_options[index + 1])
+        index += 2 if global_options[index] in GIT_GLOBAL_OPTIONS_WITH_VALUE else 1
+    return values
+
+
+def sole_segment(command):
+    """The command is one segment run by no subshell, substitution or shell string: no earlier segment runs before it."""
+    indirect = [nested for _, _, _, _, nested in located_segments(command)]
+    return len(indirect) == 1 and not indirect[0]
+
+
+def begins_with_git(segment):
+    """The segment's first word is git, read before strip_wrappers drops an env assignment or a wrapper that moves the commit to another repository."""
+    tokens = tokenize(segment)
+    return bool(tokens) and tokens[0] == "git"
+
+
+def current_branch(global_options, cwd, deadline):
+    """The branch checked out where the commit lands, read through cwd and each -C; None when git is absent, fails, times out or HEAD is detached."""
+    arguments = ["git", "-C", cwd]
+    for value in directory_values(global_options):
+        arguments += ["-C", value]
+    completed = run_git(arguments + ["branch", "--show-current"], deadline, b"")
+    if completed is None or completed.returncode != 0:
+        return None
+    return os.fsdecode(completed.stdout).strip() or None
+
+
+def on_paused_branch(segment, command, global_options, cwd, deadline):
+    if not cwd:
+        return False
+    if not sole_segment(command) or not begins_with_git(segment) or names_repository(global_options):
+        return False
+    try:
+        branch = current_branch(global_options, cwd, deadline)
+    except BudgetExhausted:
+        return False
+    return branch is not None and branch.startswith(PAUSED_BRANCH_PREFIX)
+
+
+def deny_paused_branch():
+    return deny(
+        "a chore(paused): commit lands only on a paused/<N>-<k> branch, read before the command runs.",
+        "git switch -c paused/<N>-<k> as its own command, then git commit -F - -- <paths>.",
+    )
 
 
 def repository_path(target, cwd, root):
@@ -1241,6 +1308,8 @@ def evaluate(hook_input):
                 decision = check_commit_message(args, remainder)
                 if decision is not None:
                     return decision
+                if pauses_work(args, remainder) and not on_paused_branch(segment, command, global_options, cwd, deadline):
+                    return deny_paused_branch()
         decision = check_gh(tokens)
         if decision is not None:
             return decision
