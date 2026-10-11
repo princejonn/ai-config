@@ -180,6 +180,8 @@ ONE_HOME_PHRASES = {
     "corrected from the evidence": "claude/rules/writing.md",
     "with the answer": "claude/rules/writing.md",
     "RFC adherence and maximum compatibility": "claude/rules/decisions.md",
+    "the specification's reading wins": "claude/rules/decisions.md",
+    "a cited specification section settles": "claude/CLAUDE.md",
     "cannot close is UNVERIFIABLE": "claude/skills/verify-claim/SKILL.md",
     "the reach: which corpus was searched": "claude/skills/research/SKILL.md",
     "at least one scenario, error paths included": "claude/skills/author-gherkin/SKILL.md",
@@ -309,6 +311,10 @@ CLAUDE_MD_TRACKER_QUESTION = "A question on a tracker item is filed through `iss
 QUESTION_EXAMPLE_PER_OPTION = "a concrete example and its cost"
 QUESTION_CODE_WHEN = "an option that changes code or a file"
 QUESTION_REAL_TEXT_IN_CODE = "the real text today and the real text proposed, each in a code block"
+QUESTION_ONE_LINE = "A question a cited specification section settles, or whose fix is obvious, is one line instead: the bare, fully qualified reference as `rules/writing.md` gives it where a section settles it, and the recommendation, nothing else."
+ISSUE_ANSWER_PRESENT_FORM = "in the form `claude/CLAUDE.md` § Questions gives — the one line or the full one, as the question calls for — then stop"
+DECISIONS_DOUBT_GATE = "or it is in doubt which one does"
+DECISIONS_DOUBT_RULE = "in doubt, the specification's reading wins"
 ISSUE_NEXT_DECISIONS_FROM_RULINGS = "in comment order, or `none`"
 ISSUE_NEXT_EVENT_LOG = (
     "`gh issue view <N> --json body,comments` reads it as an event log",
@@ -413,6 +419,10 @@ def section(body, heading):
     start = body.index(f"\n## {heading}\n")
     end = body.find("\n## ", start + 1)
     return body[start:] if end == -1 else body[start:end]
+
+
+def questions_paragraph():
+    return next(p for p in read(CLAUDE / "CLAUDE.md").split("\n\n") if p.startswith("**Questions.**"))
 
 
 def sentence_count(text):
@@ -666,6 +676,13 @@ class DecisionsRuleTest(unittest.TestCase):
         offsets = [text.index(tie_break) for tie_break in DECISION_TIE_BREAKS]
         self.assertEqual(offsets, sorted(offsets))
 
+    def test_in_doubt_which_option_meets_the_requirement_the_first_tie_break_decides_and_the_specifications_reading_wins(self):
+        text = read(RULES / "decisions.md")
+        self.assertIn(DECISIONS_DOUBT_GATE, re.sub(r"\s+", " ", text))
+        first = next(line for line in text.splitlines() if line.startswith("1. "))
+        self.assertIn(DECISION_TIE_BREAKS[0], first)
+        self.assertIn(DECISIONS_DOUBT_RULE, first)
+
     def test_design_surface_method_points_at_the_tie_breaks_beside_its_one_recommendation_step(self):
         _, body = skill_docs()["design-surface"]
         method = section(body, "Method")
@@ -723,6 +740,12 @@ class ClaudeMdTest(unittest.TestCase):
 
     def test_a_question_on_a_tracker_item_is_filed_through_issue_question_and_one_without_is_asked_inline(self):
         self.assertIn(CLAUDE_MD_TRACKER_QUESTION, re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
+
+    def test_a_question_a_cited_specification_section_settles_or_whose_fix_is_obvious_is_one_line_in_the_questions_paragraph_inside_the_claude_only_block(self):
+        paragraph = re.sub(r"\s+", " ", questions_paragraph())
+        rendered = re.sub(r"\s+", " ", render_agents_md.render(CLAUDE / "CLAUDE.md", RULES))
+        self.assertIn(QUESTION_ONE_LINE, paragraph)
+        self.assertNotIn(QUESTION_ONE_LINE, rendered)
 
     def test_built_in_agent_types_are_dispatched_with_opus(self):
         self.assertIn("a built-in agent type inherits the session's model, so pass `model: opus`", re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
@@ -979,20 +1002,27 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertLess(body.index("gh issue comment"), body.index(ISSUE_ANSWER_LABEL_EDIT))
         self.assertEqual(body.count(ISSUE_ANSWER_ONE_ITEM), 1)
 
-    def test_every_place_that_puts_a_question_to_the_user_gives_each_option_a_concrete_example_and_code_blocks_only_for_the_real_text_of_a_file_change(self):
+    def test_every_place_that_states_the_full_question_form_gives_each_option_a_concrete_example_and_code_blocks_only_for_the_real_text_of_a_file_change(self):
         docs = skill_docs()
         method = section(docs["issue-question"][1], "Method")
         places = {
-            "claude/CLAUDE.md": next(p for p in read(CLAUDE / "CLAUDE.md").split("\n\n") if p.startswith("**Questions.**")),
+            "claude/CLAUDE.md": questions_paragraph(),
             "recommender": agent_docs()["recommender"][1],
             "issue-question recommender return": method[: method.index("```text")],
             "issue-question comment": re.search(r"```text\n(.*?)```", method, re.S).group(1),
-            "issue-answer": section(docs["issue-answer"][1], "Present"),
         }
         for place, text in places.items():
             for passage in (QUESTION_EXAMPLE_PER_OPTION, QUESTION_CODE_WHEN, QUESTION_REAL_TEXT_IN_CODE):
                 with self.subTest(place=place, passage=passage):
                     self.assertIn(passage, re.sub(r"\s+", " ", text))
+
+    def test_issue_answer_presents_in_the_form_claude_md_gives_for_both_forms_and_restates_neither(self):
+        present = re.sub(r"\s+", " ", section(skill_docs()["issue-answer"][1], "Present"))
+        self.assertIn(ISSUE_ANSWER_PRESENT_FORM, present)
+        self.assertIn("under `## Questions`", present)
+        for passage in (QUESTION_EXAMPLE_PER_OPTION, QUESTION_CODE_WHEN, QUESTION_REAL_TEXT_IN_CODE, "settles", "obvious", "reference"):
+            with self.subTest(passage=passage):
+                self.assertNotIn(passage, present)
 
     def test_issue_answer_rule_names_what_restarts_after_the_label_edit_the_triage_or_the_queue(self):
         _, body = skill_docs()["issue-answer"]

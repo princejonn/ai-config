@@ -63,8 +63,11 @@ defines.
 select tool. Short and concise, as the user prefers: the question, per option a concrete example
 and its cost, one recommendation; then stop. For an option that changes code or a file, show the
 real text today and the real text proposed, each in a code block; any other option stays in
-prose. Sub-questions follow one per message. A question on a tracker item is filed through
-`issue-question` and reported in one line; one with no item is asked inline as above.
+prose. A question a cited specification section settles, or whose fix is obvious, is one line
+instead: the bare, fully qualified reference as `rules/writing.md` gives it where a section
+settles it, and the recommendation, nothing else. Sub-questions follow one per message. A question
+on a tracker item is filed through `issue-question` and reported in one line; one with no item is
+asked inline as above.
 <!-- /claude-only -->
 
 **Verify, then claim.** Green is the command plus the runner's own printed summary, never the exit
