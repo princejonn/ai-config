@@ -174,7 +174,7 @@ ONE_HOME_PHRASES = {
     "As a <who>, I want <what>, so that <why>": "claude/skills/issue-write/SKILL.md",
     "issue-<slug>.md": "claude/skills/issue-write/SKILL.md",
     "issue-<N>-<purpose>.md": "claude/skills/issue-triage/SKILL.md",
-    "edits nothing before the ruling": "claude/skills/issue-triage/SKILL.md",
+    "Is #N ready to deliver as briefed?": "claude/skills/issue-triage/SKILL.md",
     "git branch -r --contains": "claude/skills/issue-triage/SKILL.md",
     "carries no orchestration": "claude/skills/author-skill/SKILL.md",
     "corrected from the evidence": "claude/rules/writing.md",
@@ -186,6 +186,7 @@ ONE_HOME_PHRASES = {
     "the reach: which corpus was searched": "claude/skills/research/SKILL.md",
     "at least one scenario, error paths included": "claude/skills/author-gherkin/SKILL.md",
     "returns the question to the recommender once": "claude/skills/issue-question/SKILL.md",
+    "no recommender run": "claude/skills/issue-question/SKILL.md",
     "One item per message": "claude/skills/issue-answer/SKILL.md",
     "answers the earliest unanswered `## Question` before it": "claude/skills/issue-answer/SKILL.md",
     "until its ## Ruling is posted": "claude/skills/issue-question/SKILL.md",
@@ -245,7 +246,7 @@ RESEARCH_ROW_AGENT = "in the tier's researcher agent"
 RESEARCH_DESCRIPTION_AGENT = "in a researcher agent"
 DELIVER_RESEARCH_READS = "Bulk and interpreting reads go to the tier's researcher per `references/tiers.md`"
 DELIVER_MEMO_ENTERS_THE_BRIEF = "the memo, not the material, enters the brief"
-DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it where the project keeps plans — and hands it to `deliver`."
+DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it where the project keeps plans — and hands it to `deliver`, or back to `issue-triage` when triage ran it."
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
 REPOSITORY_LABELS = (
@@ -303,7 +304,9 @@ ISSUE_QUESTION_LABEL_EDIT_READY = "`gh issue edit <N> --add-label question --rem
 ISSUE_QUESTION_LABEL_ADOPT = '`gh label edit question --description "<description>" --repo <owner/name>`'
 ISSUE_QUESTION_LABEL_CREATE = '`gh label create question --description "<description>" --repo <owner/name>`'
 ISSUE_QUESTION_RETRY_ONCE = "returns the question to the recommender once, the verdict attached"
-ISSUE_QUESTION_FIX_LIST = "no recommender run"
+ISSUE_QUESTION_READY_QUESTION_NO_RECOMMENDER = "The ready question `issue-triage` § Ready files is filed as its own recommendation, with no recommender run."
+ISSUE_QUESTION_FILERS = ("`issue-triage` for a held finding or the ready question", "`deliver` for a deviation", "`deliver § Intake` for a `## Brief` the tree contradicts")
+ISSUE_QUESTION_FILED_FROM = "Filed from: <issue-triage | deliver | deliver § Intake>"
 ISSUE_QUESTION_VIEW = "`gh issue view <N> --json body,comments --repo <owner/name>`"
 ISSUE_QUESTION_STATE_CITES_ISSUE_NEXT = "its state is its body and every comment, read as `issue-next` § Output reads them"
 ISSUE_QUESTION_RECOMMENDER_STATE = "the item's state, the question and the files it turns on"
@@ -318,15 +321,84 @@ ISSUE_ANSWER_NONE_LEFT = "With no `## Question` on the item left unanswered"
 ISSUE_ANSWER_ANY_LEFT = "With any left, the item keeps `question`"
 ISSUE_ANSWER_ONE_ITEM = "One item per message"
 ISSUE_ANSWER_RESTART = "names what restarts"
-ISSUE_ANSWER_RESTART_TARGETS = ("`issue-triage`", "`issue-next`")
+ISSUE_ANSWER_RESTART_ROUTES = (
+    "nothing for the ready question `issue-triage` § Ready files when the ruling is ready",
+    "`issue-triage` on the item for every other ruling on a question `issue-triage` filed and for one `deliver § Intake` filed",
+    "`issue-next` for one `deliver` filed",
+)
+ISSUE_ANSWER_READY_RULING = (
+    "the ready question `issue-triage` § Ready files",
+    "`gh issue edit <N> --add-label ready --remove-label question --repo <owner/name>`",
+    "`ready` unless the item carries `paused`",
+)
 ISSUE_TRIAGE_THIN_TEXT_REFUSE = "`issue-write` § Refuse"
 ISSUE_TRIAGE_THIN_TEXT_FILED = "§ Apply's question row"
-ISSUE_TRIAGE_ROWS_ADD_NO_LABEL = "A revise row and a question row add no label themselves"
+ISSUE_TRIAGE_NO_ASK = "Nothing here asks the user."
+ISSUE_TRIAGE_RUN_ORDER = (
+    "§ Draft for a thin item, then § Duplicate, then § Done",
+    "an item closed there takes nothing further",
+    "then § Critique, which runs again after every edit until it returns `ACCEPTED`, a finding is held or the item is split",
+    "then § Ready",
+)
+ISSUE_TRIAGE_EXITS = "What leaves this skill is a closed item, one split and waiting on its pieces, or an open one under `question`"
+ISSUE_TRIAGE_HELD_CLASSES = (
+    "a change to the § Goal or the scope",
+    "a sentence `issue-write` § Refuse would name as missing",
+    "a choice `rules/decisions.md` does not settle",
+    "a finding § Critique's stop rule trips on — a disagreement that survived two critique runs, or a defect two runs in a row each traced to the previous run's edit",
+)
+ISSUE_TRIAGE_HELD_FILED = "filed through `issue-question` with a recommender run"
+ISSUE_TRIAGE_HELD_ENDS_RUN = "A held finding ends the run once every other finding is applied; the restart carries the rulings in § Critique's `Decisions made:` and runs the critique again."
+ISSUE_TRIAGE_SPLIT_ENDS_RUN = "A split ends the run too, the original waiting on its pieces per `issue-next` § Skip."
+ISSUE_TRIAGE_DRAFT_APPLIED = ("Both are applied before anything else runs", "`gh issue edit <N> --add-label <label> --add-label <label>`", "`gh issue edit <N> --body-file <path>`")
+ISSUE_TRIAGE_CRITIQUE_CHANGE_SET_BRIEF = "the `## Brief` § Ready drafts from it"
+ISSUE_TRIAGE_CRITIQUE_BRIEF_LINE = "the `## Brief` fills every `rules/brief.md` field from the item's state"
+ISSUE_TRIAGE_CRITIQUE_DECISIONS = "Decisions made:  the item's rulings, as `issue-next` § Output fills the field"
+ISSUE_TRIAGE_FIX_LIST_APPLIED = (
+    "the fix list is applied as one body edit, `gh issue edit <N> --body-file <path>`",
+    "a line against the `## Brief` applied to § Ready's redraft of it instead",
+    "the critique runs again on the edited state",
+)
+ISSUE_TRIAGE_FIX_LIST_HELD_LINE = "one of the four § State holds — held, its line left out of the edit"
+ISSUE_TRIAGE_BLOCKED_HELD = "`BLOCKED` says the item's own text cannot fill an acceptance line above: that gap is held."
+ISSUE_TRIAGE_STOP_RULE = (
+    "Stop rule, the circuit breaker `skills/deliver/references/review-loop.md` gives",
+    "a finding the previous run also raised is a disagreement that survived two rounds, held",
+    "two runs in a row each finding a defect the previous run's edit introduced trip it, those findings held",
+    "No other bound: the loop runs until the verdict is `ACCEPTED` or a finding is held.",
+)
+ISSUE_TRIAGE_RULING_SETTLES = "A finding a ruling on the item settles is applied as the ruling says, never held."
+ISSUE_TRIAGE_EMPTY_FIX_LIST = "A `NOT ACCEPTED` that holds nothing and leaves no line to apply counts as `ACCEPTED`, with no body edit."
+ISSUE_TRIAGE_EVIDENCE_FILE = "`issue-<N>-<purpose>.md`"
+ISSUE_TRIAGE_EVIDENCE_POST = "`gh issue comment <N> --body-file <scratchpad file>`"
+ISSUE_TRIAGE_EVIDENCE_LATEST = "under each heading the latest comment is the current one"
+ISSUE_TRIAGE_EVIDENCE_BULLETS = ("- `## Brief` —", "- `## Plan` —", "- `## Design` —")
+ISSUE_TRIAGE_BRIEF_COMMENT = (
+    "the ten fields `rules/brief.md` defines, in its shape",
+    "the six `issue-next` § Output fills",
+    "Files in scope, Verification, Invariant and Instructions",
+    "every path repo-relative",
+    "Drafted before each critique run from the state as it then stands",
+    "posted when the critique returns `ACCEPTED`",
+)
+ISSUE_TRIAGE_PLAN_COMMENT = ("`tier: complex`", "when the item carries none", "one line per step in order, each with the invariant it keeps", "`plan-phases`")
+ISSUE_TRIAGE_DESIGN_COMMENT = ("changes a public surface and carries none", "`design-surface` runs on the item, and its § Exit posts the comment")
+ISSUE_TRIAGE_READY_QUESTION = "`Is #N ready to deliver as briefed?`"
+ISSUE_TRIAGE_READY_QUESTION_GATE = (
+    "filed through `issue-question` only when every comment above is posted and no `## Question` on the item is unanswered",
+    "its recommendation is ready, linking the `## Brief`, `## Plan` and `## Design` comments the item carries",
+    "`issue-question` runs no recommender for it",
+    "The ruling is `issue-answer`'s: ready sets `ready` there, and any other ruling restarts this skill with it.",
+)
+ISSUE_TRIAGE_APPLY_PRECEDENCE = "by precedence — done, duplicate, split, question, ready"
+ISSUE_TRIAGE_APPLY_ROWS = ("- done —", "- duplicate —", "- split —", "- question —", "- ready —")
+ISSUE_TRIAGE_ROWS_ADD_NO_LABEL = "The question row and the ready row add no label themselves"
 ISSUE_TRIAGE_FILING_LABEL = "the item leaves the queue under `question`, the label that filing adds"
-ISSUE_TRIAGE_READY_EXAMPLE_ROW = "| `<N>` | ready | `ready` | — | — | — |"
-ISSUE_TRIAGE_READY_ROW = ("`ready`, unless the item carries `paused`", "`gh issue edit <N> --add-label ready`")
-ISSUE_TRIAGE_ROWS_TAKE_READY_OFF = "The revise, split, draft and question rows also take `ready` off an item that carries it: `gh issue edit <N> --remove-label ready`."
-ISSUE_TRIAGE_DUPLICATE_CLOSE = "`gh issue close <N> --duplicate-of <M>`"
+ISSUE_TRIAGE_READY_EXAMPLE_ROW = "| `<N>` | ready | — | — | `## Brief`, `## Question` | — |"
+ISSUE_TRIAGE_READY_ROW = ("the ready question, filed through `issue-question` as § Ready says", "`ready` itself is `issue-answer`'s to add")
+ISSUE_TRIAGE_ROWS_TAKE_READY_OFF = "Every body edit — the draft, a fix list, the split's § Related — takes `ready` off an item that carries it: `gh issue edit <N> --remove-label ready`."
+ISSUE_TRIAGE_SPLIT_PIECES = ("created through `issue-write` from § Create step 2 on", "one `Depends on` line per piece")
+ISSUE_TRIAGE_DUPLICATE_CLOSE = "`gh issue close <N> --duplicate-of <M> --comment <text>`"
 ISSUE_TRIAGE_DUPLICATE_NO_LABEL = "no label"
 DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, park the item and continue the loop with the next"
 DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
@@ -355,13 +427,13 @@ ISSUE_TRIAGE_DONE_NO_COMMIT = "When no verdict cites a commit, the item is not d
 ISSUE_TRIAGE_DONE_ORDER = (
     "`VERIFIED` for every line",
     "`git branch -r --contains <hash>` on each commit the verdicts cite, against the remote-tracking refs as they stand, with no fetch",
-    "A branch printed for every commit is done: on the user's word the item closes with a comment carrying those commits",
+    "A branch printed for every commit is done: the item closes with a comment carrying those commits",
     "Nothing printed for one of them is not done: the item stays open, each commit without a branch unpushed",
 )
 ISSUE_TRIAGE_DONE_ROW_CLOSE = ("each commit `<hash>` § Done's verdicts cite", "`gh issue close <N> --comment <text>`")
 ISSUE_TRIAGE_OUTPUT_UNVERIFIED = "the acceptance lines no verdict returned `VERIFIED` for"
 ISSUE_TRIAGE_OUTPUT_UNPUSHED = "the commits § Done found on no remote branch, each named as unpushed, or that no verdict cited a commit"
-ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Apply", "Output")
+ISSUE_TRIAGE_SECTIONS = ("Input", "State", "Draft", "Duplicate", "Critique", "Done", "Ready", "Apply", "Output")
 ISSUE_TRIAGE_DISPATCH_WORDS = (r"lanes?", r"fork(s|ed|ing)?", r"parallel")
 DECISION_TIE_BREAKS = ("RFC adherence and maximum compatibility", "readable code", "public interfaces that are easy to use and interpret")
 
@@ -1094,13 +1166,26 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertIn(passage, step)
         self.assertLess(step.index(QUESTION_LABEL_DESCRIPTION), step.index(ISSUE_QUESTION_LABEL_ADOPT))
 
-    def test_issue_question_retries_the_recommender_once_on_a_disproven_claim_and_never_for_a_fix_list(self):
+    def test_issue_question_retries_the_recommender_once_on_a_disproven_claim_and_runs_none_only_for_the_ready_question(self):
         _, body = skill_docs()["issue-question"]
         method = section(body, "Method")
         self.assertIn("/verify-claim", method)
         self.assertIn("DISPROVEN", method)
         self.assertEqual(method.count(ISSUE_QUESTION_RETRY_ONCE), 1)
-        self.assertIn(ISSUE_QUESTION_FIX_LIST, method)
+        step = next(line for line in method.splitlines() if line.startswith("1. "))
+        self.assertTrue(step.startswith(f"1. {ISSUE_QUESTION_READY_QUESTION_NO_RECOMMENDER}"), step)
+        self.assertEqual(method.count("no recommender run"), 1)
+
+    def test_issue_question_input_names_the_three_filers_and_the_comment_carries_the_one_that_filed_it(self):
+        _, body = skill_docs()["issue-question"]
+        inputs = re.sub(r"\s+", " ", section(body, "Input"))
+        for filer in ISSUE_QUESTION_FILERS:
+            with self.subTest(filer=filer):
+                self.assertIn(filer, inputs)
+        offsets = [inputs.index(filer) for filer in ISSUE_QUESTION_FILERS]
+        self.assertEqual(offsets, sorted(offsets))
+        template = re.search(r"```text\n(.*?)```", section(body, "Method"), re.S).group(1)
+        self.assertIn(ISSUE_QUESTION_FILED_FROM, template)
 
     def test_issue_question_briefs_the_recommender_with_the_state_issue_next_reads_and_cites_that_read_rather_than_restating_it(self):
         _, body = skill_docs()["issue-question"]
@@ -1165,15 +1250,28 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(passage=passage):
                 self.assertNotIn(passage, present)
 
-    def test_issue_answer_rule_names_what_restarts_after_the_label_edit_the_triage_or_the_queue(self):
+    def test_issue_answer_rule_routes_the_restart_by_the_filed_from_line_nothing_for_a_ready_ruling_triage_or_the_queue(self):
         _, body = skill_docs()["issue-answer"]
         rule = section(body, "Rule")
         self.assertIn(ISSUE_ANSWER_RESTART, rule)
         self.assertLess(rule.index(ISSUE_ANSWER_LABEL_EDIT), rule.index(ISSUE_ANSWER_RESTART))
         restart = next(line for line in rule.splitlines() if ISSUE_ANSWER_RESTART in line)
-        for target in ISSUE_ANSWER_RESTART_TARGETS:
-            with self.subTest(target=target):
-                self.assertIn(target, restart)
+        for route in ISSUE_ANSWER_RESTART_ROUTES:
+            with self.subTest(route=route):
+                self.assertIn(route, restart)
+        offsets = [restart.index(route) for route in ISSUE_ANSWER_RESTART_ROUTES]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_answer_ready_ruling_on_the_ready_question_adds_ready_unless_paused_as_it_removes_question(self):
+        rule = section(skill_docs()["issue-answer"][1], "Rule")
+        step = next(line for line in rule.splitlines() if ISSUE_ANSWER_LABEL_EDIT in line)
+        for passage in ISSUE_ANSWER_READY_RULING:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, step)
+        offsets = [step.index(passage) for passage in ISSUE_ANSWER_READY_RULING]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertLess(step.index(ISSUE_ANSWER_LABEL_EDIT), offsets[0])
+        self.assertLess(offsets[-1], step.index(ISSUE_ANSWER_ANY_LEFT))
 
     def test_the_ruling_comment_shape_is_fixed_in_issue_answer_and_cited_by_issue_next(self):
         docs = skill_docs()
@@ -1183,7 +1281,7 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(RULING_COMMENT_HEADING, docs["issue-answer"][1])
         self.assertIn(QUESTION_COMMENT_HEADING, docs["issue-answer"][1])
 
-    def test_issue_triage_names_each_of_its_eight_sections_once_and_in_order(self):
+    def test_issue_triage_names_each_of_its_nine_sections_once_and_in_order(self):
         _, body = skill_docs()["issue-triage"]
         for heading in ISSUE_TRIAGE_SECTIONS:
             with self.subTest(heading=heading):
@@ -1215,17 +1313,17 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 self.assertNotIn(mutation, body)
 
-    def test_issue_triage_revise_and_question_rows_file_through_issue_question_and_add_no_label_themselves(self):
+    def test_issue_triage_question_and_ready_rows_file_through_issue_question_and_add_no_label_themselves(self):
         _, body = skill_docs()["issue-triage"]
         rulings = section(body, "Apply")
-        for prefix in ("- revise —", "- question —"):
+        for prefix in ("- question —", "- ready —"):
             with self.subTest(row=prefix):
                 line = next(l for l in rulings.splitlines() if l.startswith(prefix))
                 self.assertIn("`issue-question`", line)
         self.assertIn(ISSUE_TRIAGE_ROWS_ADD_NO_LABEL, rulings)
         self.assertIn(ISSUE_TRIAGE_FILING_LABEL, rulings)
 
-    def test_issue_triage_ready_row_adds_ready_unless_the_item_carries_paused(self):
+    def test_issue_triage_ready_row_files_the_ready_question_and_leaves_ready_to_issue_answer(self):
         _, body = skill_docs()["issue-triage"]
         rulings = section(body, "Apply")
         self.assertIn(ISSUE_TRIAGE_READY_EXAMPLE_ROW, rulings)
@@ -1233,12 +1331,119 @@ class SkillPassagesTest(unittest.TestCase):
         for passage in ISSUE_TRIAGE_READY_ROW:
             with self.subTest(passage=passage):
                 self.assertIn(passage, row)
+        self.assertNotIn("--add-label", row)
 
-    def test_issue_triage_revise_split_draft_and_question_rows_take_ready_off_an_item_that_carries_it(self):
+    def test_issue_triage_every_body_edit_takes_ready_off_an_item_that_carries_it(self):
         _, body = skill_docs()["issue-triage"]
         self.assertIn(ISSUE_TRIAGE_ROWS_TAKE_READY_OFF, re.sub(r"\s+", " ", section(body, "Apply")))
 
-    def test_issue_triage_closes_a_duplicate_as_a_duplicate_of_the_original_and_adds_no_label(self):
+    def test_issue_triage_apply_records_one_row_under_one_ruling_by_precedence_done_duplicate_split_question_ready(self):
+        _, body = skill_docs()["issue-triage"]
+        rulings = section(body, "Apply")
+        self.assertIn(ISSUE_TRIAGE_APPLY_PRECEDENCE, rulings)
+        rows = [line[: line.index("—") + 1] for line in rulings.splitlines() if line.startswith("- ")]
+        self.assertEqual(rows, list(ISSUE_TRIAGE_APPLY_ROWS))
+
+    def test_issue_triage_split_creates_the_pieces_from_create_step_2_on_and_gives_the_original_one_depends_on_line_per_piece(self):
+        _, body = skill_docs()["issue-triage"]
+        split = next(line for line in section(body, "Apply").splitlines() if line.startswith("- split —"))
+        for passage in ISSUE_TRIAGE_SPLIT_PIECES:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, split)
+
+    def test_issue_triage_state_runs_draft_duplicate_done_critique_then_ready_and_asks_the_user_nothing(self):
+        _, body = skill_docs()["issue-triage"]
+        state = re.sub(r"\s+", " ", section(body, "State"))
+        for passage in ISSUE_TRIAGE_RUN_ORDER:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, state)
+        offsets = [state.index(passage) for passage in ISSUE_TRIAGE_RUN_ORDER]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertIn(ISSUE_TRIAGE_NO_ASK, state)
+
+    def test_issue_triage_holds_exactly_the_four_findings_the_user_decides_the_fourth_either_trip_of_the_stop_rule_files_each_with_a_recommender_run_and_ends_the_run(self):
+        _, body = skill_docs()["issue-triage"]
+        state = re.sub(r"\s+", " ", section(body, "State"))
+        for passage in (ISSUE_TRIAGE_HELD_FILED, *ISSUE_TRIAGE_HELD_CLASSES, ISSUE_TRIAGE_HELD_ENDS_RUN):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, state)
+        held = state[state.index(ISSUE_TRIAGE_HELD_FILED) : state.index(ISSUE_TRIAGE_HELD_ENDS_RUN)]
+        self.assertEqual(held.count(";"), len(ISSUE_TRIAGE_HELD_CLASSES) - 1, held)
+        offsets = [held.index(passage) for passage in ISSUE_TRIAGE_HELD_CLASSES]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_triage_split_ends_the_run_and_the_original_leaves_waiting_on_its_pieces(self):
+        _, body = skill_docs()["issue-triage"]
+        self.assertIn(ISSUE_TRIAGE_EXITS, re.sub(r"\s+", " ", section(body, "Input")))
+        state = re.sub(r"\s+", " ", section(body, "State"))
+        self.assertIn(ISSUE_TRIAGE_SPLIT_ENDS_RUN, state)
+        self.assertLess(state.index(ISSUE_TRIAGE_HELD_ENDS_RUN), state.index(ISSUE_TRIAGE_SPLIT_ENDS_RUN))
+
+    def test_issue_triage_draft_applies_the_labels_and_the_body_before_anything_else_runs(self):
+        _, body = skill_docs()["issue-triage"]
+        draft = section(body, "Draft")
+        for passage in ISSUE_TRIAGE_DRAFT_APPLIED:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, draft)
+        offsets = [draft.index(passage) for passage in ISSUE_TRIAGE_DRAFT_APPLIED]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_triage_critique_judges_the_drafted_brief_with_the_items_rulings_in_decisions_made(self):
+        _, body = skill_docs()["issue-triage"]
+        brief = re.search(r"```text\n(.*?)```", section(body, "Critique"), re.S).group(1)
+        for passage in (ISSUE_TRIAGE_CRITIQUE_CHANGE_SET_BRIEF, ISSUE_TRIAGE_CRITIQUE_BRIEF_LINE, ISSUE_TRIAGE_CRITIQUE_DECISIONS):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, brief)
+        self.assertLess(brief.index(ISSUE_TRIAGE_CRITIQUE_CHANGE_SET_BRIEF), brief.index(ISSUE_TRIAGE_CRITIQUE_BRIEF_LINE))
+
+    def test_issue_triage_critique_applies_a_fix_list_as_one_body_edit_and_runs_again_until_the_breaker_holds_a_finding(self):
+        _, body = skill_docs()["issue-triage"]
+        critique = re.sub(r"\s+", " ", section(body, "Critique"))
+        passages = (*ISSUE_TRIAGE_FIX_LIST_APPLIED, ISSUE_TRIAGE_FIX_LIST_HELD_LINE, ISSUE_TRIAGE_BLOCKED_HELD, *ISSUE_TRIAGE_STOP_RULE)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, critique)
+        offsets = [critique.index(passage) for passage in passages]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertEqual(critique.count("`gh issue edit <N> --body-file <path>`"), 1)
+
+    def test_issue_triage_critique_applies_a_finding_a_ruling_settles_and_counts_a_not_accepted_with_no_line_to_apply_as_accepted(self):
+        _, body = skill_docs()["issue-triage"]
+        critique = re.sub(r"\s+", " ", section(body, "Critique"))
+        for passage in (ISSUE_TRIAGE_RULING_SETTLES, ISSUE_TRIAGE_EMPTY_FIX_LIST):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, critique)
+        self.assertLess(critique.index(ISSUE_TRIAGE_STOP_RULE[-1]), critique.index(ISSUE_TRIAGE_RULING_SETTLES))
+        self.assertLess(critique.index("it contributes no line to the fix list."), critique.index(ISSUE_TRIAGE_EMPTY_FIX_LIST))
+
+    def test_issue_triage_ready_posts_brief_plan_and_design_to_the_scratchpad_then_the_item_the_latest_comment_of_each_heading_current(self):
+        _, body = skill_docs()["issue-triage"]
+        ready = re.sub(r"\s+", " ", section(body, "Ready"))
+        for passage in (ISSUE_TRIAGE_EVIDENCE_FILE, ISSUE_TRIAGE_EVIDENCE_POST, ISSUE_TRIAGE_EVIDENCE_LATEST, *ISSUE_TRIAGE_BRIEF_COMMENT, *ISSUE_TRIAGE_PLAN_COMMENT, *ISSUE_TRIAGE_DESIGN_COMMENT):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, ready)
+        bullets = [line for line in section(body, "Ready").splitlines() if line.startswith("- ")]
+        self.assertEqual([line[: line.index("—") + 1] for line in bullets], list(ISSUE_TRIAGE_EVIDENCE_BULLETS))
+        for bullet, passages in zip(bullets, (ISSUE_TRIAGE_BRIEF_COMMENT, ISSUE_TRIAGE_PLAN_COMMENT, ISSUE_TRIAGE_DESIGN_COMMENT)):
+            for passage in passages:
+                with self.subTest(bullet=bullet[:14], passage=passage):
+                    self.assertIn(passage, bullet)
+        self.assertEqual(body.count(ISSUE_TRIAGE_EVIDENCE_FILE), 1)
+        self.assertEqual(body.count(ISSUE_TRIAGE_EVIDENCE_POST), 1)
+
+    def test_issue_triage_ready_files_the_ready_question_after_the_evidence_with_no_question_unanswered_and_no_recommender_and_leaves_the_ruling_to_issue_answer(self):
+        _, body = skill_docs()["issue-triage"]
+        ready = re.sub(r"\s+", " ", section(body, "Ready"))
+        passages = (ISSUE_TRIAGE_READY_QUESTION, *ISSUE_TRIAGE_READY_QUESTION_GATE)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, ready)
+        offsets = [ready.index(passage) for passage in passages]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertLess(ready.index(ISSUE_TRIAGE_EVIDENCE_BULLETS[-1]), offsets[0])
+        self.assertEqual(body.count(ISSUE_TRIAGE_READY_QUESTION), 1)
+
+    def test_issue_triage_closes_a_duplicate_as_a_duplicate_of_the_original_with_the_evidence_in_the_comment_and_adds_no_label(self):
         _, body = skill_docs()["issue-triage"]
         row = next(line for line in section(body, "Apply").splitlines() if line.startswith("- duplicate —"))
         bullet = next(line for line in section(body, "Duplicate").splitlines() if "is a duplicate:" in line)
@@ -1248,7 +1453,7 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertIn(ISSUE_TRIAGE_DUPLICATE_NO_LABEL, text)
                 self.assertNotIn("--add-label", text)
 
-    def test_issue_triage_done_closes_on_the_users_word_only_once_a_remote_branch_contains_every_cited_commit(self):
+    def test_issue_triage_done_closes_only_once_a_remote_branch_contains_every_cited_commit(self):
         _, body = skill_docs()["issue-triage"]
         done = section(body, "Done")
         for passage in ISSUE_TRIAGE_DONE_ORDER:
@@ -1282,12 +1487,12 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(ISSUE_TRIAGE_OUTPUT_UNPUSHED, output)
         self.assertLess(output.index(ISSUE_TRIAGE_OUTPUT_UNVERIFIED), output.index(ISSUE_TRIAGE_OUTPUT_UNPUSHED))
 
-    def test_issue_triage_draft_borrows_refuse_only_to_name_the_missing_sentence_and_files_it_as_the_question_row_says(self):
+    def test_issue_triage_draft_borrows_refuse_only_to_name_the_missing_sentence_and_holds_it_as_the_question_row_says(self):
         _, body = skill_docs()["issue-triage"]
         draft = section(body, "Draft")
         bullet = next(line for line in draft.splitlines() if ISSUE_TRIAGE_THIN_TEXT_REFUSE in line)
         self.assertIn("missing sentence", bullet)
-        self.assertIn(ISSUE_TRIAGE_THIN_TEXT_FILED, bullet)
+        self.assertIn(f"held as {ISSUE_TRIAGE_THIN_TEXT_FILED} says", bullet)
 
     def test_issue_skills_enumerate_the_full_queue_labels_and_duplicate_set(self):
         for skill, heading, call in (
@@ -1329,7 +1534,7 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(DELIVER_TIERS_EVERY_ITEM, intake)
         self.assertIn(DELIVER_TRIVIAL_INLINE, intake)
 
-    def test_design_surface_exit_returns_the_locked_design_and_instructs_no_write(self):
+    def test_design_surface_exit_returns_the_locked_design_hands_it_to_deliver_or_back_to_triage_and_instructs_no_write(self):
         _, body = skill_docs()["design-surface"]
         self.assertIn(DESIGN_EXIT_RETURNS_THE_DESIGN, section(body, "Exit"))
         self.assertNotIn("writ", body.lower())
