@@ -1914,7 +1914,7 @@ class GhRepoFlagTests(unittest.TestCase):
             'gh "--repo owner/name" issue view 5',
             'timeout 30 gh issue list "--repo owner/name"',
             'echo $(gh issue view 5 "--repo owner/name")',
-            'git status && gh issue edit 5 --add-label "question: open" "--repo owner/name"',
+            'git status && gh issue edit 5 --add-label question "--repo owner/name"',
         ):
             with self.subTest(command=command):
                 result = evaluate(command)
@@ -1927,9 +1927,9 @@ class GhRepoFlagTests(unittest.TestCase):
             "gh issue comment 5 --repo owner/name --body x",
             "gh issue view 5 --repo=owner/name",
             "gh --repo owner/name issue view 5",
-            'gh issue edit 5 --add-label "question: open" --remove-label "question: closed" --repo owner/name',
+            "gh issue edit 5 --add-label question --remove-label ready --repo owner/name",
             "gh issue view 5 --json comments --jq '.comments[].body' --repo owner/name",
-            'gh label edit question --name "question: open" --repo owner/name',
+            'gh label edit question --description "An unanswered ## Question comment: out of the queue until its ## Ruling is posted" --repo owner/name',
             'echo "--repo owner/name"',
             'git log --oneline -- "--repo owner/name"',
         ):

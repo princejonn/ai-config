@@ -1,6 +1,6 @@
 ---
 name: issue-question
-description: "Files one question on one tracker item — the question, each option with an example and its cost, and one recommendation — as a comment, and labels the item question: open so it leaves the queue until the user rules. Use when a question on a named issue needs the user's word while other items continue, or when a triage fix list or a deviation from the agreed design is to be filed on its item; a question with no item is not filed here."
+description: "Files one question on one tracker item — the question, each option with an example and its cost, and one recommendation — as a comment, and labels the item question so it leaves the queue until the user rules. Use when a question on a named issue needs the user's word while other items continue, or when a triage fix list or a deviation from the agreed design is to be filed on its item; a question with no item is not filed here."
 ---
 
 # File a question
@@ -28,13 +28,13 @@ One issue number and the question: nothing else names the subject. What filed it
    Filed from: <issue-triage | deliver>
    ```
 
-4. The labels, read with `gh label list --limit 1000 --json name --jq '.[].name' --repo <owner/name>` before the edit:
-   - a bare label named question, with neither `question: open` nor `question: closed` present, is renamed: `gh label edit question --name "question: open" --repo <owner/name>`; beside either new label it is left, and § Output says so.
-   - a label still absent is created: `gh label create "question: open" --repo <owner/name>`, `gh label create "question: closed" --repo <owner/name>`.
-   - then `gh issue edit <N> --add-label "question: open" --remove-label "question: closed" --repo <owner/name>`.
+4. The label is `question`, with the description "An unanswered ## Question comment: out of the queue until its ## Ruling is posted". The tracker's labels, read with `gh label list --limit 1000 --json name --jq '.[].name' --repo <owner/name>` before the edit:
+   - a `question` label there keeps its name and takes that description: `gh label edit question --description "<description>" --repo <owner/name>`.
+   - none there, it is created: `gh label create question --description "<description>" --repo <owner/name>`.
+   - then `gh issue edit <N> --add-label question --repo <owner/name>`, or `gh issue edit <N> --add-label question --remove-label ready --repo <owner/name>` when the list holds `ready`.
 
-Done when the comment is posted and the item carries `question: open`: it is out of the queue per `issue-next` § Skip until `issue-answer` closes the question.
+Done when the comment is posted and the item carries `question` and not `ready`: it is out of the queue per `issue-next` § Skip until `issue-answer` posts the ruling that leaves no question on it unanswered.
 
 ## Output
 
-One line: the item, the label it carries, the comment URL — and the bare label left in place, when one was.
+One line: the item, the labels it carries, the comment URL.

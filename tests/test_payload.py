@@ -187,6 +187,8 @@ ONE_HOME_PHRASES = {
     "at least one scenario, error paths included": "claude/skills/author-gherkin/SKILL.md",
     "returns the question to the recommender once": "claude/skills/issue-question/SKILL.md",
     "One item per message": "claude/skills/issue-answer/SKILL.md",
+    "answers the earliest unanswered `## Question` before it": "claude/skills/issue-answer/SKILL.md",
+    "until its ## Ruling is posted": "claude/skills/issue-question/SKILL.md",
     "rides on every `gh` call here as two shell words": "claude/skills/issue-question/SKILL.md",
     "A mutation is a valid program or it is nothing": "claude/skills/test/SKILL.md",
     "cp -Rc": "claude/skills/test/references/mutation.md",
@@ -258,42 +260,74 @@ REPOSITORY_LABELS = (
     "tier: trivial",
     "tier: standard",
     "tier: complex",
+    "ready",
+    "paused",
+    "question",
     "parked",
     "blocked",
-    "question: open",
-    "question: closed",
-    "duplicate",
     "invalid",
     "wontfix",
     "accessibility",
     "good first issue",
     "help wanted",
 )
-OUT_OF_QUEUE_LABELS = ("parked", "blocked", "question: open", "duplicate", "invalid", "wontfix")
+STATUS_LABELS = ("ready", "paused")
+HOLD_LABELS = ("question", "parked", "blocked", "invalid", "wontfix")
+GH_LABEL_NAME = r'(?:"([^"]+)"|([^\s`<"]+))'
+GH_LABEL_ARGUMENT = re.compile(rf'(?:--(?:add-|remove-)?label[ =]|gh label (?:create|delete) |gh label edit (?:(?=[^`\n]*? (?:--name[ =]|-n ){GH_LABEL_NAME}))?){GH_LABEL_NAME}')
+GH_LABEL_SHORTHAND_CALL = re.compile(r'gh (?:issue (?:list|ls|create|new)|pr (?:list|ls|create|new)|discussion (?:list|ls|create)) [^`\n]*')
+GH_LABEL_SHORTHAND_ARGUMENT = re.compile(rf'(?<=\s)-l {GH_LABEL_NAME}')
+ISSUE_WRITE_STATUS_LINE = "- Status, never written here:"
+ISSUE_WRITE_STATUS_AT_MOST_ONE = "An open item carries at most one of the two and is in the backlog with neither"
+ISSUE_WRITE_HOLDS_LINE = "- Holds, out of the queue whatever the status, never written here:"
 RELATION_MUTATIONS = ("addSubIssue", "addBlockedBy")
 ISSUE_NEXT_BRIEF_FIELDS = ("Item:", "Goal:", "Acceptance:", "Decisions made:", "Tier:", "Out of scope:")
-ISSUE_NEXT_CLOSED_QUESTION_STAYS = "`question: closed` skips nothing"
+ISSUE_NEXT_HOLD_LABELS = "The holds are the labels"
+ISSUE_NEXT_HELD_WHATEVER_STATUS = "a held item is out of the queue whatever its status"
+ISSUE_NEXT_HOLD_REPORTED = "reported with the label that skipped it"
+ISSUE_NEXT_SKIPPED_REPORTED = "Then the items skipped above it, each with the open number or the label that skipped it"
+ISSUE_NEXT_LAST_SORT_KEY = "3. Within that: the lowest number."
+ISSUE_NEXT_STATUS_GROUPS = "The sorted list then splits by status into three groups, each keeping its order: the items carrying `paused`, then those carrying `ready`, then the backlog, which carries neither."
+ISSUE_NEXT_WALK_THE_GROUPS = "Walk the groups in turn and stop at the first item § Skip lets through."
+ISSUE_NEXT_EVERY_ITEM_HELD = "When every item is held, report the list and stop."
+ISSUE_NEXT_BACKLOG_TO_TRIAGE = "A backlog winner leaves flagged as one to triage, not to deliver."
 GH_REPO_FLAG = "--repo <owner/name>"
 GH_CODE_SPAN = re.compile(r"`gh [^`]*`")
 QUESTION_COMMENT_HEADING = "## Question"
 RULING_COMMENT_HEADING = "## Ruling"
+QUESTION_LABEL_DESCRIPTION = '"An unanswered ## Question comment: out of the queue until its ## Ruling is posted"'
 ISSUE_QUESTION_INPUT = "One issue number and the question"
 ISSUE_QUESTION_COMMENT = "gh issue comment <N> --body-file <scratchpad file>"
-ISSUE_QUESTION_LABEL_EDIT = 'gh issue edit <N> --add-label "question: open" --remove-label "question: closed"'
-ISSUE_QUESTION_LABEL_CREATE = "gh label create"
-ISSUE_QUESTION_LABEL_RENAME = 'gh label edit question --name "question: open"'
+ISSUE_QUESTION_LABEL_EDIT = "`gh issue edit <N> --add-label question --repo <owner/name>`"
+ISSUE_QUESTION_LABEL_EDIT_READY = "`gh issue edit <N> --add-label question --remove-label ready --repo <owner/name>` when the list holds `ready`"
+ISSUE_QUESTION_LABEL_ADOPT = '`gh label edit question --description "<description>" --repo <owner/name>`'
+ISSUE_QUESTION_LABEL_CREATE = '`gh label create question --description "<description>" --repo <owner/name>`'
 ISSUE_QUESTION_RETRY_ONCE = "returns the question to the recommender once, the verdict attached"
 ISSUE_QUESTION_FIX_LIST = "no recommender run"
 ISSUE_QUESTION_VIEW = "`gh issue view <N> --json body,comments --repo <owner/name>`"
 ISSUE_QUESTION_STATE_CITES_ISSUE_NEXT = "its state is its body and every comment, read as `issue-next` § Output reads them"
 ISSUE_QUESTION_RECOMMENDER_STATE = "the item's state, the question and the files it turns on"
-ISSUE_ANSWER_LABEL_EDIT = 'gh issue edit <N> --remove-label "question: open" --add-label "question: closed"'
+ISSUE_ANSWER_LIST = "`gh issue list --state open --limit 1000 --label question --json number,title,labels,comments --repo <owner/name>`"
+ISSUE_ANSWER_PICK_UNANSWERED = "lists with a `## Question` still unanswered"
+ISSUE_ANSWER_PASSED_OVER = "The items the pick passes over are named in that same one line, and the pick goes on."
+ISSUE_ANSWER_PASSED_OVER_OUTPUT = "Before the ruling: § Input's one line when the pick passed over an item, then the question, and nothing else."
+ISSUE_ANSWER_RULING_PAIRS = "A `## Ruling` comment answers the earliest unanswered `## Question` before it"
+ISSUE_ANSWER_EARLIEST_UNANSWERED = "the question is the earliest `## Question` still unanswered"
+ISSUE_ANSWER_LABEL_EDIT = "`gh issue edit <N> --remove-label question --repo <owner/name>`"
+ISSUE_ANSWER_NONE_LEFT = "With no `## Question` on the item left unanswered"
+ISSUE_ANSWER_ANY_LEFT = "With any left, the item keeps `question`"
 ISSUE_ANSWER_ONE_ITEM = "One item per message"
 ISSUE_ANSWER_RESTART = "names what restarts"
 ISSUE_ANSWER_RESTART_TARGETS = ("`issue-triage`", "`issue-next`")
 ISSUE_TRIAGE_THIN_TEXT_REFUSE = "`issue-write` § Refuse"
 ISSUE_TRIAGE_THIN_TEXT_FILED = "§ Apply's question row"
 ISSUE_TRIAGE_ROWS_ADD_NO_LABEL = "A revise row and a question row add no label themselves"
+ISSUE_TRIAGE_FILING_LABEL = "the item leaves the queue under `question`, the label that filing adds"
+ISSUE_TRIAGE_READY_EXAMPLE_ROW = "| `<N>` | ready | `ready` | — | — | — |"
+ISSUE_TRIAGE_READY_ROW = ("`ready`, unless the item carries `paused`", "`gh issue edit <N> --add-label ready`")
+ISSUE_TRIAGE_ROWS_TAKE_READY_OFF = "The revise, split, draft and question rows also take `ready` off an item that carries it: `gh issue edit <N> --remove-label ready`."
+ISSUE_TRIAGE_DUPLICATE_CLOSE = "`gh issue close <N> --duplicate-of <M>`"
+ISSUE_TRIAGE_DUPLICATE_NO_LABEL = "no label"
 DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, park the item and continue the loop with the next"
 DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
 CLAUDE_MD_TRACKER_QUESTION = "A question on a tracker item is filed through `issue-question` and reported in one line; one with no item is asked inline as above."
@@ -416,6 +450,17 @@ def questions_paragraph():
 
 def sentence_count(text):
     return len(re.findall(r'[.!?]["\u201d)]*(?=\s|$)', text.strip()))
+
+
+def gh_labels(text):
+    arguments = [*GH_LABEL_ARGUMENT.finditer(text)]
+    for call in GH_LABEL_SHORTHAND_CALL.findall(text):
+        arguments += GH_LABEL_SHORTHAND_ARGUMENT.finditer(call)
+    labels = []
+    for argument in arguments:
+        for name in filter(None, argument.groups()):
+            labels += name.split(",") if argument.group().startswith("-") else [name]
+    return labels
 
 
 class FrontmatterParserTest(unittest.TestCase):
@@ -753,9 +798,6 @@ class OneHomeTest(unittest.TestCase):
             with self.subTest(phrase=phrase):
                 self.assertEqual(phrase_homes(phrase), {home})
 
-    def test_config_names_no_bare_question_label(self):
-        self.assertEqual(phrase_homes("`question`", CLAUDE), set())
-
     def test_config_names_no_marketplace(self):
         self.assertEqual({str(path.relative_to(REPO)) for path, text in text_files(CLAUDE) if "marketplace" in text.casefold()}, set())
 
@@ -883,12 +925,73 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertEqual(len(re.findall(rf"(?<![\w-]){re.escape(label)}(?![\w-])", labels)), 1)
 
-    def test_issue_write_labels_out_of_queue_line_names_labels_in_order(self):
+    def test_issue_write_labels_status_line_names_ready_then_paused_one_at_most_on_an_open_item_and_neither_for_the_backlog(self):
         _, body = skill_docs()["issue-write"]
-        labels = section(body, "Labels")
-        line = next(l for l in labels.splitlines() if l.startswith("- Out of the queue"))
-        offsets = [line.index(f"`{label}`") for label in OUT_OF_QUEUE_LABELS]
+        line = next(l for l in section(body, "Labels").splitlines() if l.startswith(ISSUE_WRITE_STATUS_LINE))
+        offsets = [line.index(f"`{label}`") for label in STATUS_LABELS]
         self.assertEqual(offsets, sorted(offsets))
+        self.assertIn(ISSUE_WRITE_STATUS_AT_MOST_ONE, line)
+
+    def test_issue_write_labels_holds_line_names_the_hold_labels_in_order_and_no_other(self):
+        _, body = skill_docs()["issue-write"]
+        line = next(l for l in section(body, "Labels").splitlines() if l.startswith(ISSUE_WRITE_HOLDS_LINE))
+        self.assertEqual(re.findall(r"`([^`]+)`", line), list(HOLD_LABELS))
+
+    def test_every_label_a_gh_call_in_the_payload_names_is_a_repository_label(self):
+        for path in payload_files():
+            for label in gh_labels(read(path)):
+                with self.subTest(file=str(path.relative_to(REPO)), label=label):
+                    self.assertIn(label, REPOSITORY_LABELS)
+
+    def test_the_label_argument_pattern_reads_every_label_form_gh_documents(self):
+        forms = {
+            '`gh issue edit <N> --add-label "priority: high" --remove-label ready`': ["priority: high", "ready"],
+            "`gh issue list --label=question`": ["question"],
+            '`gh issue create --label bug --label "help wanted"`': ["bug", "help wanted"],
+            '`gh pr create --label "bug,help wanted"`': ["bug", "help wanted"],
+            "`gh issue edit <N> --add-label=bug --remove-label=paused`": ["bug", "paused"],
+            '`gh issue edit <N> --add-label "bug,help wanted" --remove-label paused`': ["bug", "help wanted", "paused"],
+            '`gh pr edit <N> --add-label bug,ready --remove-label "priority: low"`': ["bug", "priority: low", "ready"],
+            '`gh discussion edit <N> --add-label bug --remove-label "help wanted"`': ["bug", "help wanted"],
+            "`gh search issues --label question --repo <owner/name>`": ["question"],
+            '`gh search prs --label "bug,ready"`': ["bug", "ready"],
+            "`gh issue list -l question --repo <owner/name>`": ["question"],
+            "`gh issue ls -l question`": ["question"],
+            '`gh issue create -l bug -l "help wanted"`': ["bug", "help wanted"],
+            '`gh pr create -l "bug,help wanted"`': ["bug", "help wanted"],
+            "`gh issue new -l paused`": ["paused"],
+            "`gh pr ls -l ready`": ["ready"],
+            "`gh pr list -l ready`": ["ready"],
+            "`gh pr new -l paused`": ["paused"],
+            '`gh discussion create -l "bug,help wanted"`': ["bug", "help wanted"],
+            "`gh discussion list -l question --repo <owner/name>`": ["question"],
+            "`gh discussion ls -l ready`": ["ready"],
+            '`gh label create question --description "<description>"`': ["question"],
+            '`gh label create "bug,ready"`': ["bug,ready"],
+            "`gh label delete wontfix --yes`": ["wontfix"],
+            '`gh label edit question --description "<description>" --repo <owner/name>`': ["question"],
+            '`gh label edit "tier: trivial" --name parked`': ["parked", "tier: trivial"],
+            '`gh label edit parked --description "<description>" --name "help wanted"`': ["help wanted", "parked"],
+            "`gh label edit wontfix -n parked`": ["parked", "wontfix"],
+            '`gh label edit wontfix --name="help wanted"`': ["help wanted", "wontfix"],
+            "`git diff --cached --name-only`": [],
+            "`gh run download --name parked`": [],
+            "`gh run download -n parked`": [],
+            "`wc -l parked`": [],
+            "`gh issue develop -l 87`": [],
+            "`gh issue develop <N> -n parked`": [],
+            "`gh codespace create -l WestEurope`": [],
+            "`gh repo create <name> -l mit`": [],
+            "`gh repo list -l python`": [],
+            "`gh discussion new -l ready`": [],
+            "`gh release create <tag> -n parked`": [],
+            "`gh label list -S parked`": [],
+            "`gh search issues --no-label ready`": [],
+            "`gh search repos --good-first-issues 1`": [],
+        }
+        for text, labels in forms.items():
+            with self.subTest(text=text):
+                self.assertEqual(sorted(gh_labels(text)), sorted(labels))
 
     def test_issue_write_create_carries_each_relation_mutation_once(self):
         _, body = skill_docs()["issue-write"]
@@ -898,11 +1001,30 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertEqual(body.count(mutation), 1)
                 self.assertIn(mutation, create)
 
-    def test_issue_next_skip_names_out_of_queue_labels_in_order(self):
+    def test_issue_next_skip_names_the_hold_labels_in_order_and_no_other_holds_an_item_whatever_its_status_and_reports_the_label_that_skipped_it(self):
         _, body = skill_docs()["issue-next"]
-        skip = section(body, "Skip")
-        offsets = [skip.index(f"`{label}`") for label in OUT_OF_QUEUE_LABELS]
+        line = next(l for l in section(body, "Skip").splitlines() if ISSUE_NEXT_HOLD_LABELS in l)
+        self.assertEqual(re.findall(r"`([^`]+)`", line), list(HOLD_LABELS))
+        self.assertIn(ISSUE_NEXT_HELD_WHATEVER_STATUS, line)
+        self.assertIn(ISSUE_NEXT_HOLD_REPORTED, line)
+
+    def test_issue_next_order_walks_paused_then_ready_then_the_backlog_each_in_urgency_order_and_stops_only_when_every_item_is_held(self):
+        _, body = skill_docs()["issue-next"]
+        order = re.sub(r"\s+", " ", section(body, "Order"))
+        passages = (ISSUE_NEXT_LAST_SORT_KEY, ISSUE_NEXT_STATUS_GROUPS, ISSUE_NEXT_WALK_THE_GROUPS, ISSUE_NEXT_EVERY_ITEM_HELD)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, order)
+        offsets = [order.index(passage) for passage in passages]
         self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_next_flags_a_backlog_winner_as_one_to_triage_not_to_deliver(self):
+        _, body = skill_docs()["issue-next"]
+        self.assertIn(ISSUE_NEXT_BACKLOG_TO_TRIAGE, re.sub(r"\s+", " ", section(body, "Output")))
+
+    def test_issue_next_output_reports_each_item_skipped_above_the_winner_with_the_open_number_or_the_label_that_skipped_it(self):
+        _, body = skill_docs()["issue-next"]
+        self.assertIn(ISSUE_NEXT_SKIPPED_REPORTED, re.sub(r"\s+", " ", section(body, "Output")))
 
     def test_issue_next_skip_reads_blockers_and_pieces_from_the_relations(self):
         _, body = skill_docs()["issue-next"]
@@ -918,9 +1040,8 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertIn(label, output)
 
-    def test_issue_next_lets_a_closed_question_through_and_fills_decisions_made_from_its_ruling_comments(self):
+    def test_issue_next_fills_decisions_made_from_the_ruling_comments_in_comment_order(self):
         _, body = skill_docs()["issue-next"]
-        self.assertIn(ISSUE_NEXT_CLOSED_QUESTION_STAYS, section(body, "Skip"))
         output = section(body, "Output")
         self.assertIn(ISSUE_NEXT_DECISIONS_FROM_RULINGS, output)
         self.assertLess(output.index("Decisions made:"), output.index(ISSUE_NEXT_DECISIONS_FROM_RULINGS))
@@ -956,13 +1077,22 @@ class SkillPassagesTest(unittest.TestCase):
                 with self.subTest(skill=name, call=span):
                     self.assertIn(GH_REPO_FLAG, span)
 
-    def test_issue_question_files_one_comment_then_swaps_the_labels_and_repairs_the_label_set(self):
+    def test_issue_question_files_one_comment_then_adds_question_and_takes_ready_off_where_the_tracker_has_it(self):
         _, body = skill_docs()["issue-question"]
-        method = section(body, "Method")
-        for passage in (QUESTION_COMMENT_HEADING, ISSUE_QUESTION_COMMENT, ISSUE_QUESTION_LABEL_EDIT, ISSUE_QUESTION_LABEL_CREATE, ISSUE_QUESTION_LABEL_RENAME):
+        method = re.sub(r"\s+", " ", section(body, "Method"))
+        for passage in (QUESTION_COMMENT_HEADING, ISSUE_QUESTION_COMMENT, ISSUE_QUESTION_LABEL_EDIT, ISSUE_QUESTION_LABEL_EDIT_READY):
             with self.subTest(passage=passage):
                 self.assertIn(passage, method)
         self.assertLess(method.index(ISSUE_QUESTION_COMMENT), method.index(ISSUE_QUESTION_LABEL_EDIT))
+
+    def test_issue_question_keeps_a_bare_question_label_by_name_and_sets_its_description_or_creates_it_with_that_description(self):
+        _, body = skill_docs()["issue-question"]
+        method = re.sub(r"\s+", " ", section(body, "Method"))
+        step = method[method.index(" 4. "):]
+        for passage in (QUESTION_LABEL_DESCRIPTION, ISSUE_QUESTION_LABEL_ADOPT, ISSUE_QUESTION_LABEL_CREATE):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, step)
+        self.assertLess(step.index(QUESTION_LABEL_DESCRIPTION), step.index(ISSUE_QUESTION_LABEL_ADOPT))
 
     def test_issue_question_retries_the_recommender_once_on_a_disproven_claim_and_never_for_a_fix_list(self):
         _, body = skill_docs()["issue-question"]
@@ -981,7 +1111,7 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertLess(step.index(ISSUE_QUESTION_VIEW), step.index(ISSUE_QUESTION_RECOMMENDER_STATE))
         self.assertEqual(body.count("gh issue view"), 1)
 
-    def test_issue_answer_presents_one_item_under_questions_then_posts_the_ruling_and_closes_the_question(self):
+    def test_issue_answer_presents_one_item_under_questions_then_posts_the_ruling_and_removes_the_question_label(self):
         _, body = skill_docs()["issue-answer"]
         self.assertIn("`issue-next` § Order", section(body, "Input"))
         self.assertIn("`## Questions`", body)
@@ -1003,6 +1133,29 @@ class SkillPassagesTest(unittest.TestCase):
             for passage in (QUESTION_EXAMPLE_PER_OPTION, QUESTION_CODE_WHEN, QUESTION_REAL_TEXT_IN_CODE):
                 with self.subTest(place=place, passage=passage):
                     self.assertIn(passage, re.sub(r"\s+", " ", text))
+
+    def test_issue_answer_picks_the_first_item_under_question_with_a_question_still_unanswered_in_issue_next_order_and_presents_the_earliest_unanswered_one(self):
+        inputs = re.sub(r"\s+", " ", section(skill_docs()["issue-answer"][1], "Input"))
+        passages = (ISSUE_ANSWER_LIST, ISSUE_ANSWER_PICK_UNANSWERED, "`issue-next` § Order", ISSUE_ANSWER_RULING_PAIRS, ISSUE_ANSWER_EARLIEST_UNANSWERED)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, inputs)
+        offsets = [inputs.index(passage) for passage in passages]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_answer_names_the_items_the_pick_passes_over_in_the_one_line_above_the_question(self):
+        _, body = skill_docs()["issue-answer"]
+        inputs = re.sub(r"\s+", " ", section(body, "Input"))
+        self.assertIn(ISSUE_ANSWER_PASSED_OVER, inputs)
+        self.assertLess(inputs.index("is reported in one line"), inputs.index(ISSUE_ANSWER_PASSED_OVER))
+        self.assertIn(ISSUE_ANSWER_PASSED_OVER_OUTPUT, re.sub(r"\s+", " ", section(body, "Output")))
+
+    def test_issue_answer_removes_question_only_once_no_question_on_the_item_is_left_unanswered(self):
+        rule = section(skill_docs()["issue-answer"][1], "Rule")
+        step = next(line for line in rule.splitlines() if ISSUE_ANSWER_LABEL_EDIT in line)
+        self.assertIn(ISSUE_ANSWER_NONE_LEFT, step)
+        self.assertLess(step.index(ISSUE_ANSWER_NONE_LEFT), step.index(ISSUE_ANSWER_LABEL_EDIT))
+        self.assertIn(ISSUE_ANSWER_ANY_LEFT, step)
 
     def test_issue_answer_presents_in_the_form_claude_md_gives_for_both_forms_and_restates_neither(self):
         present = re.sub(r"\s+", " ", section(skill_docs()["issue-answer"][1], "Present"))
@@ -1070,7 +1223,30 @@ class SkillPassagesTest(unittest.TestCase):
                 line = next(l for l in rulings.splitlines() if l.startswith(prefix))
                 self.assertIn("`issue-question`", line)
         self.assertIn(ISSUE_TRIAGE_ROWS_ADD_NO_LABEL, rulings)
-        self.assertIn("`question: closed`", rulings)
+        self.assertIn(ISSUE_TRIAGE_FILING_LABEL, rulings)
+
+    def test_issue_triage_ready_row_adds_ready_unless_the_item_carries_paused(self):
+        _, body = skill_docs()["issue-triage"]
+        rulings = section(body, "Apply")
+        self.assertIn(ISSUE_TRIAGE_READY_EXAMPLE_ROW, rulings)
+        row = next(line for line in rulings.splitlines() if line.startswith("- ready —"))
+        for passage in ISSUE_TRIAGE_READY_ROW:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, row)
+
+    def test_issue_triage_revise_split_draft_and_question_rows_take_ready_off_an_item_that_carries_it(self):
+        _, body = skill_docs()["issue-triage"]
+        self.assertIn(ISSUE_TRIAGE_ROWS_TAKE_READY_OFF, re.sub(r"\s+", " ", section(body, "Apply")))
+
+    def test_issue_triage_closes_a_duplicate_as_a_duplicate_of_the_original_and_adds_no_label(self):
+        _, body = skill_docs()["issue-triage"]
+        row = next(line for line in section(body, "Apply").splitlines() if line.startswith("- duplicate —"))
+        bullet = next(line for line in section(body, "Duplicate").splitlines() if "is a duplicate:" in line)
+        for place, text in (("Duplicate", bullet), ("duplicate row", row)):
+            with self.subTest(place=place):
+                self.assertIn(ISSUE_TRIAGE_DUPLICATE_CLOSE, text)
+                self.assertIn(ISSUE_TRIAGE_DUPLICATE_NO_LABEL, text)
+                self.assertNotIn("--add-label", text)
 
     def test_issue_triage_done_closes_on_the_users_word_only_once_a_remote_branch_contains_every_cited_commit(self):
         _, body = skill_docs()["issue-triage"]
