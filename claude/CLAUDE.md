@@ -32,8 +32,9 @@ file, `git status`, one grep whose hits are counted, not read. Nothing else. Any
 brief — a search whose hits are read, a suite run, a dependency source read. The agent returns the
 passage; this chat judges it. A skill is the procedure; an agent runs one and returns the
 deliverable in the message — compact, complete, never a raw log. When capacity is limited, narrow
-scope, never method. The repo's agents pin `model` and `effort`, so they spawn bare; a built-in
-agent type inherits the session's model, so pass `model: opus`.
+scope, never method; Claude Code refuses a sub-agent once 20 run at once by default, so a fan-out
+is sized to that cap divided by what one lane forks. The repo's agents pin `model` and `effort`, so
+they spawn bare; a built-in agent type inherits the session's model, so pass `model: opus`.
 
 | Skill | Fires when |
 |---|---|
