@@ -1,6 +1,6 @@
 ---
 name: issue-next
-description: "Returns the next open item from the tracker as the fields a brief needs, ordered by status, then urgency, and blocked by nothing open. Use when asking what to work on next or which open issue is most urgent. Dispatches nothing."
+description: "Returns the next open item from the tracker as the fields a brief needs, ordered `priority: blocker` first, then by status, then urgency, and blocked by nothing open. Use when asking what to work on next or which open issue is most urgent. Dispatches nothing."
 ---
 
 # Next issue
@@ -13,7 +13,7 @@ None, or a repository: `--repo <owner/name>` then rides on every `gh issue` call
 
 `gh issue list --state open --limit 1000 --json number,title,labels,body`, then sort by the vocabulary `skills/issue-write/SKILL.md` § Labels defines:
 
-1. Priority label: high, then medium, then low, then unlabelled.
+1. Priority label: blocker, then high, then medium, then low, then unlabelled.
 2. Within a priority, type label: bug, feature, enhancement, documentation, then no type.
 3. Within that: the lowest number.
 
@@ -21,7 +21,7 @@ Two labels from one set: the item takes the more demanding one — the higher pr
 
 A `story` label changes no position: the item orders by its type.
 
-The sorted list then splits by status into three groups, each keeping its order: the items carrying `paused`, then those carrying `ready`, then the backlog, which carries neither. Walk the groups in turn and stop at the first item § Skip lets through. When every item is held, report the list and stop.
+The sorted list then splits into four groups, each keeping its order: the items carrying `priority: blocker`, whatever their status, then of the rest the items carrying `paused`, then those carrying `ready`, then the backlog, which carries neither. Walk the groups in turn and stop at the first item § Skip lets through. When every item is held, report the list and stop.
 
 ## Skip
 

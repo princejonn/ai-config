@@ -307,6 +307,7 @@ REPOSITORY_LABELS = (
     "enhancement",
     "documentation",
     "story",
+    "priority: blocker",
     "priority: high",
     "priority: medium",
     "priority: low",
@@ -330,6 +331,8 @@ GH_LABEL_NAME = r'(?:"([^"]+)"|([^\s`<"]+))'
 GH_LABEL_ARGUMENT = re.compile(rf'(?:--(?:add-|remove-)?label[ =]|gh label (?:create|delete) |gh label edit (?:(?=[^`\n]*? (?:--name[ =]|-n ){GH_LABEL_NAME}))?){GH_LABEL_NAME}')
 GH_LABEL_SHORTHAND_CALL = re.compile(r'gh (?:issue (?:list|ls|create|new)|pr (?:list|ls|create|new)|discussion (?:list|ls|create)) [^`\n]*')
 GH_LABEL_SHORTHAND_ARGUMENT = re.compile(rf'(?<=\s)-l {GH_LABEL_NAME}')
+ISSUE_WRITE_PRIORITY_BULLET = "- Priority: `priority: blocker`, `priority: high`, `priority: medium` or `priority: low` — the tracker's own label descriptions decide which (`gh label list --limit 1000`)."
+ISSUE_WRITE_STATUS_BULLET = "- Status, never written here: `ready`, taken by `deliver` as it stands; `paused`, started and stopped, handed out after blocker-priority items and before the rest. An open item carries at most one of the two and is in the backlog with neither; a label on a closed item is inert."
 ISSUE_WRITE_STATUS_LINE = "- Status, never written here:"
 ISSUE_WRITE_STATUS_AT_MOST_ONE = "An open item carries at most one of the two and is in the backlog with neither"
 ISSUE_WRITE_HOLDS_LINE = "- Holds, out of the queue whatever the status, never written here:"
@@ -392,8 +395,10 @@ ISSUE_NEXT_HOLD_LABELS = "The holds are the labels"
 ISSUE_NEXT_HELD_WHATEVER_STATUS = "a held item is out of the queue whatever its status"
 ISSUE_NEXT_HOLD_REPORTED = "reported with the label that skipped it"
 ISSUE_NEXT_SKIPPED_REPORTED = "Then the items skipped above it, each with the open number or the label that skipped it"
+ISSUE_NEXT_DESCRIPTION_ORDER = "Returns the next open item from the tracker as the fields a brief needs, ordered `priority: blocker` first, then by status, then urgency, and blocked by nothing open."
+ISSUE_NEXT_PRIORITY_ORDER = "1. Priority label: blocker, then high, then medium, then low, then unlabelled."
 ISSUE_NEXT_LAST_SORT_KEY = "3. Within that: the lowest number."
-ISSUE_NEXT_STATUS_GROUPS = "The sorted list then splits by status into three groups, each keeping its order: the items carrying `paused`, then those carrying `ready`, then the backlog, which carries neither."
+ISSUE_NEXT_GROUPS = "The sorted list then splits into four groups, each keeping its order: the items carrying `priority: blocker`, whatever their status, then of the rest the items carrying `paused`, then those carrying `ready`, then the backlog, which carries neither."
 ISSUE_NEXT_WALK_THE_GROUPS = "Walk the groups in turn and stop at the first item § Skip lets through."
 ISSUE_NEXT_EVERY_ITEM_HELD = "When every item is held, report the list and stop."
 ISSUE_NEXT_BACKLOG_TO_TRIAGE = "A backlog winner leaves flagged as one to triage, not to deliver."
@@ -1206,6 +1211,14 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(label=label):
                 self.assertEqual(len(re.findall(rf"(?<![\w-]){re.escape(label)}(?![\w-])", labels)), 1)
 
+    def test_issue_write_labels_priority_bullet_offers_priority_blocker_then_high_medium_or_low_as_the_tracker_label_descriptions_decide(self):
+        _, body = skill_docs()["issue-write"]
+        self.assertIn(ISSUE_WRITE_PRIORITY_BULLET, section(body, "Labels").splitlines())
+
+    def test_issue_write_labels_status_bullet_hands_out_paused_after_blocker_priority_items_and_before_the_rest(self):
+        _, body = skill_docs()["issue-write"]
+        self.assertIn(ISSUE_WRITE_STATUS_BULLET, section(body, "Labels").splitlines())
+
     def test_issue_write_labels_status_line_names_ready_then_paused_one_at_most_on_an_open_item_and_neither_for_the_backlog(self):
         _, body = skill_docs()["issue-write"]
         line = next(l for l in section(body, "Labels").splitlines() if l.startswith(ISSUE_WRITE_STATUS_LINE))
@@ -1360,10 +1373,18 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(ISSUE_NEXT_HELD_WHATEVER_STATUS, line)
         self.assertIn(ISSUE_NEXT_HOLD_REPORTED, line)
 
-    def test_issue_next_order_walks_paused_then_ready_then_the_backlog_each_in_urgency_order_and_stops_only_when_every_item_is_held(self):
+    def test_issue_next_description_first_sentence_orders_priority_blocker_first_then_by_status_then_urgency_and_blocked_by_nothing_open(self):
+        fields, _ = skill_docs()["issue-next"]
+        self.assertEqual(re.split(r"(?<=[.!?])\s+", fields["description"])[0], ISSUE_NEXT_DESCRIPTION_ORDER)
+
+    def test_issue_next_order_ranks_priority_blocker_then_high_then_medium_then_low_then_unlabelled(self):
+        _, body = skill_docs()["issue-next"]
+        self.assertIn(ISSUE_NEXT_PRIORITY_ORDER, section(body, "Order"))
+
+    def test_issue_next_order_walks_blocker_priority_items_then_paused_then_ready_then_the_backlog_each_in_urgency_order_and_stops_only_when_every_item_is_held(self):
         _, body = skill_docs()["issue-next"]
         order = re.sub(r"\s+", " ", section(body, "Order"))
-        passages = (ISSUE_NEXT_LAST_SORT_KEY, ISSUE_NEXT_STATUS_GROUPS, ISSUE_NEXT_WALK_THE_GROUPS, ISSUE_NEXT_EVERY_ITEM_HELD)
+        passages = (ISSUE_NEXT_LAST_SORT_KEY, ISSUE_NEXT_GROUPS, ISSUE_NEXT_WALK_THE_GROUPS, ISSUE_NEXT_EVERY_ITEM_HELD)
         for passage in passages:
             with self.subTest(passage=passage):
                 self.assertIn(passage, order)
