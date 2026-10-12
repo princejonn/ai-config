@@ -85,11 +85,13 @@ EXPECTED_AGENT_SKILLS = {
     **{name: ["research"] for name in RESEARCHER_AGENTS},
     "tester": ["test", "author-gherkin"],
     "reviewer-complex": ["review-change"],
+    "issue-writer": ["issue-write"],
 }
 EXPECTED_AGENT_MODELS = {
     "developer-trivial": "sonnet",
     "developer": "opus",
     "developer-complex": "fable",
+    "issue-writer": "opus",
     "recommender": "fable",
     "researcher-trivial": "sonnet",
     "researcher": "opus",
@@ -103,6 +105,7 @@ EXPECTED_AGENT_COLORS = {
     "developer-trivial": "blue",
     "developer": "blue",
     "developer-complex": "blue",
+    "issue-writer": "orange",
     "recommender": "purple",
     "researcher-trivial": "red",
     "researcher": "red",
@@ -112,9 +115,22 @@ EXPECTED_AGENT_COLORS = {
     "tester": "cyan",
     "verifier": "green",
 }
-EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "recommender", "researcher-trivial", "researcher", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
-ROUTED_ONLY_AGENTS = {"recommender", "researcher-trivial", "researcher", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
+EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "issue-writer", "recommender", "researcher-trivial", "researcher", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
+ROUTED_ONLY_AGENTS = {"issue-writer", "recommender", "researcher-trivial", "researcher", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
 RECOMMENDER_TOOLS = "Read, Grep, Glob, WebFetch, WebSearch"
+ISSUE_WRITER_TOOLS = "Agent, Skill, Bash, Read, Write, Grep, Glob"
+ISSUE_WRITER_DISPATCH = "dispatched by the chat in the background, one per discussion"
+ISSUE_WRITER_BODY = (
+    "You run issue-write on each item one discussion with the user yields",
+    "from the user's words the brief quotes under `Decisions made:`",
+    "creating the items in dependency order so every dependency line names a number already created",
+    "file each open question on a created item through issue-question, `Filed from: issue-write`",
+    "What you dispatch reports back only after a turn boundary, so you end your turn and resume on each result",
+    "create an item only once its issue-write § Check verdicts are in",
+    "hand back only once every verdict and every filed question is in",
+    'one line per item, its number, its URL and each question filed or "no open questions"',
+    "or what issue-write § Refuse or § Check returned in its place",
+)
 RESEARCHER_DISPATCH = "dispatched by the chat per the research routing in tiers.md"
 RESEARCH_LANE_KINDS = ("enumerates", "interprets")
 NOT_INVOKED_DIRECTLY = "not invoked directly"
@@ -244,6 +260,7 @@ CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as
 BOUNDARY_CLASSES = ("Secrets and credentials", "Customer or personal data", "Any path the repository marks confidential")
 CHANGE_SET_PER_COMMIT = "One commit per accepted change-set through `/commit-item`; an item may land in several, each reviewed"
 CLOSE_AFTER_PUSH = 'the issue closes after that commit is pushed, never before: pushed to the default branch, GitHub closes it; pushed to another branch, `gh issue close N --comment "<hash> <subject>"` runs once the push succeeds.'
+GIT_ITEM_FROM_A_DISCUSSION = "closing the item's tracker reference belongs to the item and needs no ask, and an item that comes out of a discussion with the user is created on that discussion; no item is created automatically."
 GIT_PAUSED_WORK_EXCEPTION = "paused work is committed and pushed to its `paused/<N>-<k>` branch, never to the default branch, per `deliver`; it reaches the working branch only uncommitted, inside the reviewed change-set"
 COMPLETING_COMMIT_FOOTER = "`Closes #N` only on the commit that completes the item, `Refs #N` on a change-set that leaves it open"
 COMPLETES_THE_ITEM_INPUT = "The brief says whether this change-set completes the item; unsaid, the footer is `Refs #N`."
@@ -307,13 +324,47 @@ ISSUE_WRITE_STATUS_LINE = "- Status, never written here:"
 ISSUE_WRITE_STATUS_AT_MOST_ONE = "An open item carries at most one of the two and is in the backlog with neither"
 ISSUE_WRITE_HOLDS_LINE = "- Holds, out of the queue whatever the status, never written here:"
 RELATION_MUTATIONS = ("addSubIssue", "addBlockedBy")
-ISSUE_WRITE_DESCRIPTION_TRIGGER = "Use when the user asks for a finding, a request, an idea or a user story discussed with them to become an issue"
-ISSUE_WRITE_ROW_TRIGGER = "the user asks for a finding, request, idea or story discussed with them to become a tracker item"
+ISSUE_WRITE_DESCRIPTION_TRIGGER = "Use when a discussion with the user yields a finding, a request, an idea or a user story to add as an issue"
+ISSUE_WRITE_ROW_TRIGGER = "a discussion with the user yields items to add"
+ISSUE_WRITE_ROW_INTAKE = (
+    "one `issue-writer` per discussion, in the background",
+    "the user's words verbatim under the brief's `Decisions made:`",
+    "the chat carries on in the same turn",
+    "when it returns, relays its one line per item",
+    "starts `issue-triage` on each new item unasked",
+)
 ISSUE_WRITE_INPUT_FROM_A_DISCUSSION = "A title and a description, however rough, from a discussion with the user."
 ISSUE_WRITE_FINDING_RAISED_NOT_FILED = "A finding made during work is raised with the user, not filed."
-ISSUE_WRITE_CREATE_STEP_1 = "1. The draft goes to the user first; creating an item is an external call, so it runs on their word (`rules/git.md`)."
+ISSUE_WRITE_INPUT_THE_SET = "The other items the same discussion yields, the rest of the set, come with it for § Check."
+ISSUE_WRITE_SECTIONS = ("Input", "Shape", "Labels", "Refuse", "Check", "Create", "Output")
+ISSUE_WRITE_CHECK_GATE = "Every item § Refuse lets through is checked before § Create; one a check stops gets nothing created and returns what stopped it."
+ISSUE_WRITE_CHECK_BULLETS = {
+    "- Duplicate:": (
+        "`issue-triage` § Duplicate's comparison set and sameness test, applied to the tracker and to the rest of the set",
+        "An open item with the same Goal stops it, returned by number",
+        "and so does an item earlier in the set, returned by title",
+        "a closed one stops nothing here",
+    ),
+    "- Evidence:": (
+        "each load-bearing § Why claim goes through `/verify-claim`",
+        "A `DISPROVEN` claim is corrected from the verdict's evidence or struck",
+        "a Goal that rests on a struck claim stops the item, returned with the verdict",
+        "an `UNVERIFIABLE` claim stops nothing here, and `issue-triage` § Critique judges it",
+    ),
+    "- Done:": (
+        "the Goal read against the tree",
+        "A file:line that already satisfies it stops the item, returned with it",
+    ),
+}
+ISSUE_WRITE_CHECK_DEPENDENTS = "A dependent follows its blocker in the set: a blocker stopped as a duplicate is replaced in the dependent's dependency line by the open item it matched, and a blocker refused or stopped otherwise leaves the dependent uncreated too, returned with the blocker's reason."
+ISSUE_WRITE_CHECK_LEAVES_TRIAGE = "The critique and a verdict per acceptance line stay `issue-triage`'s, its § Critique and § Done on the created item."
+ISSUE_TRIAGE_CRITIQUE_WHY_LINE = "each § Why claim verifies at the file:line or probe it cites"
+ISSUE_WRITE_FILED_FROM = "issue-write"
+ISSUE_TRIAGE_SAMENESS_TEST = "never by scoring their similarity, never by a shared subject alone"
+ISSUE_WRITE_OUTPUT_STOPPED = "Or, with nothing created, the question § Refuse returns or what stopped the item in § Check."
+ISSUE_WRITE_CREATE_STEP_1 = "1. An item is created only out of a discussion with the user, which is the word for every item it yields; nothing creates one automatically (`rules/git.md`)."
 ISSUE_WRITE_CREATE_STEPS = (
-    "1. The draft goes to the user first",
+    "1. An item is created only out of a discussion with the user",
     "2. Write the body to the session scratchpad",
     "3. `gh issue create",
     "4. The relations the item stands in",
@@ -352,8 +403,8 @@ ISSUE_QUESTION_LABEL_ADOPT = '`gh label edit question --description "<descriptio
 ISSUE_QUESTION_LABEL_CREATE = '`gh label create question --description "<description>" --repo <owner/name>`'
 ISSUE_QUESTION_RETRY_ONCE = "returns the question to the recommender once, the verdict attached"
 ISSUE_QUESTION_READY_QUESTION_NO_RECOMMENDER = "The ready question `issue-triage` § Ready files is filed as its own recommendation, with no recommender run."
-ISSUE_QUESTION_FILERS = ("`issue-triage` for a held finding or the ready question", "`deliver` for a deviation", "`deliver § Intake` for a `## Brief` the tree contradicts")
-ISSUE_QUESTION_FILED_FROM = "Filed from: <issue-triage | deliver | deliver § Intake>"
+ISSUE_QUESTION_FILERS = ("`issue-write` for an open question on an item it created", "`issue-triage` for a held finding or the ready question", "`deliver` for a deviation", "`deliver § Intake` for a `## Brief` the tree contradicts")
+ISSUE_QUESTION_FILED_FROM = "Filed from: <issue-write | issue-triage | deliver | deliver § Intake>"
 ISSUE_QUESTION_VIEW = "`gh issue view <N> --json body,comments --repo <owner/name>`"
 ISSUE_QUESTION_STATE_CITES_ISSUE_NEXT = "its state is its body and every comment, read as `issue-next` § Output reads them"
 ISSUE_QUESTION_RECOMMENDER_STATE = "the item's state, the question and the files it turns on"
@@ -370,7 +421,7 @@ ISSUE_ANSWER_ONE_ITEM = "One item per message"
 ISSUE_ANSWER_RESTART = "names what restarts"
 ISSUE_ANSWER_RESTART_ROUTES = (
     "nothing for the ready question `issue-triage` § Ready files when the ruling is ready",
-    "`issue-triage` on the item for every other ruling on a question `issue-triage` filed and for one `deliver § Intake` filed",
+    "`issue-triage` on the item for every other ruling on a question `issue-triage` filed, for one `issue-write` filed and for one `deliver § Intake` filed",
     "`issue-next` for one `deliver` filed",
 )
 ISSUE_ANSWER_READY_RULING = (
@@ -749,6 +800,20 @@ class AgentsTest(unittest.TestCase):
             with self.subTest(field=field):
                 self.assertIn(field, body)
 
+    def test_issue_writer_holds_agent_and_skill_and_is_dispatched_by_the_chat_in_the_background_one_per_discussion(self):
+        fields, _ = agent_docs()["issue-writer"]
+        self.assertEqual(fields["tools"], ISSUE_WRITER_TOOLS)
+        self.assertIn(ISSUE_WRITER_DISPATCH, fields["description"])
+
+    def test_issue_writer_creates_in_dependency_order_waits_past_each_turn_boundary_for_every_verdict_and_filed_question_and_returns_one_line_per_item(self):
+        _, body = agent_docs()["issue-writer"]
+        text = re.sub(r"\s+", " ", body)
+        for passage in ISSUE_WRITER_BODY:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, text)
+        offsets = [text.index(passage) for passage in ISSUE_WRITER_BODY]
+        self.assertEqual(offsets, sorted(offsets))
+
     def test_recommender_is_read_only_at_high_effort_and_dispatched_through_issue_question(self):
         fields, _ = agent_docs()["recommender"]
         self.assertEqual(fields["tools"], RECOMMENDER_TOOLS)
@@ -891,6 +956,11 @@ class GitRuleTest(unittest.TestCase):
         bullet = next(bullet for bullet in bullets if CHANGE_SET_PER_COMMIT in bullet)
         self.assertTrue(bullet.endswith(f"{GIT_PAUSED_WORK_EXCEPTION}."), bullet)
 
+    def test_an_item_that_comes_out_of_a_discussion_with_the_user_is_created_on_that_discussion_and_none_automatically(self):
+        bullets = [re.sub(r"\s+", " ", bullet).strip() for bullet in read(RULES / "git.md").split("\n- ")]
+        bullet = next(bullet for bullet in bullets if bullet.startswith("Ask first"))
+        self.assertTrue(bullet.endswith(GIT_ITEM_FROM_A_DISCUSSION), bullet)
+
 
 class HooksTest(unittest.TestCase):
     def test_manifest_top_level_keys_are_exactly_hooks_and_defaults(self):
@@ -933,12 +1003,22 @@ class ClaudeMdTest(unittest.TestCase):
         fields, _ = skill_docs()["research"]
         self.assertIn(RESEARCH_DESCRIPTION_AGENT, fields["description"])
 
-    def test_issue_write_row_and_description_both_fire_when_the_user_asks_for_a_discussed_item_to_become_one(self):
+    def test_issue_write_row_and_description_both_fire_when_a_discussion_with_the_user_yields_items_to_add(self):
         body = read(CLAUDE / "CLAUDE.md")
         row = next(line for line in body.splitlines() if line.startswith("| `issue-write` |"))
-        self.assertIn(ISSUE_WRITE_ROW_TRIGGER, row)
+        self.assertTrue(row.startswith(f"| `issue-write` | {ISSUE_WRITE_ROW_TRIGGER} — "), row)
         fields, _ = skill_docs()["issue-write"]
         self.assertIn(ISSUE_WRITE_DESCRIPTION_TRIGGER, fields["description"])
+
+    def test_issue_write_row_sends_the_discussion_to_one_background_issue_writer_with_the_users_words_verbatim_and_the_chat_carries_on_relays_and_triages_unasked_inside_the_claude_only_block(self):
+        body = read(CLAUDE / "CLAUDE.md")
+        row = next(line for line in body.splitlines() if line.startswith("| `issue-write` |"))
+        for passage in ISSUE_WRITE_ROW_INTAKE:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, row)
+        offsets = [row.index(passage) for passage in ISSUE_WRITE_ROW_INTAKE]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertNotIn("issue-writer", render_agents_md.render(CLAUDE / "CLAUDE.md", RULES))
 
     def test_design_surface_row_and_description_both_name_the_run_with_the_user_before_code_and_the_run_inside_issue_triage_without_them(self):
         body = read(CLAUDE / "CLAUDE.md")
@@ -1184,7 +1264,55 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertIn(passage, inputs)
         self.assertLess(inputs.index(ISSUE_WRITE_INPUT_FROM_A_DISCUSSION), inputs.index(ISSUE_WRITE_FINDING_RAISED_NOT_FILED))
 
-    def test_issue_write_create_sends_the_draft_to_the_user_first_keeps_the_steps_triage_cites_in_number_and_posts_a_settled_plan_for_a_complex_item_last(self):
+    def test_issue_write_input_brings_the_rest_of_the_set_the_discussion_yields_for_check(self):
+        _, body = skill_docs()["issue-write"]
+        self.assertIn(ISSUE_WRITE_INPUT_THE_SET, re.sub(r"\s+", " ", section(body, "Input")))
+
+    def test_issue_write_checks_every_item_refuse_lets_through_before_create_and_creates_nothing_for_one_a_check_stops(self):
+        _, body = skill_docs()["issue-write"]
+        for heading in ISSUE_WRITE_SECTIONS:
+            with self.subTest(heading=heading):
+                self.assertEqual(body.count(f"\n## {heading}\n"), 1)
+        offsets = [body.index(f"\n## {heading}\n") for heading in ISSUE_WRITE_SECTIONS]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertIn(ISSUE_WRITE_CHECK_GATE, section(body, "Check"))
+
+    def test_issue_write_check_stops_an_open_duplicate_a_goal_resting_on_a_disproven_claim_and_a_goal_the_tree_satisfies(self):
+        _, body = skill_docs()["issue-write"]
+        bullets = [line for line in section(body, "Check").splitlines() if line.startswith("- ")]
+        self.assertEqual([line[: line.index(":") + 1] for line in bullets], list(ISSUE_WRITE_CHECK_BULLETS))
+        for bullet, (label, passages) in zip(bullets, ISSUE_WRITE_CHECK_BULLETS.items()):
+            for passage in passages:
+                with self.subTest(bullet=label, passage=passage):
+                    self.assertIn(passage, bullet)
+            with self.subTest(bullet=label, order=True):
+                offsets = [bullet.index(passage) for passage in passages]
+                self.assertEqual(offsets, sorted(offsets))
+
+    def test_issue_write_check_cites_the_triage_duplicate_test_rather_than_restating_it_and_leaves_the_critique_and_acceptance_verdicts_to_triage(self):
+        docs = skill_docs()
+        _, body = docs["issue-write"]
+        self.assertIn(ISSUE_WRITE_CHECK_LEAVES_TRIAGE, section(body, "Check"))
+        self.assertIn(ISSUE_TRIAGE_SAMENESS_TEST, section(docs["issue-triage"][1], "Duplicate"))
+        for restated in (ISSUE_TRIAGE_SAMENESS_TEST, "gh issue list"):
+            with self.subTest(restated=restated):
+                self.assertNotIn(restated, body)
+
+    def test_issue_write_check_lets_a_dependent_follow_its_blocker_the_duplicates_open_match_standing_in_and_any_other_stop_leaving_it_uncreated(self):
+        _, body = skill_docs()["issue-write"]
+        check = section(body, "Check")
+        self.assertIn(ISSUE_WRITE_CHECK_DEPENDENTS, check)
+        self.assertLess(check.index("\n- Done:"), check.index(ISSUE_WRITE_CHECK_DEPENDENTS))
+        self.assertLess(check.index(ISSUE_WRITE_CHECK_DEPENDENTS), check.index(ISSUE_WRITE_CHECK_LEAVES_TRIAGE))
+
+    def test_issue_triage_critique_judges_each_why_claim_so_an_unverifiable_one_issue_write_check_lets_through_is_judged_there(self):
+        self.assertIn(ISSUE_TRIAGE_CRITIQUE_WHY_LINE, section(skill_docs()["issue-triage"][1], "Critique"))
+
+    def test_issue_write_output_returns_the_refuse_question_or_what_check_stopped_when_nothing_is_created(self):
+        _, body = skill_docs()["issue-write"]
+        self.assertIn(ISSUE_WRITE_OUTPUT_STOPPED, section(body, "Output"))
+
+    def test_issue_write_create_takes_the_discussion_with_the_user_as_the_word_for_every_item_keeps_the_steps_triage_cites_in_number_and_posts_a_settled_plan_for_a_complex_item_last(self):
         _, body = skill_docs()["issue-write"]
         steps = [line for line in section(body, "Create").splitlines() if re.match(r"\d+\. ", line)]
         self.assertEqual(len(steps), len(ISSUE_WRITE_CREATE_STEPS))
@@ -1325,7 +1453,7 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertTrue(step.startswith(f"1. {ISSUE_QUESTION_READY_QUESTION_NO_RECOMMENDER}"), step)
         self.assertEqual(method.count("no recommender run"), 1)
 
-    def test_issue_question_input_names_the_three_filers_and_the_comment_carries_the_one_that_filed_it(self):
+    def test_issue_question_input_names_the_four_filers_and_the_comment_carries_the_one_that_filed_it(self):
         _, body = skill_docs()["issue-question"]
         inputs = re.sub(r"\s+", " ", section(body, "Input"))
         for filer in ISSUE_QUESTION_FILERS:
@@ -1764,6 +1892,16 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(DELIVER_INTAKE_FILED_FROM, allowed)
         restart = next(line for line in section(docs["issue-answer"][1], "Rule").splitlines() if ISSUE_ANSWER_RESTART in line)
         clause = next(clause for clause in restart.split("; ") if f"`{DELIVER_INTAKE_FILED_FROM}`" in clause)
+        self.assertTrue(clause.startswith("`issue-triage` on the item"), clause)
+
+    def test_issue_writer_files_its_questions_from_a_value_issue_question_accepts_and_issue_answer_routes_to_triage(self):
+        docs = skill_docs()
+        self.assertIn(f"`Filed from: {ISSUE_WRITE_FILED_FROM}`", agent_docs()["issue-writer"][1])
+        template = re.search(r"```text\n(.*?)```", section(docs["issue-question"][1], "Method"), re.S).group(1)
+        allowed = re.search(r"Filed from: <(.*?)>", template).group(1).split(" | ")
+        self.assertIn(ISSUE_WRITE_FILED_FROM, allowed)
+        restart = next(line for line in section(docs["issue-answer"][1], "Rule").splitlines() if ISSUE_ANSWER_RESTART in line)
+        clause = next(clause for clause in restart.split("; ") if f"`{ISSUE_WRITE_FILED_FROM}`" in clause)
         self.assertTrue(clause.startswith("`issue-triage` on the item"), clause)
 
     def test_design_surface_exit_returns_the_locked_design_hands_it_to_deliver_or_back_to_triage_and_instructs_no_write(self):

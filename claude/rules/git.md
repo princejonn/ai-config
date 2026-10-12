@@ -18,5 +18,7 @@
 - **No session docs in any repo or its history** — notes, plans, work logs and scratch files
   live outside the tree or under a gitignored dir.
 - Ask first for anything reaching outside the repo: a new dependency, a schema change, a deploy,
-  an external call; closing the item's tracker reference belongs to the item and needs no ask.
+  an external call; closing the item's tracker reference belongs to the item and needs no ask, and
+  an item that comes out of a discussion with the user is created on that discussion; no item is
+  created automatically.
 - Never remove a package or its dependency wiring to make an install pass.

@@ -7,7 +7,7 @@ description: "Files one question on one tracker item — the question, each opti
 
 ## Input
 
-One issue number and the question: nothing else names the subject. What filed it — `issue-triage` for a held finding or the ready question, `deliver` for a deviation, `deliver § Intake` for a `## Brief` the tree contradicts — rides along, since `issue-answer` routes the ruling by it. `--repo <owner/name>` rides on every `gh` call here as two shell words. What leaves this skill is a comment whose ruling `issue-next` hands on as the `Decisions made:` field `rules/brief.md` defines.
+One issue number and the question: nothing else names the subject. What filed it — `issue-write` for an open question on an item it created, `issue-triage` for a held finding or the ready question, `deliver` for a deviation, `deliver § Intake` for a `## Brief` the tree contradicts — rides along, since `issue-answer` routes the ruling by it. `--repo <owner/name>` rides on every `gh` call here as two shell words. What leaves this skill is a comment whose ruling `issue-next` hands on as the `Decisions made:` field `rules/brief.md` defines.
 
 ## Method
 
@@ -25,7 +25,7 @@ One issue number and the question: nothing else names the subject. What filed it
    ### Recommendation
    <the one option, and the tie-break that decided it>
 
-   Filed from: <issue-triage | deliver | deliver § Intake>
+   Filed from: <issue-write | issue-triage | deliver | deliver § Intake>
    ```
 
 4. The label is `question`, with the description "An unanswered ## Question comment: out of the queue until its ## Ruling is posted". The tracker's labels, read with `gh label list --limit 1000 --json name --jq '.[].name' --repo <owner/name>` before the edit:

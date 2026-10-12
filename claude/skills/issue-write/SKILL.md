@@ -1,13 +1,13 @@
 ---
 name: issue-write
-description: "Drafts one tracker item in the shape this repository's items have, labelled for type — bug, feature, enhancement or documentation, with story for one written from the user's side — and for priority and tier, then creates it with `gh issue create`. Use when the user asks for a finding, a request, an idea or a user story discussed with them to become an issue; a description too vague for a goal or an observable acceptance comes back as a question instead of an item."
+description: "Drafts one tracker item in the shape this repository's items have, labelled for type — bug, feature, enhancement or documentation, with story for one written from the user's side — and for priority and tier, then creates it with `gh issue create`. Use when a discussion with the user yields a finding, a request, an idea or a user story to add as an issue; a description too vague for a goal or an observable acceptance comes back as a question instead of an item."
 ---
 
 # Write an issue
 
 ## Input
 
-A title and a description, however rough, from a discussion with the user. A finding made during work is raised with the user, not filed. An item is not a brief: it carries what must be true and how that is observed, and the brief `rules/brief.md` defines is written from it later.
+A title and a description, however rough, from a discussion with the user. The other items the same discussion yields, the rest of the set, come with it for § Check. A finding made during work is raised with the user, not filed. An item is not a brief: it carries what must be true and how that is observed, and the brief `rules/brief.md` defines is written from it later.
 
 ## Shape
 
@@ -43,9 +43,21 @@ When the Goal or Acceptance cannot be written from the description, create nothi
 
 One refusal per description. If the answer still leaves the same sentence missing, hand the description back as not actionable and stop.
 
+## Check
+
+Every item § Refuse lets through is checked before § Create; one a check stops gets nothing created and returns what stopped it.
+
+- Duplicate: `issue-triage` § Duplicate's comparison set and sameness test, applied to the tracker and to the rest of the set. An open item with the same Goal stops it, returned by number, and so does an item earlier in the set, returned by title; a closed one stops nothing here.
+- Evidence: each load-bearing § Why claim goes through `/verify-claim`. A `DISPROVEN` claim is corrected from the verdict's evidence or struck, and a Goal that rests on a struck claim stops the item, returned with the verdict; an `UNVERIFIABLE` claim stops nothing here, and `issue-triage` § Critique judges it.
+- Done: the Goal read against the tree. A file:line that already satisfies it stops the item, returned with it.
+
+A dependent follows its blocker in the set: a blocker stopped as a duplicate is replaced in the dependent's dependency line by the open item it matched, and a blocker refused or stopped otherwise leaves the dependent uncreated too, returned with the blocker's reason.
+
+The critique and a verdict per acceptance line stay `issue-triage`'s, its § Critique and § Done on the created item.
+
 ## Create
 
-1. The draft goes to the user first; creating an item is an external call, so it runs on their word (`rules/git.md`).
+1. An item is created only out of a discussion with the user, which is the word for every item it yields; nothing creates one automatically (`rules/git.md`).
 2. Write the body to the session scratchpad with the Write tool, as `issue-<slug>.md` with the slug from the title — never a shell heredoc, never a fixed name.
 3. `gh issue create --title <t> --label <type> --label <priority> --label <tier> --body-file <scratchpad file>`, with a further `--label story` when the item is one.
 4. The relations the item stands in, node ids from `gh issue view <N> --json id --jq .id`:
@@ -55,4 +67,4 @@ One refusal per description. If the answer still leaves the same sentence missin
 
 ## Output
 
-The item's number and its URL, with the relations step 4 wrote and the `## Plan` comment step 5 posted. Or the question, with nothing created.
+The item's number and its URL, with the relations step 4 wrote and the `## Plan` comment step 5 posted. Or, with nothing created, the question § Refuse returns or what stopped the item in § Check.
