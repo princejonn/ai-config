@@ -1,8 +1,12 @@
 import importlib.util
 import json
+import os
 import re
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO = Path(__file__).resolve().parent.parent
 CLAUDE = REPO / "claude"
@@ -17,6 +21,9 @@ SCRIPTS = REPO / "scripts"
 SPEC = importlib.util.spec_from_file_location("verdict_guard", HOOKS / "verdict-guard.py")
 verdict_guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(verdict_guard)
+GUARD_SPEC = importlib.util.spec_from_file_location("git_guard", HOOKS / "git-guard.py")
+git_guard = importlib.util.module_from_spec(GUARD_SPEC)
+GUARD_SPEC.loader.exec_module(git_guard)
 RENDER_SPEC = importlib.util.spec_from_file_location("render_agents_md", SCRIPTS / "render_agents_md.py")
 render_agents_md = importlib.util.module_from_spec(RENDER_SPEC)
 RENDER_SPEC.loader.exec_module(render_agents_md)
@@ -151,6 +158,7 @@ ONE_HOME_PHRASES = {
     "One attempt per item": "claude/skills/second-opinion-codex/SKILL.md",
     "the brief is incomplete and the question is above": "claude/skills/review-change/SKILL.md",
     "it is not a round": "claude/skills/deliver/SKILL.md",
+    "chore(paused)": "claude/skills/deliver/SKILL.md",
     "tier of the code it touches": "claude/skills/deliver/references/tiers.md",
     "unique output": "claude/skills/deliver/references/review-loop.md",
     "reviewed baseline": "claude/skills/deliver/references/review-loop.md",
@@ -236,6 +244,7 @@ CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as
 BOUNDARY_CLASSES = ("Secrets and credentials", "Customer or personal data", "Any path the repository marks confidential")
 CHANGE_SET_PER_COMMIT = "One commit per accepted change-set through `/commit-item`; an item may land in several, each reviewed"
 CLOSE_AFTER_PUSH = 'the issue closes after that commit is pushed, never before: pushed to the default branch, GitHub closes it; pushed to another branch, `gh issue close N --comment "<hash> <subject>"` runs once the push succeeds.'
+GIT_PAUSED_WORK_EXCEPTION = "paused work is committed and pushed to its `paused/<N>-<k>` branch, never to the default branch, per `deliver`; it reaches the working branch only uncommitted, inside the reviewed change-set"
 COMPLETING_COMMIT_FOOTER = "`Closes #N` only on the commit that completes the item, `Refs #N` on a change-set that leaves it open"
 COMPLETES_THE_ITEM_INPUT = "The brief says whether this change-set completes the item; unsaid, the footer is `Refs #N`."
 COMMIT_PUSH_CLOSE = "The order is commit, push, close, per `rules/git.md`"
@@ -434,8 +443,43 @@ ISSUE_TRIAGE_ROWS_TAKE_READY_OFF = "Every body edit — the draft, a fix list, t
 ISSUE_TRIAGE_SPLIT_PIECES = ("created through `issue-write` from § Create step 2 on", "one `Depends on` line per piece")
 ISSUE_TRIAGE_DUPLICATE_CLOSE = "`gh issue close <N> --duplicate-of <M> --comment <text>`"
 ISSUE_TRIAGE_DUPLICATE_NO_LABEL = "no label"
-DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, park the item and continue the loop with the next"
+DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, pause the item and continue the loop with the next"
 DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
+DELIVER_OPEN_ENTRY_UNCOMMITTED = "An item with an open ledger entry is not committed to the working branch until the user rules"
+DELIVER_SESSION_LIMIT_PAUSES = "On a session-limit error stop dispatching, pause each item in flight, state the checkpoint"
+DELIVER_PAUSE_TRIGGERS = ("a deviation filed through `issue-question`", "a breaker trip that ends the run (`references/review-loop.md`)", "a session-limit stop")
+DELIVER_PAUSE_APPLIES_TO = "applies to an item with a tracker reference and changes in the tree"
+DELIVER_PAUSE_EACH_COMMAND_ALONE = "Each command runs on its own:"
+DELIVER_PAUSED_SUBJECT = "chore(paused): paused work for #<N>"
+DELIVER_PAUSED_FOOTER = "Refs #<N>"
+DELIVER_PAUSE_STEPS = (
+    "`git switch -c paused/<N>-<k>`, k the item's count of `## Paused` comments plus one",
+    "`git add -- <paths>`, the item's paths by name",
+    "`git commit -F - -- <paths> <<'EOF' … EOF`",
+    f"`{DELIVER_PAUSED_SUBJECT}`",
+    "a body naming the working branch, what is done and the next step",
+    f"`{DELIVER_PAUSED_FOOTER}`",
+    "`git push origin paused/<N>-<k>`",
+    "`git switch <working branch>`",
+    "a `## Paused` comment on the item — the paused branch, the working branch, what is done and the next step —",
+    "`gh issue comment <N> --body-file <scratchpad file>`",
+    "`gh issue edit <N> --add-label paused --remove-label ready`",
+)
+DELIVER_RESUME_AFTER_INTAKE = "A `paused` item resumes after § Intake's check"
+DELIVER_RESUME_STEPS = (
+    "read its latest `## Paused` comment",
+    "`git fetch origin paused/<N>-<k>:paused/<N>-<k>` when the branch is not local",
+    "on the session's working branch `git cherry-pick --no-commit paused/<N>-<k>`",
+    "a conflicted path keeps its markers",
+    "`paused` stays until the item closes",
+    "a later pause cuts `paused/<N>-<k+1>`",
+)
+DELIVER_PAUSED_DELETE_AFTER_CLOSE = "Once the item is closed,"
+DELIVER_PAUSED_DELETE = (
+    "`git branch -D paused/<N>-<k>` for each branch `git branch --list 'paused/<N>-*'` prints",
+    "`git push origin --delete paused/<N>-<k>` for each `git ls-remote origin 'refs/heads/paused/<N>-*'` prints",
+)
+PAUSE_PLACEHOLDERS = (("<N>", "12"), ("<k>", "1"), ("<paths>", "a"), ("<working branch>", "main"), ("<scratchpad file>", "paused.md"))
 CLAUDE_MD_TRACKER_QUESTION = "A question on a tracker item is filed through `issue-question` and reported in one line; one with no item is asked inline as above."
 QUESTION_EXAMPLE_PER_OPTION = "a concrete example and its cost"
 QUESTION_CODE_WHEN = "an option that changes code or a file"
@@ -837,6 +881,11 @@ class GitRuleTest(unittest.TestCase):
         text = re.sub(r"\s+", " ", read(RULES / "git.md"))
         self.assertIn(CHANGE_SET_PER_COMMIT, text)
         self.assertIn(CLOSE_AFTER_PUSH, text)
+
+    def test_paused_work_is_committed_and_pushed_only_to_its_paused_branch_and_reaches_the_working_branch_uncommitted(self):
+        bullets = [re.sub(r"\s+", " ", bullet).strip() for bullet in read(RULES / "git.md").split("\n- ")]
+        bullet = next(bullet for bullet in bullets if CHANGE_SET_PER_COMMIT in bullet)
+        self.assertTrue(bullet.endswith(f"{GIT_PAUSED_WORK_EXCEPTION}."), bullet)
 
 
 class HooksTest(unittest.TestCase):
@@ -1600,11 +1649,52 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(passage=passage):
                 self.assertIn(passage, rounds)
 
-    def test_deliver_rounds_file_a_deviation_needing_the_user_through_issue_question_and_verify_a_ruling_premise(self):
+    def test_deliver_rounds_file_a_deviation_needing_the_user_through_issue_question_pause_the_item_and_verify_a_ruling_premise(self):
         _, body = skill_docs()["deliver"]
         bullet = next(line for line in section(body, "Rounds").splitlines() if "is a deviation:" in line)
         self.assertIn(DELIVER_DEVIATION_FILED, bullet)
         self.assertIn(DELIVER_RULING_PREMISE, bullet)
+
+    def test_deliver_rounds_keep_an_item_with_an_open_ledger_entry_off_the_working_branch_until_the_user_rules(self):
+        _, body = skill_docs()["deliver"]
+        bullet = next(line for line in section(body, "Rounds").splitlines() if "is a deviation:" in line)
+        self.assertIn(DELIVER_OPEN_ENTRY_UNCOMMITTED, bullet)
+
+    def test_deliver_interruptions_session_limit_pauses_each_item_in_flight_before_the_checkpoint(self):
+        _, body = skill_docs()["deliver"]
+        bullet = next(line for line in section(body, "Interruptions").splitlines() if line.startswith("- On a session-limit error"))
+        self.assertIn(DELIVER_SESSION_LIMIT_PAUSES, bullet)
+
+    def test_deliver_interruptions_pause_a_started_item_with_a_tracker_reference_in_ordered_commands_each_on_its_own_then_comment_and_relabel(self):
+        _, body = skill_docs()["deliver"]
+        bullet = next(line for line in section(body, "Interruptions").splitlines() if line.startswith("- A pause"))
+        for passage in (*DELIVER_PAUSE_TRIGGERS, DELIVER_PAUSE_APPLIES_TO, DELIVER_PAUSE_EACH_COMMAND_ALONE, *DELIVER_PAUSE_STEPS):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, bullet)
+        offsets = [bullet.index(passage) for passage in DELIVER_PAUSE_STEPS]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertLess(bullet.index(DELIVER_PAUSE_APPLIES_TO), bullet.index(DELIVER_PAUSE_EACH_COMMAND_ALONE))
+        self.assertLess(bullet.index(DELIVER_PAUSE_EACH_COMMAND_ALONE), offsets[0])
+
+    def test_deliver_interruptions_resume_a_paused_item_after_the_intake_check_by_fetching_and_cherry_picking_it_uncommitted(self):
+        _, body = skill_docs()["deliver"]
+        bullet = next(line for line in section(body, "Interruptions").splitlines() if line.startswith("- Before re-dispatching"))
+        passages = (DELIVER_RESUME_AFTER_INTAKE, *DELIVER_RESUME_STEPS)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, bullet)
+        offsets = [bullet.index(passage) for passage in passages]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_deliver_before_commit_deletes_every_paused_branch_of_the_item_locally_and_on_origin_once_it_is_closed(self):
+        _, body = skill_docs()["deliver"]
+        before = section(body, "Before commit")
+        passages = (COMMIT_PUSH_CLOSE, DELIVER_PAUSED_DELETE_AFTER_CLOSE, *DELIVER_PAUSED_DELETE)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, before)
+        offsets = [before.index(passage) for passage in passages]
+        self.assertEqual(offsets, sorted(offsets))
 
     def test_commit_item_footers_the_completing_commit_and_closes_no_issue_itself(self):
         fields, body = skill_docs()["commit-item"]
@@ -1730,6 +1820,49 @@ class TestReferencesTest(unittest.TestCase):
         for passage in (MUTATION_WORKTREE, MUTATION_SEEDING, MUTATION_CONCURRENCY, MUTATION_INCREMENTAL):
             with self.subTest(passage=passage):
                 self.assertIn(passage, reference)
+
+
+def deliver_commands(text):
+    message = f"{DELIVER_PAUSED_SUBJECT}\n\nWorking branch: <working branch>. Done: the helper. Next step: its test.\n\n{DELIVER_PAUSED_FOOTER}"
+    commands = []
+    for span in re.findall(r"`([^`]+)`", text):
+        if not span.startswith(("git ", "gh ")):
+            continue
+        command = span.replace(" … ", f"\n{message}\n")
+        for placeholder, value in PAUSE_PLACEHOLDERS:
+            command = command.replace(placeholder, value)
+        commands.append(command)
+    return commands
+
+
+class DeliverPauseGuardTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(directory.cleanup)
+        cls.root = os.path.realpath(directory.name)
+        environment = {"HOME": cls.root, "XDG_CONFIG_HOME": os.path.join(cls.root, ".config"), "GIT_CONFIG_SYSTEM": os.devnull}
+        patcher = mock.patch.dict(os.environ, environment)
+        patcher.start()
+        cls.addClassCleanup(patcher.stop)
+        cls.paused = os.path.join(cls.root, "paused")
+        subprocess.run(["git", "init", "-q", "-b", "paused/12-1", cls.paused], check=True, capture_output=True)
+
+    def judged(self, command):
+        return git_guard.evaluate({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": self.paused, "tool_input": {"command": command}})
+
+    def test_the_guard_permits_every_pause_resume_and_delete_command_deliver_runs_each_on_its_own_on_a_paused_branch(self):
+        _, body = skill_docs()["deliver"]
+        commands = deliver_commands(section(body, "Interruptions") + section(body, "Before commit"))
+        self.assertIn("git push origin paused/12-1", commands)
+        self.assertIn("git push origin --delete paused/12-1", commands)
+        self.assertTrue(any(command.startswith("git commit -F - -- a <<'EOF'\nchore(paused): paused work for #12\n") for command in commands), commands)
+        for command in commands:
+            with self.subTest(command=command):
+                self.assertIsNone(self.judged(command))
+
+    def test_the_paused_commit_subject_is_conventional(self):
+        self.assertRegex(DELIVER_PAUSED_SUBJECT.replace("<N>", "12"), git_guard.CONVENTIONAL_SUBJECT)
 
 
 def phrase_homes(phrase, tree=CLAUDE):
