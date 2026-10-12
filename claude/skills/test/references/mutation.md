@@ -12,15 +12,15 @@ interrupted campaign costs one run.
   "state": ".tmp/mutate",
   "runner": {
     "command": ["npm", "test", "--", "--reporter=json", "--outputFile={report}"],
-    "cwd": "packages/aegis",
+    "cwd": "packages/core",
     "format": "vitest-json",
     "timeoutSec": null
   },
-  "compile": { "command": ["npx", "tsc", "--noEmit", "--incremental", "--tsBuildInfoFile", "{state}/tsc.json"], "cwd": "packages/aegis" },
-  "mutable": ["packages/aegis/src/*"],
+  "compile": { "command": ["npx", "tsc", "--noEmit", "--incremental", "--tsBuildInfoFile", "{state}/tsc.json"], "cwd": "packages/core" },
+  "mutable": ["packages/core/src/*"],
   "buckets": { "feature": ["*.feature"], "unit": ["*.test.ts"] },
   "mutations": [
-    { "id": "alg-fallback", "file": "packages/aegis/src/sign.ts", "old": "alg ?? \"ES256\"", "new": "alg ?? \"HS256\"", "note": "the fallback arm" }
+    { "id": "alg-fallback", "file": "packages/core/src/sign.ts", "old": "alg ?? \"ES256\"", "new": "alg ?? \"HS256\"", "note": "the fallback arm" }
   ]
 }
 ```

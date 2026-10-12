@@ -23,7 +23,7 @@ pair() {
 }
 
 pair author-gherkin \
-  "Write the feature file for AesKit's public surface in packages/aes." \
+  "Write the feature file for CacheKit's public surface in packages/cache." \
   'test_render_empty fails one run in twenty on CI — diagnose the flake within 200 runs.'
 pair author-skill \
   'Add a new skill to my ai-config repo for summarising a changelog and word its description so it fires on the right prompts.' \

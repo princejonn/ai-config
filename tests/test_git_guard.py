@@ -17,7 +17,7 @@ SPEC = importlib.util.spec_from_file_location("git_guard", HOOK_PATH)
 git_guard = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(git_guard)
 
-MONOREPO = "/Users/someone/Projects/lindorm/lindorm-monorepo"
+MONOREPO = "/Users/someone/Projects/example/example-monorepo"
 TMPDIR = "/private/tmp/claude-501/abc"
 IGNORED = "node_modules/\ndist/\ncoverage/\n*.pyc\n__pycache__/\nlink\n/build/\n*.log\n!keep.log\n**/cache/\n/**/staging/\n**/**/twice/\n"
 RM_RULE = "rm outside $TMPDIR, the scratchpad or a git-ignored path deletes work the tree cannot regenerate."
@@ -104,7 +104,7 @@ class GitResetCleanTests(unittest.TestCase):
         self.assertEqual(decision(evaluate("git reset --merge")), "deny")
 
     def test_permits_mixed_reset(self):
-        self.assertIsNone(evaluate("git reset HEAD -- packages/aegis/src/x.ts"))
+        self.assertIsNone(evaluate("git reset HEAD -- packages/core/src/x.ts"))
 
     def test_denies_clean(self):
         self.assertEqual(decision(evaluate("git clean -fdx")), "deny")
@@ -121,8 +121,8 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
         self.assertIsNone(evaluate("git checkout -b feat"))
 
     def test_permits_pathspec_scoped_checkout(self):
-        self.assertIsNone(evaluate("git checkout -- packages/aegis/src/a.ts"))
-        self.assertIsNone(evaluate("git checkout HEAD -- packages/aegis/src/a.ts"))
+        self.assertIsNone(evaluate("git checkout -- packages/core/src/a.ts"))
+        self.assertIsNone(evaluate("git checkout HEAD -- packages/core/src/a.ts"))
         self.assertIsNone(evaluate("git checkout -- path/to/file"))
 
     def test_denies_tree_wide_pathspec_after_double_dash(self):
@@ -132,7 +132,7 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
                     result = evaluate(f"git {subcommand} -- {spec}")
                     self.assertEqual(decision(result), "deny")
                     self.assertEqual(rule(result), f"tree-wide git {subcommand} pathspec reverts everyone's uncommitted work.")
-        self.assertEqual(decision(evaluate("git checkout HEAD -- packages/aegis .")), "deny")
+        self.assertEqual(decision(evaluate("git checkout HEAD -- packages/core .")), "deny")
         self.assertEqual(decision(evaluate("git restore --staged -- .")), "deny")
 
     def test_denies_absolute_pathspec_equal_to_cwd(self):
@@ -142,7 +142,7 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
     def test_denies_absolute_pathspec_equal_to_repo_root(self):
         with tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR")) as root:
             os.makedirs(os.path.join(root, ".git"))
-            cwd = os.path.join(root, "packages", "aegis")
+            cwd = os.path.join(root, "packages", "core")
             os.makedirs(cwd)
             self.assertEqual(decision(evaluate(f"git checkout -- {root}", cwd=cwd)), "deny")
             self.assertEqual(decision(evaluate(f"git restore --staged -- {root}/", cwd=cwd)), "deny")
@@ -158,7 +158,7 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
                     self.assertEqual(decision(result), "deny")
                     self.assertEqual(rule(result), f"tree-wide git {subcommand} pathspec reverts everyone's uncommitted work.")
         self.assertIsNone(evaluate("git restore -- ':(glob)src/**/*.ts'"))
-        self.assertIsNone(evaluate("git checkout -- ':(top)packages/aegis'"))
+        self.assertIsNone(evaluate("git checkout -- ':(top)packages/core'"))
         self.assertIsNone(evaluate("git checkout -- ':(top,glob)*.ts'"))
 
     def test_denies_exclude_only_pathspecs_as_tree_wide(self):
@@ -189,8 +189,8 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
         self.assertEqual(rule(result), "tree-wide git checkout pathspec reverts everyone's uncommitted work.")
 
     def test_permits_scoped_relative_pathspecs(self):
-        self.assertIsNone(evaluate("git checkout -- ./packages/aegis"))
-        self.assertIsNone(evaluate("git restore -- ../packages/aegis"))
+        self.assertIsNone(evaluate("git checkout -- ./packages/core"))
+        self.assertIsNone(evaluate("git restore -- ../packages/core"))
         self.assertIsNone(evaluate("git restore -- $PWD/src"))
         self.assertIsNone(evaluate("git restore -- ${PWD}/src"))
 
@@ -199,8 +199,8 @@ class GitCheckoutRestoreSwitchTests(unittest.TestCase):
         self.assertEqual(decision(evaluate("git restore --staged .")), "deny")
 
     def test_permits_pathspec_scoped_restore(self):
-        self.assertIsNone(evaluate("git restore -- packages/aegis/src/a.ts"))
-        self.assertIsNone(evaluate("git restore --staged -- packages/aegis/src/a.ts"))
+        self.assertIsNone(evaluate("git restore -- packages/core/src/a.ts"))
+        self.assertIsNone(evaluate("git restore --staged -- packages/core/src/a.ts"))
         self.assertIsNone(evaluate("git restore --staged -- src/"))
         self.assertIsNone(evaluate("git restore --staged -- file"))
 
@@ -262,12 +262,12 @@ class GitPushTests(unittest.TestCase):
                 "git push --quiet origin feature/x",
                 "git push origin feature/x --quiet",
                 "git push origin feature/x --no-verify",
-                "git -C packages/aegis push origin feature/x",
+                "git -C packages/core push origin feature/x",
             )
         )
 
     def test_denies_a_remote_other_than_origin(self):
-        self.assert_denied(("git push upstream feature/x", "git push git@github.com:princejonn/ai-config.git main"))
+        self.assert_denied(("git push upstream feature/x", "git push git@github.com:owner/name.git main"))
 
     def test_denies_more_than_one_refspec(self):
         self.assert_denied(("git push origin feature/x feature/y", "git push origin main feature/x"))
@@ -362,7 +362,7 @@ class GitPushTests(unittest.TestCase):
         self.assert_denied(("git push origin main > log extra", "git push origin main 2>&1 --force"))
 
     def test_permits_a_push_beside_another_command(self):
-        self.assertIsNone(evaluate('git commit -m "feat(aegis): add thing" -- packages/aegis && git push origin feature/x'))
+        self.assertIsNone(evaluate('git commit -m "feat(core): add thing" -- packages/core && git push origin feature/x'))
         self.assertIsNone(evaluate("git push origin feature/x; git log -1"))
 
     def test_permits_fetch_pull_log_diff(self):
@@ -402,7 +402,7 @@ class GitPushTests(unittest.TestCase):
                 "git push --force origin --delete paused/12-1",
                 "git push origin --delete=paused/12-1",
                 "git push upstream --delete paused/12-1",
-                "git -C packages/aegis push origin --delete paused/12-1",
+                "git -C packages/core push origin --delete paused/12-1",
                 "git push  origin  --delete paused/12-1",
                 "git push origin --delete paused/12-1 # gone",
                 "sudo git push origin --delete paused/12-1",
@@ -438,7 +438,7 @@ class GitAliasTests(unittest.TestCase):
         self.assertIsNone(evaluate("git -c core.pager=cat log --stat"))
         self.assertIsNone(evaluate("git -c core.pager=cat log -1"))
         self.assertIsNone(evaluate("git --no-pager log -1"))
-        self.assertIsNone(evaluate("git -C packages/aegis log -1"))
+        self.assertIsNone(evaluate("git -C packages/core log -1"))
 
 
 class GitCommitFlagTests(unittest.TestCase):
@@ -453,14 +453,14 @@ class GitCommitFlagTests(unittest.TestCase):
         self.assertEqual(decision(evaluate('git commit -n -m "x"')), "deny")
 
     def test_permits_pathspec_commit(self):
-        self.assertIsNone(evaluate('git commit -m "feat(aegis): add thing" -- packages/aegis'))
-        self.assertIsNone(evaluate('git commit -m "fix: x" -- packages/aegis'))
+        self.assertIsNone(evaluate('git commit -m "feat(core): add thing" -- packages/core'))
+        self.assertIsNone(evaluate('git commit -m "fix: x" -- packages/core'))
         self.assertIsNone(evaluate('git commit -m "docs: RFC 6749 §3.1.1" -- a'))
 
     def test_message_attached_to_short_flag_is_not_read_as_flags(self):
-        self.assertIsNone(evaluate('git commit -m"feat: add thing" -- packages/aegis'))
-        self.assertIsNone(evaluate('git commit -qm "feat: add thing" -- packages/aegis'))
-        self.assertEqual(rule(evaluate("git commit -ma -- packages/aegis")), SUBJECT_RULE)
+        self.assertIsNone(evaluate('git commit -m"feat: add thing" -- packages/core'))
+        self.assertIsNone(evaluate('git commit -qm "feat: add thing" -- packages/core'))
+        self.assertEqual(rule(evaluate("git commit -ma -- packages/core")), SUBJECT_RULE)
         result = evaluate("git commit -Fan.txt -- a")
         self.assertEqual(decision(result), "deny")
         self.assertEqual(rule(result), "git commit -F takes the message from outside the command.")
@@ -547,9 +547,9 @@ class GitCommitMessageSourceTests(unittest.TestCase):
         self.assertIsNone(evaluate('git commit --message="fix: x" -- a'))
 
     def test_permits_stdin_message_from_a_heredoc(self):
-        self.assertIsNone(evaluate("git commit -F - -- packages/aegis <<'EOF'\nfix: thing\nEOF"))
-        self.assertIsNone(evaluate("git commit --file=- -- packages/aegis <<'EOF'\nfix: thing\nEOF"))
-        self.assertIsNone(evaluate("git commit -F- -- packages/aegis <<'EOF'\nfix: thing\nEOF"))
+        self.assertIsNone(evaluate("git commit -F - -- packages/core <<'EOF'\nfix: thing\nEOF"))
+        self.assertIsNone(evaluate("git commit --file=- -- packages/core <<'EOF'\nfix: thing\nEOF"))
+        self.assertIsNone(evaluate("git commit -F- -- packages/core <<'EOF'\nfix: thing\nEOF"))
         self.assertIsNone(evaluate("git commit -F - -- a <<'EOF'\nfix: x\nEOF"))
         self.assertIsNone(evaluate("git commit -F - -- a << EOF\nfix: x\nEOF"))
         self.assertIsNone(evaluate("git commit -F - -- a <<EOF\nfix: x\nEOF"))
@@ -600,15 +600,15 @@ class GitCommitAttributionTests(unittest.TestCase):
             "generated with [claude code]",
         ):
             with self.subTest(line=line):
-                self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{line}" -- packages/aegis')), "deny")
+                self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{line}" -- packages/core')), "deny")
 
     def test_denies_trailer_keys_case_insensitively_and_indented(self):
         for line in ("co-authored-by: X", "CO-AUTHORED-BY: X", "claude-session: url", "  co-authored-by: x"):
             with self.subTest(line=line):
-                self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{line}" -- packages/aegis')), "deny")
+                self.assertEqual(decision(evaluate(f'git commit -m "fix: thing\n\n{line}" -- packages/core')), "deny")
 
     def test_deny_reason_names_the_offending_line(self):
-        result = evaluate('git commit -m "fix: thing\n\n  co-authored-by: x" -- packages/aegis')
+        result = evaluate('git commit -m "fix: thing\n\n  co-authored-by: x" -- packages/core')
         self.assertIn("'co-authored-by: x'", reason(result))
 
     def test_product_names_are_not_attribution(self):
@@ -640,7 +640,7 @@ class GitCommitAttributionTests(unittest.TestCase):
         )
 
     def test_denies_marker_in_heredoc_body(self):
-        command = "git commit -F - -- packages/aegis <<'EOF'\nfix: thing\n\nCo-Authored-By: Someone\nEOF"
+        command = "git commit -F - -- packages/core <<'EOF'\nfix: thing\n\nCo-Authored-By: Someone\nEOF"
         self.assertEqual(decision(evaluate(command)), "deny")
 
     def test_permits_clean_message_with_lowercase_claude_path(self):
@@ -658,7 +658,7 @@ class GitCommitSubjectTests(unittest.TestCase):
             'git commit -m "Fixed the thing" -- a',
             'git commit -m "Feat: x" -- a',
             'git commit -m "feat:x" -- a',
-            'git commit -m "feat(Aegis): x" -- a',
+            'git commit -m "feat(Core): x" -- a',
             'git commit -m "update" -- a',
             'git commit --message="Fixed the thing" -- a',
             'git commit --message "Fixed the thing" -- a',
@@ -676,19 +676,19 @@ class GitCommitSubjectTests(unittest.TestCase):
 
     def test_permits_conventional_subject(self):
         for command in (
-            'git commit -m "feat(aegis): add thing" -- a',
+            'git commit -m "feat(core): add thing" -- a',
             'git commit -m "fix: x" -- a',
             'git commit -m "docs: RFC 6749 §3.1.1" -- a',
             'git commit -m "chore(repo): drop dependabot" -- a',
-            'git commit -m "refactor(proteus,iris): share the compiler" -- a',
+            'git commit -m "refactor(parser,lexer): share the compiler" -- a',
             'git commit -m "revert: feat(x): y" -- a',
             'git commit -m "build(deps): bump cbor2" -- a',
-            'git commit -m "test(pylon-http): cover 409" -- a',
+            'git commit -m "test(http-server): cover 409" -- a',
             'git commit --message="ci: split lanes" -- a',
             'git commit -qm "perf: x" -- a',
-            'git commit -m "fix(aegis): x" -m "Body prose that need not be conventional." -- a',
+            'git commit -m "fix(core): x" -m "Body prose that need not be conventional." -- a',
             "git commit -F - -- a <<'EOF'\nfeat: add thing\nEOF",
-            "git commit -F - -- a <<'EOF'\nfix(aegis): x\n\nbody\nEOF",
+            "git commit -F - -- a <<'EOF'\nfix(core): x\n\nbody\nEOF",
         ):
             with self.subTest(command=command):
                 self.assertIsNone(evaluate(command))
@@ -772,7 +772,7 @@ class GitCommitSectionSignTests(unittest.TestCase):
     def test_permits_qualified_section_refs(self):
         for text in ("RFC 6749 §3.1.1", "OIDC Core §3.1.2.1", "OIDC Discovery §4", "OpenID Connect §2", "RFC 9068 §2.2 and RFC 7519 §4.1.1", "RFC9052 §5.2"):
             with self.subTest(text=text):
-                self.assertIsNone(evaluate(f'git commit -m "fix(aegis): align with {text}" -- a'))
+                self.assertIsNone(evaluate(f'git commit -m "fix(core): align with {text}" -- a'))
         self.assertIsNone(evaluate('git commit -m "docs: OIDC Core §3.1.2.1" -- a'))
         self.assertIsNone(evaluate("git commit -F - -- a <<'EOF'\nfix: x\n\nRFC 6749 §3.1.1\nEOF"))
 
@@ -1046,7 +1046,7 @@ class VerifyPipeTests(unittest.TestCase):
         for command in (
             "npm test | tail -50",
             "npm t | tail",
-            "npm test -- Aegis 2>&1 | tail -5",
+            "npm test -- Core 2>&1 | tail -5",
             "npm run typecheck | head",
             "npm run test:unit | head",
             "npm run verify 2>&1 | tail -n 30",
@@ -1101,9 +1101,9 @@ class VerifyPipeTests(unittest.TestCase):
             "npm -s test | tail",
             "npm --loglevel silent test | tail",
             "npm --loglevel=silent test | tail",
-            "npm --prefix packages/aegis test | tail",
-            "npm -w packages/aegis test | tail",
-            "npm --workspace packages/aegis run test:unit | tail",
+            "npm --prefix packages/core test | tail",
+            "npm -w packages/core test | tail",
+            "npm --workspace packages/core run test:unit | tail",
             "npm run --silent test | head",
             "npm -s run --if-present build | tail",
         ):
@@ -1116,7 +1116,7 @@ class VerifyPipeTests(unittest.TestCase):
                 self.assertEqual(rule(evaluate(command)), PAGER_RULE)
 
     def test_last_command_of_a_subshell_joins_the_outer_pipeline(self):
-        for command in ("(cd packages/aegis && npm test) | tail -5", "(npm test | tail)", "cd packages/aegis && npm test | tail -3"):
+        for command in ("(cd packages/core && npm test) | tail -5", "(npm test | tail)", "cd packages/core && npm test | tail -3"):
             with self.subTest(command=command):
                 self.assertEqual(rule(evaluate(command)), PAGER_RULE)
 
@@ -1143,7 +1143,7 @@ class VerifyPipeTests(unittest.TestCase):
             "git log | head",
             "git diff --stat | head -20",
             "npm ls | head",
-            "npm --prefix packages/aegis ls | head",
+            "npm --prefix packages/core ls | head",
             "npm run dev | head",
             "npm run start | tail",
             "yarn install | tail",
@@ -1455,9 +1455,9 @@ class IgnoreRepoTests(unittest.TestCase):
         patcher.start()
         cls.addClassCleanup(patcher.stop)
         os.makedirs(os.path.join(cls.root, "src"))
-        os.makedirs(os.path.join(cls.root, "packages", "aegis", "dist"))
+        os.makedirs(os.path.join(cls.root, "packages", "core", "dist"))
         os.symlink("src", os.path.join(cls.root, "link"))
-        os.symlink(os.path.join("..", "..", "..", "src"), os.path.join(cls.root, "packages", "aegis", "dist", "link"))
+        os.symlink(os.path.join("..", "..", "..", "src"), os.path.join(cls.root, "packages", "core", "dist", "link"))
         with open(os.path.join(cls.root, ".gitignore"), "w") as ignore:
             ignore.write(IGNORED)
         with open(os.path.join(cls.root, "src", "a.ts"), "w") as tracked:
@@ -1499,8 +1499,8 @@ class RmTests(IgnoreRepoTests):
             "rm -rf node_modules",
             "rm -rf ./dist",
             "rm -rf dist/",
-            "rm -rf packages/aegis/dist",
-            "rm -rf packages/aegis/dist/bundle.js",
+            "rm -rf packages/core/dist",
+            "rm -rf packages/core/dist/bundle.js",
             "rm -rf node_modules dist",
             f"rm -rf {self.root}/node_modules",
             "sudo rm -rf node_modules",
@@ -1535,10 +1535,10 @@ class RmTests(IgnoreRepoTests):
         self.assertIsNone(self.in_repo("rm -rf node_modules"))
 
     def test_ignored_path_is_resolved_against_a_subdirectory_cwd(self):
-        self.assertIsNone(self.in_repo("rm -rf dist", "packages/aegis"))
-        self.assertIsNone(self.in_repo("rm -rf ../../node_modules", "packages/aegis"))
-        self.assertEqual(rule(self.in_repo("rm -rf .", "packages/aegis")), RM_RULE)
-        self.assertEqual(rule(self.in_repo("rm -rf ../../src", "packages/aegis")), RM_RULE)
+        self.assertIsNone(self.in_repo("rm -rf dist", "packages/core"))
+        self.assertIsNone(self.in_repo("rm -rf ../../node_modules", "packages/core"))
+        self.assertEqual(rule(self.in_repo("rm -rf .", "packages/core")), RM_RULE)
+        self.assertEqual(rule(self.in_repo("rm -rf ../../src", "packages/core")), RM_RULE)
 
     def test_denies_recursive_rm_of_a_path_git_does_not_ignore(self):
         for command in (
@@ -1559,7 +1559,7 @@ class RmTests(IgnoreRepoTests):
                 self.assertTrue(permitted(result).startswith("mv "))
 
     def test_denies_recursive_rm_of_an_ignored_symlink(self):
-        for command in ("rm -rf link/", "rm -rf link", "rm -rf ./link/", f"rm -rf {self.root}/link/", "rm -rf packages/aegis/dist/link/"):
+        for command in ("rm -rf link/", "rm -rf link", "rm -rf ./link/", f"rm -rf {self.root}/link/", "rm -rf packages/core/dist/link/"):
             with self.subTest(command=command):
                 self.assertEqual(rule(self.in_repo(command)), RM_RULE)
 
@@ -1569,8 +1569,8 @@ class RmTests(IgnoreRepoTests):
             ("rm -rf ./", ""),
             (f"rm -rf {self.root}", ""),
             (f"rm -rf {self.root}/", ""),
-            ("rm -rf ../..", "packages/aegis"),
-            (f"rm -rf {self.root}", "packages/aegis"),
+            ("rm -rf ../..", "packages/core"),
+            (f"rm -rf {self.root}", "packages/core"),
         ):
             with self.subTest(command=command, path=path):
                 self.assertEqual(rule(self.in_repo(command, path)), RM_RULE)
@@ -1648,14 +1648,14 @@ class RmTests(IgnoreRepoTests):
         self.assertIsNone(self.in_repo(f"rm -rf {TMPDIR}"))
 
     def test_denies_plain_rm_of_a_path_git_does_not_ignore(self):
-        for command in ("rm -f packages/aegis/src/x.ts", "rm src/a.ts", "rm notes.txt", "rm -- src/a.ts", "rm node_modules src/a.ts", "rm dist/out.js notes.txt"):
+        for command in ("rm -f packages/core/src/x.ts", "rm src/a.ts", "rm notes.txt", "rm -- src/a.ts", "rm node_modules src/a.ts", "rm dist/out.js notes.txt"):
             with self.subTest(command=command):
                 result = self.in_repo(command)
                 self.assertEqual(rule(result), RM_RULE)
                 self.assertTrue(permitted(result).startswith("mv "))
 
     def test_permits_plain_rm_of_a_git_ignored_or_temp_path(self):
-        for command in ("rm -f dist/out.js", "rm dist/out.js", 'rm "$TMPDIR/x"', "rm -- packages/aegis/dist/bundle.js", "rm -f dist/out.js packages/aegis/dist/bundle.js"):
+        for command in ("rm -f dist/out.js", "rm dist/out.js", 'rm "$TMPDIR/x"', "rm -- packages/core/dist/bundle.js", "rm -f dist/out.js packages/core/dist/bundle.js"):
             with self.subTest(command=command):
                 self.assertIsNone(self.in_repo(command))
 
@@ -1687,16 +1687,16 @@ class RmTests(IgnoreRepoTests):
 
     def test_check_ignore_runs_once_from_the_repository_root(self):
         with mock.patch.object(git_guard.subprocess, "run", return_value=mock.Mock(returncode=1, stdout=b"")) as run:
-            self.assertEqual(rule(self.in_repo("rm -rf dist", "packages/aegis")), RM_RULE)
+            self.assertEqual(rule(self.in_repo("rm -rf dist", "packages/core")), RM_RULE)
         self.assertEqual([call.args[0] for call in run.call_args_list], [["git", "-C", self.root, "check-ignore", "-v", "-z", "--stdin", "--"]])
-        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"packages/aegis/dist\0"])
+        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"packages/core/dist\0"])
         self.assertEqual({call.kwargs["timeout"] for call in run.call_args_list}, {2})
 
     def test_one_check_ignore_call_judges_every_target_of_a_segment(self):
-        targets = "node_modules dist packages/aegis/dist dist/out.js node_modules/pkg foo.log"
+        targets = "node_modules dist packages/core/dist dist/out.js node_modules/pkg foo.log"
         with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
             self.assertIsNone(self.in_repo(f"rm -rf {targets}"))
-        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"node_modules\0dist\0packages/aegis/dist\0dist/out.js\0node_modules/pkg\0foo.log\0"])
+        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"node_modules\0dist\0packages/core/dist\0dist/out.js\0node_modules/pkg\0foo.log\0"])
         with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
             result = self.in_repo(f"rm -rf {targets} src")
         self.assertEqual(rule(result), RM_RULE)
@@ -1705,8 +1705,8 @@ class RmTests(IgnoreRepoTests):
 
     def test_each_segment_gets_its_own_call_inside_the_budget(self):
         with mock.patch.object(git_guard.subprocess, "run", wraps=subprocess.run) as run:
-            self.assertIsNone(self.in_repo("rm -rf node_modules && rm -rf dist && rm -f dist/out.js && rm -rf packages/aegis/dist && rm foo.log"))
-        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"node_modules\0", b"dist\0", b"dist/out.js\0", b"packages/aegis/dist\0", b"foo.log\0"])
+            self.assertIsNone(self.in_repo("rm -rf node_modules && rm -rf dist && rm -f dist/out.js && rm -rf packages/core/dist && rm foo.log"))
+        self.assertEqual([call.kwargs["input"] for call in run.call_args_list], [b"node_modules\0", b"dist\0", b"dist/out.js\0", b"packages/core/dist\0", b"foo.log\0"])
         self.assertEqual({call.kwargs["timeout"] for call in run.call_args_list}, {2})
 
     def test_a_non_ascii_ignored_target_passes(self):
@@ -1783,8 +1783,8 @@ class FindDeleteTests(IgnoreRepoTests):
             ("find . -path '*/dist/*' -delete", ""),
             ("find src -name '*.pyc' -delete", ""),
             ("find . -type d -name '*.pyc' -name __pycache__ -delete", ""),
-            ("find . -name '*.pyc' -delete", "packages/aegis"),
-            ("find ../.. -name '*.pyc' -delete", "packages/aegis"),
+            ("find . -name '*.pyc' -delete", "packages/core"),
+            ("find ../.. -name '*.pyc' -delete", "packages/core"),
         ):
             with self.subTest(command=command, path=path):
                 self.assertIsNone(self.in_repo(command, path))
@@ -1795,7 +1795,7 @@ class FindDeleteTests(IgnoreRepoTests):
             "find node_modules ! -name x -o -newer y -ok rm {} \\;",
             'find node_modules -name "$PAT" -delete',
             "find dist -name '*.js' -delete",
-            "find packages/aegis/dist -type f -exec rm -rf {} +",
+            "find packages/core/dist -type f -exec rm -rf {} +",
             'find "$TMPDIR/x" -newer y -delete',
             "find $TMPDIR/x -name '*.log' -delete",
             'find "${TMPDIR}/x" -type d -exec rm -rf {} +',
@@ -2133,7 +2133,7 @@ class FindDeleteTests(IgnoreRepoTests):
 
 class CompoundCommandTests(unittest.TestCase):
     def test_denies_stash_after_and(self):
-        self.assertEqual(decision(evaluate("cd packages/aegis && npm test && git stash")), "deny")
+        self.assertEqual(decision(evaluate("cd packages/core && npm test && git stash")), "deny")
 
     def test_denies_stash_after_semicolon_and_pipe(self):
         self.assertEqual(decision(evaluate("ls; git stash")), "deny")
@@ -2142,14 +2142,14 @@ class CompoundCommandTests(unittest.TestCase):
         self.assertEqual(decision(evaluate("ls | xargs git stash")), "deny")
 
     def test_permits_safe_compound(self):
-        self.assertIsNone(evaluate("cd packages/aegis && git status && git diff --stat | head -20"))
+        self.assertIsNone(evaluate("cd packages/core && git status && git diff --stat | head -20"))
         self.assertIsNone(evaluate('npm test > "$TMPDIR/o.txt" 2>&1; tail -50 "$TMPDIR/o.txt"'))
         self.assertIsNone(evaluate("npm test && tail out.txt"))
         self.assertIsNone(evaluate("if git diff --quiet; then echo clean; fi"))
         self.assertIsNone(evaluate('for f in a b; do git add -- "$f"; done'))
 
     def test_handles_git_global_options(self):
-        self.assertEqual(decision(evaluate("git -C lindorm-monorepo stash")), "deny")
+        self.assertEqual(decision(evaluate("git -C example-monorepo stash")), "deny")
         self.assertEqual(decision(evaluate("git -c core.pager=cat stash")), "deny")
         self.assertEqual(decision(evaluate("git --no-pager --git-dir=.git stash")), "deny")
 

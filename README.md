@@ -1,7 +1,5 @@
 # ai-config
 
-[![gate](https://github.com/princejonn/ai-config/actions/workflows/gate.yml/badge.svg)](https://github.com/princejonn/ai-config/actions/workflows/gate.yml)
-
 Source of truth for Claude Code configuration under `~/.claude`, shared with Codex.
 
 ```
