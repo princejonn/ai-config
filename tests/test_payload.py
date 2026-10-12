@@ -182,6 +182,8 @@ ONE_HOME_PHRASES = {
     "wearing a review's clothes": "claude/skills/deliver/references/review-loop.md",
     "needs no ask": "claude/rules/git.md",
     "never a brief line": "claude/rules/git.md",
+    "the commits that land its change-sets": "claude/rules/git.md",
+    "a push to `main` asks": "claude/rules/git.md",
     "Goal or Acceptance cannot be written": "claude/skills/issue-write/SKILL.md",
     "A finding made during work is raised with the user, not filed": "claude/skills/issue-write/SKILL.md",
     "Depends on #N": "claude/skills/issue-write/SKILL.md",
@@ -259,12 +261,20 @@ AUTHOR_GHERKIN_UNDEFINED_STEPS = "Undefined steps are the expected result"
 CORRECTNESS_FIRST = "Spend your reasoning on the failure modes the plan flags as tricky — correctness first, speed nowhere."
 BOUNDARY_CLASSES = ("Secrets and credentials", "Customer or personal data", "Any path the repository marks confidential")
 CHANGE_SET_PER_COMMIT = "One commit per accepted change-set through `/commit-item`; an item may land in several, each reviewed"
-CLOSE_AFTER_PUSH = 'the issue closes after that commit is pushed, never before: pushed to the default branch, GitHub closes it; pushed to another branch, `gh issue close N --comment "<hash> <subject>"` runs once the push succeeds.'
+GIT_PUSH_AFTER_COMMIT = "Each commit is followed by a push of its branch, `git push origin <branch>`."
+GIT_DONE_ON_A_REMOTE_BRANCH = "An item is done when a remote branch carries the commits that land its change-sets, merged to the default branch or not."
+CLOSE_AFTER_PUSH = f'{GIT_PUSH_AFTER_COMMIT} {GIT_DONE_ON_A_REMOTE_BRANCH} The `Closes #N` footer goes on the commit that completes the item, and the issue closes after that commit is pushed, never before: pushed to the default branch, GitHub closes it; pushed to another branch, `gh issue close N --comment "<hash> <subject>"` runs once the push succeeds.'
+GIT_PUSH_ASKS_ONLY_ON_MAIN = "a push is not an external call — a push to `main` asks through the permission prompt, a push to any other branch needs no ask;"
 GIT_ITEM_FROM_A_DISCUSSION = "closing the item's tracker reference belongs to the item and needs no ask, and an item that comes out of a discussion with the user is created on that discussion; no item is created automatically."
 GIT_PAUSED_WORK_EXCEPTION = "paused work is committed and pushed to its `paused/<N>-<k>` branch, never to the default branch, per `deliver`; it reaches the working branch only uncommitted, inside the reviewed change-set"
 COMPLETING_COMMIT_FOOTER = "`Closes #N` only on the commit that completes the item, `Refs #N` on a change-set that leaves it open"
 COMPLETES_THE_ITEM_INPUT = "The brief says whether this change-set completes the item; unsaid, the footer is `Refs #N`."
 COMMIT_PUSH_CLOSE = "The order is commit, push, close, per `rules/git.md`"
+COMMIT_ITEM_CONFIRMS_THE_COMMIT = "`git show --name-only`"
+COMMIT_ITEM_PUSH = "`git push origin <branch>`, `<branch>` the name `git branch --show-current` prints, written literally and unquoted"
+COMMIT_ITEM_REPORT = "Report the hash, the paths, the pushed branch or that the push was declined or failed"
+COMMIT_ITEM_CLOSES_AFTER_THE_PUSH = "the issue closes after the push, per `rules/git.md`"
+COMMIT_ITEM_DESCRIPTION_PUSH = "and pushes its branch"
 DELIVER_TIERS_EVERY_ITEM = "Tier every item per `references/tiers.md` before it runs"
 DELIVER_TRIVIAL_INLINE = "A one-liner tiered `trivial` runs `implement` inline; every other item gets a brief."
 DELIVER_INTAKE_BRIEF_FROM_ISSUE_NEXT = "A tracker item's brief is the `## Brief` comment `issue-next` hands out, later rulings under `Decisions made:` included."
@@ -950,6 +960,22 @@ class GitRuleTest(unittest.TestCase):
         text = re.sub(r"\s+", " ", read(RULES / "git.md"))
         self.assertIn(CHANGE_SET_PER_COMMIT, text)
         self.assertIn(CLOSE_AFTER_PUSH, text)
+
+    def test_each_commit_is_followed_by_a_push_of_its_branch_stated_once(self):
+        text = re.sub(r"\s+", " ", read(RULES / "git.md"))
+        self.assertEqual(text.count(GIT_PUSH_AFTER_COMMIT), 1)
+
+    def test_an_item_is_done_when_a_remote_branch_carries_the_commits_that_land_its_change_sets_merged_or_not_stated_once(self):
+        text = re.sub(r"\s+", " ", read(RULES / "git.md"))
+        self.assertEqual(text.count(GIT_DONE_ON_A_REMOTE_BRANCH), 1)
+
+    def test_only_a_push_to_main_asks_through_the_permission_prompt_stated_once_in_the_ask_bullet_before_its_item_clauses(self):
+        text = re.sub(r"\s+", " ", read(RULES / "git.md"))
+        self.assertEqual(text.count(GIT_PUSH_ASKS_ONLY_ON_MAIN), 1)
+        bullets = [re.sub(r"\s+", " ", bullet).strip() for bullet in read(RULES / "git.md").split("\n- ")]
+        bullet = next(bullet for bullet in bullets if bullet.startswith("Ask first"))
+        self.assertIn(GIT_PUSH_ASKS_ONLY_ON_MAIN, bullet)
+        self.assertLess(bullet.index(GIT_PUSH_ASKS_ONLY_ON_MAIN), bullet.index(GIT_ITEM_FROM_A_DISCUSSION))
 
     def test_paused_work_is_committed_and_pushed_only_to_its_paused_branch_and_reaches_the_working_branch_uncommitted(self):
         bullets = [re.sub(r"\s+", " ", bullet).strip() for bullet in read(RULES / "git.md").split("\n- ")]
@@ -1842,6 +1868,20 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(COMPLETING_COMMIT_FOOTER, section(body, "Steps"))
         self.assertIn(COMPLETES_THE_ITEM_INPUT, section(body, "Preconditions"))
 
+    def test_commit_item_pushes_its_branch_by_its_literal_name_once_the_commit_is_confirmed_and_reports_the_pushed_branch_before_the_issue_closes(self):
+        _, body = skill_docs()["commit-item"]
+        steps = section(body, "Steps")
+        passages = (COMMIT_ITEM_CONFIRMS_THE_COMMIT, COMMIT_ITEM_PUSH, COMMIT_ITEM_REPORT, COMMIT_ITEM_CLOSES_AFTER_THE_PUSH)
+        for passage in passages:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, steps)
+        offsets = [steps.index(passage) for passage in passages]
+        self.assertEqual(offsets, sorted(offsets))
+
+    def test_commit_item_description_says_it_pushes_its_branch(self):
+        fields, _ = skill_docs()["commit-item"]
+        self.assertIn(COMMIT_ITEM_DESCRIPTION_PUSH, fields["description"])
+
     def test_deliver_before_commit_orders_commit_push_close_by_the_git_rule(self):
         _, body = skill_docs()["deliver"]
         self.assertIn(COMMIT_PUSH_CLOSE, section(body, "Before commit"))
@@ -2029,6 +2069,18 @@ class DeliverPauseGuardTest(unittest.TestCase):
 
     def test_the_paused_commit_subject_is_conventional(self):
         self.assertRegex(DELIVER_PAUSED_SUBJECT.replace("<N>", "12"), git_guard.CONVENTIONAL_SUBJECT)
+
+
+class CommitItemPushGuardTest(unittest.TestCase):
+    def test_the_guard_permits_the_one_push_commit_item_runs_on_a_working_branch_and_on_main(self):
+        _, body = skill_docs()["commit-item"]
+        pushes = [span for span in re.findall(r"`([^`]+)`", section(body, "Steps")) if span.startswith("git push")]
+        self.assertEqual(len(pushes), 1, pushes)
+        with tempfile.TemporaryDirectory() as cwd:
+            for branch in ("feature/93-push", "main"):
+                command = pushes[0].replace("<branch>", branch)
+                with self.subTest(command=command):
+                    self.assertIsNone(git_guard.evaluate({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": cwd, "tool_input": {"command": command}}))
 
 
 def phrase_homes(phrase, tree=CLAUDE):
