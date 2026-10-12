@@ -32,7 +32,7 @@ A test that cannot fail reports coverage it does not have. Over-broad mocks, tau
 
 - **Regression test for a fix:** pinning test first, on the tree as found. Write the test, run it against the tree with no source file edited yet, and record the failure — test name and the assertion that failed. Only then write the fix and rerun it green. Copy-aside-and-remove applies only when the fix is already in the tree: copy it aside, remove the mechanism whole — the helpers and structure it introduced included — run, restore, and verify the restore by content (checksum or diff) — never by a file-status listing. A failure staged afterwards by reverting does not count: the helpers and structure the fix introduced stay standing, so what fails is one line's sensitivity, not the defect.
 - **Coverage for a feature:** copy aside, revert the behaviour the test exists for, watch that named test fail, restore, verify by content.
-- The aside copy and any scratch repository live in the session scratchpad and stay there; deleting them buys nothing and costs a permission prompt.
+- The aside copy and any scratch repository live in the session scratchpad and stay there; deleting them buys nothing.
 - Where reverting is genuinely impractical, say so and state which tests are therefore reasoned rather than demonstrated. That is never the default.
 
 ## Mutation proof
