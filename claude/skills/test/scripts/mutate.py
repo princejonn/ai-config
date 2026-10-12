@@ -381,7 +381,7 @@ def refuse_when_marked(config: Config) -> None:
 
 def require_ignored_state(config: Config) -> None:
     if git(config.repo, "check-ignore", "-q", str(config.state)).returncode != 0:
-        raise Refuse(f"the state directory {config.state} is not ignored by git — add it to .gitignore")
+        raise Refuse(f"the state directory {config.state} is not ignored by git — add it to .gitignore or .git/info/exclude")
     config.state.mkdir(parents=True, exist_ok=True)
 
 

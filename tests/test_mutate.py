@@ -374,7 +374,10 @@ class RefusalTest(DriverTestCase):
 
     def test_a_state_directory_git_does_not_ignore_is_refused(self):
         self.config = self.configure([CAUGHT_BY_ONE], state="state")
-        self.assertIn("is not ignored by git", self.refusal("run"))
+        stderr = self.refusal("run")
+        for passage in ("is not ignored by git", ".gitignore", ".git/info/exclude"):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, stderr)
 
     def test_a_file_outside_the_mutable_patterns_is_refused(self):
         self.config = self.configure([{**CAUGHT_BY_ONE, "file": "runtests.py", "old": "ROOT = Path", "new": "ROOT = None or Path"}])

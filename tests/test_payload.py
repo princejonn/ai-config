@@ -175,6 +175,8 @@ ONE_HOME_PHRASES = {
     "the brief is incomplete and the question is above": "claude/skills/review-change/SKILL.md",
     "it is not a round": "claude/skills/deliver/SKILL.md",
     "chore(paused)": "claude/skills/deliver/SKILL.md",
+    "the first six words of the brief's Goal": "claude/skills/deliver/SKILL.md",
+    "is ignored through `.git/info/exclude`": "claude/skills/deliver/SKILL.md",
     "tier of the code it touches": "claude/skills/deliver/references/tiers.md",
     "unique output": "claude/skills/deliver/references/review-loop.md",
     "reviewed baseline": "claude/skills/deliver/references/review-loop.md",
@@ -294,7 +296,7 @@ RESEARCH_ROW_AGENT = "in the tier's researcher agent"
 RESEARCH_DESCRIPTION_AGENT = "in a researcher agent"
 DELIVER_RESEARCH_READS = "Bulk and interpreting reads go to the tier's researcher per `references/tiers.md`"
 DELIVER_MEMO_ENTERS_THE_BRIEF = "the memo, not the material, enters the brief"
-DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it where the project keeps plans — and hands it to `deliver`, or back to `issue-triage` when triage ran it."
+DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it as `<repo>/.tmp/design-<slug>.md`, `<slug>` formed from its brief's Goal as `skills/deliver/SKILL.md` § Interruptions forms `<item>`, `.tmp/` as it gives it for the living brief — and hands it to `deliver`, or back to `issue-triage` when triage ran it."
 DESIGN_DESCRIPTION_MODES = "inline with the user or inside issue-triage on an item with nothing asked of them"
 DESIGN_ROW_MODES = "with the user before code, or inside `issue-triage` without them"
 DESIGN_CLAIMS_VERIFIED_BEFORE_THE_USER_OR_TRIAGE = "Load-bearing claims go to `verify-claim` before a proposal reaches the user, or returns to `issue-triage` when triage ran it."
@@ -516,6 +518,16 @@ ISSUE_TRIAGE_DUPLICATE_NO_LABEL = "no label"
 DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, pause the item and continue the loop with the next"
 DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
 DELIVER_OPEN_ENTRY_UNCOMMITTED = "An item with an open ledger entry is not committed to the working branch until the user rules"
+DELIVER_LIVING_BRIEF_PER_ITEM = "**One living brief per item**, carrying the invariant ledger"
+DELIVER_BATCHED_ROUND_FILES_PER_ITEM = "A batched round reads every brief in its batch and files its findings and its artefact under each item it covers; `<round>` counts per item and never restarts."
+DELIVER_LIVING_BRIEF_UNDER_TMP = (
+    "The living brief is `<repo>/.tmp/deliver-<item>.md`, never the tree",
+    "`<item>` the tracker number or, with none, the first six words of the brief's Goal, lower-cased, each run of characters other than a–z and 0–9 made one hyphen, with no hyphen at either end.",
+    "Write progress through to it after every item — the brief's status, the item's files — so a resume needs that file and the working tree, never conversation archaeology.",
+    "`.tmp/` is ignored through `.git/info/exclude`: before the first write under `.tmp/`, when `git check-ignore -q .tmp/` fails, run `printf '.tmp/\\n' >> \"$(git rev-parse --git-path info/exclude)\"`.",
+)
+REVIEW_LOOP_EACH_ITEMS_BRIEF = "- **Each item's living brief, re-sent whole.**"
+REVIEW_LOOP_ARTEFACT_BESIDE_THE_BRIEF = "- **A unique output artefact per round**, `<repo>/.tmp/review-<item>-<round>.md` beside the living brief."
 DELIVER_SESSION_LIMIT_PAUSES = "On a session-limit error stop dispatching, pause each item in flight, state the checkpoint"
 DELIVER_PAUSE_TRIGGERS = ("a deviation filed through `issue-question`", "a breaker trip that ends the run (`references/review-loop.md`)", "a session-limit stop")
 DELIVER_PAUSE_APPLIES_TO = "applies to an item with a tracker reference and changes in the tree"
@@ -1846,6 +1858,20 @@ class SkillPassagesTest(unittest.TestCase):
         bullet = next(line for line in section(body, "Rounds").splitlines() if "is a deviation:" in line)
         self.assertIn(DELIVER_OPEN_ENTRY_UNCOMMITTED, bullet)
 
+    def test_deliver_keeps_one_living_brief_per_item_and_a_batched_round_files_under_each_item_it_covers(self):
+        _, body = skill_docs()["deliver"]
+        ledgers = section(body, "Living brief and ledgers")
+        for passage in (DELIVER_LIVING_BRIEF_PER_ITEM, DELIVER_BATCHED_ROUND_FILES_PER_ITEM):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, ledgers)
+
+    def test_deliver_interruptions_keep_the_living_brief_under_tmp_keyed_by_the_item_and_ignore_tmp_through_info_exclude_before_the_first_write(self):
+        _, body = skill_docs()["deliver"]
+        bullet = next((line for line in section(body, "Interruptions").splitlines() if line.startswith("- The living brief is")), "")
+        for passage in DELIVER_LIVING_BRIEF_UNDER_TMP:
+            with self.subTest(passage=passage):
+                self.assertIn(passage, bullet)
+
     def test_deliver_interruptions_session_limit_pauses_each_item_in_flight_before_the_checkpoint(self):
         _, body = skill_docs()["deliver"]
         bullet = next(line for line in section(body, "Interruptions").splitlines() if line.startswith("- On a session-limit error"))
@@ -2029,6 +2055,12 @@ class DeliverReferencesTest(unittest.TestCase):
         self.assertIn("blast radius", trivial)
         self.assertNotIn("blast radius", complex_)
 
+    def test_review_loop_re_sends_each_items_living_brief_and_keeps_each_rounds_artefact_beside_it_under_tmp(self):
+        loop = read(SKILLS / "deliver" / "references" / "review-loop.md")
+        for passage in (REVIEW_LOOP_EACH_ITEMS_BRIEF, REVIEW_LOOP_ARTEFACT_BESIDE_THE_BRIEF):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, loop)
+
     def test_circuit_breaker_re_tiers_a_defect_trip_and_ends_the_run_on_a_disagreement(self):
         bullet = next(line for line in read(SKILLS / "deliver" / "references" / "review-loop.md").splitlines() if line.startswith("- **Circuit breaker.**"))
         for passage in CIRCUIT_BREAKER_PASSAGES:
@@ -2090,6 +2122,57 @@ class DeliverPauseGuardTest(unittest.TestCase):
 
     def test_the_paused_commit_subject_is_conventional(self):
         self.assertRegex(DELIVER_PAUSED_SUBJECT.replace("<N>", "12"), git_guard.CONVENTIONAL_SUBJECT)
+
+
+class DeliverTmpExcludeTest(unittest.TestCase):
+    def setUp(self):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = os.path.realpath(directory.name)
+        environment = {"HOME": root, "XDG_CONFIG_HOME": os.path.join(root, ".config"), "GIT_CONFIG_SYSTEM": os.devnull}
+        patcher = mock.patch.dict(os.environ, environment)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        origin = os.path.join(root, "origin")
+        clone = os.path.join(root, "clone")
+        linked = os.path.join(root, "linked")
+        for arguments in (
+            ["init", "-q", "-b", "main", origin],
+            ["-C", origin, "-c", "user.email=fixture@example.invalid", "-c", "user.name=fixture", "-c", "commit.gpgsign=false", "commit", "-q", "--allow-empty", "-m", "chore: fixture"],
+            ["clone", "-q", origin, clone],
+            ["-C", clone, "worktree", "add", "-q", "--detach", linked],
+        ):
+            subprocess.run(["git", *arguments], check=True, capture_output=True)
+        self.trees = (("fresh clone", clone), ("linked worktree", linked))
+        self.linked = linked
+        _, body = skill_docs()["deliver"]
+        bullet = next((line for line in section(body, "Interruptions").splitlines() if line.startswith("- The living brief is")), "")
+        self.commands = [span for span in re.findall(r"`([^`]+)`", bullet) if span.startswith(("git check-ignore ", "printf "))]
+
+    def sh(self, command, cwd):
+        return subprocess.run(["sh", "-c", command], cwd=cwd, capture_output=True, text=True)
+
+    def test_the_exclude_append_deliver_gives_run_in_a_linked_worktree_ignores_tmp_there_and_in_its_clone_and_status_lists_nothing_under_it(self):
+        self.assertEqual(len(self.commands), 2, self.commands)
+        check, append = self.commands
+        for name, tree in self.trees:
+            with self.subTest(tree=name, step="before the append"):
+                self.assertEqual(self.sh(check, tree).returncode, 1)
+        appended = self.sh(append, self.linked)
+        self.assertEqual(appended.returncode, 0, appended.stderr)
+        for name, tree in self.trees:
+            with self.subTest(tree=name, step="after the append"):
+                self.assertEqual(self.sh(check, tree).returncode, 0)
+        os.mkdir(os.path.join(self.linked, ".tmp"))
+        with open(os.path.join(self.linked, ".tmp", "deliver-81.md"), "w", encoding="utf-8") as brief:
+            brief.write("# Living brief\n")
+        status = subprocess.run(["git", "-C", self.linked, "status", "--porcelain"], check=True, capture_output=True, text=True).stdout
+        self.assertEqual([line for line in status.splitlines() if ".tmp" in line], [])
+
+    def test_the_guard_permits_the_exclude_append_deliver_gives(self):
+        appends = [command for command in self.commands if command.startswith("printf ")]
+        self.assertEqual(len(appends), 1, self.commands)
+        self.assertIsNone(git_guard.evaluate({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": self.linked, "tool_input": {"command": appends[0]}}))
 
 
 class CommitItemPushGuardTest(unittest.TestCase):

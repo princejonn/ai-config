@@ -21,7 +21,7 @@ Explore → plan → implement → verify. Code is committable when a reviewer a
 
 ## Living brief and ledgers
 
-**One living brief per loop**, carrying the invariant ledger, the deviation ledger and every prior finding filed as **Fixed** (with its pinning test) / **Accepted** (cost taken knowingly) / **Rejected — do not re-propose** / **Escalated** (pre-existing, out of scope).
+**One living brief per item**, carrying the invariant ledger, the deviation ledger and every prior finding filed as **Fixed** (with its pinning test) / **Accepted** (cost taken knowingly) / **Rejected — do not re-propose** / **Escalated** (pre-existing, out of scope). A batched round reads every brief in its batch and files its findings and its artefact under each item it covers; `<round>` counts per item and never restarts.
 
 ## Rounds
 
@@ -36,7 +36,7 @@ Explore → plan → implement → verify. Code is committable when a reviewer a
 
 ## Interruptions
 
-- Write progress through after every item — the brief's status, the item's files — so a resume needs the brief and the working tree, never conversation archaeology.
+- The living brief is `<repo>/.tmp/deliver-<item>.md`, never the tree, `<item>` the tracker number or, with none, the first six words of the brief's Goal, lower-cased, each run of characters other than a–z and 0–9 made one hyphen, with no hyphen at either end. Write progress through to it after every item — the brief's status, the item's files — so a resume needs that file and the working tree, never conversation archaeology. `.tmp/` is ignored through `.git/info/exclude`: before the first write under `.tmp/`, when `git check-ignore -q .tmp/` fails, run `printf '.tmp/\n' >> "$(git rev-parse --git-path info/exclude)"`.
 - On a session-limit error stop dispatching, pause each item in flight, state the checkpoint (done, in flight, next) and end the turn.
 - A pause — on a deviation filed through `issue-question`, a breaker trip that ends the run (`references/review-loop.md`) or a session-limit stop — applies to an item with a tracker reference and changes in the tree. Each command runs on its own: (1) `git switch -c paused/<N>-<k>`, k the item's count of `## Paused` comments plus one; (2) `git add -- <paths>`, the item's paths by name, then `git commit -F - -- <paths> <<'EOF' … EOF` with subject `chore(paused): paused work for #<N>`, a body naming the working branch, what is done and the next step, and footer `Refs #<N>`; (3) `git push origin paused/<N>-<k>`; (4) `git switch <working branch>`. Then a `## Paused` comment on the item — the paused branch, the working branch, what is done and the next step — from a scratchpad file through `gh issue comment <N> --body-file <scratchpad file>`, and `gh issue edit <N> --add-label paused --remove-label ready`.
 - Before re-dispatching an interrupted item inspect the tree: a stranded agent's work is usually on disk, so the resume brief is "verify and complete" against the existing diff. A `paused` item resumes after § Intake's check: read its latest `## Paused` comment; `git fetch origin paused/<N>-<k>:paused/<N>-<k>` when the branch is not local; on the session's working branch `git cherry-pick --no-commit paused/<N>-<k>`, which brings the work back uncommitted; a conflicted path keeps its markers and goes into the "verify and complete" brief. `paused` stays until the item closes; a later pause cuts `paused/<N>-<k+1>`.

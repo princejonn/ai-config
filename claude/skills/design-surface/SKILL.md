@@ -36,4 +36,4 @@ Talk interfaces, not internals; concrete type/signature sketches every round. Lo
 
 ## Exit
 
-When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it where the project keeps plans — and hands it to `deliver`, or back to `issue-triage` when triage ran it. The hand-off's guard is the deviation ledger in `skills/deliver/SKILL.md`.
+When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it as `<repo>/.tmp/design-<slug>.md`, `<slug>` formed from its brief's Goal as `skills/deliver/SKILL.md` § Interruptions forms `<item>`, `.tmp/` as it gives it for the living brief — and hands it to `deliver`, or back to `issue-triage` when triage ran it. The hand-off's guard is the deviation ledger in `skills/deliver/SKILL.md`.
