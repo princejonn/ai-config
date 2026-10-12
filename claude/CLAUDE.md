@@ -40,7 +40,7 @@ they spawn bare; a built-in agent type inherits the session's model, so pass `mo
 |---|---|
 | `research` | enumerate files and call sites, or interpret a specification — in the tier's researcher agent |
 | `verify-claim` | a count, citation, completeness claim or diagnosis, before it is relayed or acted on — forks into `verifier` |
-| `design-surface` | a public surface or its meaning changes — with the user, before code |
+| `design-surface` | a public surface or its meaning changes — with the user before code, or inside `issue-triage` without them |
 | `plan-phases` | the item touches an invariant, state boundary, security or several packages |
 | `implement` | any code change — inline for a one-liner tiered `trivial`, otherwise in the tier's developer agent |
 | `diagnose-root-cause` | behaviour is wrong and the cause is unknown — before implement; a budgeted flake goes to `test` |

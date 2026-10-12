@@ -268,6 +268,10 @@ RESEARCH_DESCRIPTION_AGENT = "in a researcher agent"
 DELIVER_RESEARCH_READS = "Bulk and interpreting reads go to the tier's researcher per `references/tiers.md`"
 DELIVER_MEMO_ENTERS_THE_BRIEF = "the memo, not the material, enters the brief"
 DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it where the project keeps plans — and hands it to `deliver`, or back to `issue-triage` when triage ran it."
+DESIGN_DESCRIPTION_MODES = "inline with the user or inside issue-triage on an item with nothing asked of them"
+DESIGN_ROW_MODES = "with the user before code, or inside `issue-triage` without them"
+DESIGN_CLAIMS_VERIFIED_BEFORE_THE_USER_OR_TRIAGE = "Load-bearing claims go to `verify-claim` before a proposal reaches the user, or returns to `issue-triage` when triage ran it."
+DESIGN_USER_DECISION_PUT_OR_RETURNED = "what needs a user decision: put to the user, or returned as a finding for `issue-triage` to hold when triage ran it, nothing asked of the user, and the surface not locked until the ruling restarts triage"
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
 REPOSITORY_LABELS = (
@@ -935,6 +939,13 @@ class ClaudeMdTest(unittest.TestCase):
         self.assertIn(ISSUE_WRITE_ROW_TRIGGER, row)
         fields, _ = skill_docs()["issue-write"]
         self.assertIn(ISSUE_WRITE_DESCRIPTION_TRIGGER, fields["description"])
+
+    def test_design_surface_row_and_description_both_name_the_run_with_the_user_before_code_and_the_run_inside_issue_triage_without_them(self):
+        body = read(CLAUDE / "CLAUDE.md")
+        row = next(line for line in body.splitlines() if line.startswith("| `design-surface` |"))
+        self.assertIn(DESIGN_ROW_MODES, row)
+        fields, _ = skill_docs()["design-surface"]
+        self.assertIn(DESIGN_DESCRIPTION_MODES, fields["description"])
 
     def test_a_question_on_a_tracker_item_is_filed_through_issue_question_and_one_without_is_asked_inline(self):
         self.assertIn(CLAUDE_MD_TRACKER_QUESTION, re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
@@ -1759,6 +1770,23 @@ class SkillPassagesTest(unittest.TestCase):
         _, body = skill_docs()["design-surface"]
         self.assertIn(DESIGN_EXIT_RETURNS_THE_DESIGN, section(body, "Exit"))
         self.assertNotIn("writ", body.lower())
+
+    def test_design_surface_sends_load_bearing_claims_to_verify_claim_before_a_proposal_reaches_the_user_or_returns_to_triage(self):
+        _, body = skill_docs()["design-surface"]
+        self.assertIn(DESIGN_CLAIMS_VERIFIED_BEFORE_THE_USER_OR_TRIAGE, section(body, "Method"))
+
+    def test_design_surface_output_puts_a_user_decision_to_the_user_or_returns_it_as_a_finding_for_triage_to_hold_asking_the_user_nothing_and_leaves_the_surface_unlocked_until_the_ruling_restarts_triage(self):
+        _, body = skill_docs()["design-surface"]
+        bullet = next(line for line in section(body, "Output").splitlines() if line.startswith("- **Risks and open questions**"))
+        self.assertIn(DESIGN_USER_DECISION_PUT_OR_RETURNED, bullet)
+
+    def test_design_surface_every_sentence_naming_the_user_also_says_what_happens_when_triage_ran_it(self):
+        fields, body = skill_docs()["design-surface"]
+        sentences = [sentence for sentence in re.split(r"(?<=[.!?])\s+", f"{fields['description']} {body}") if "user" in sentence]
+        self.assertTrue(sentences)
+        for sentence in sentences:
+            with self.subTest(sentence=sentence[:60]):
+                self.assertIn("triage", sentence)
 
     def test_deliver_rounds_send_bulk_and_interpreting_reads_to_the_tier_researcher_and_brief_the_memo(self):
         _, body = skill_docs()["deliver"]
