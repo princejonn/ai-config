@@ -429,4 +429,14 @@ run_apply --check
 echo "print('hook')" > "$FIX/claude/hooks/demo.py"
 cp "$WORK/manifest.before" "$FIX/claude/settings.json"
 
+fresh_home
+run_apply
+rm "$FIX/claude/agents/demo.md"
+run_apply
+[ "$status" = 0 ]; check $? "36 a dangling agent link: apply exits 0"
+grep -q "^  prune: $HOME_DIR/agents/demo.md -> $FIX/claude/agents/demo.md$" "$OUT"; check $? "36 the prune of the agent link is reported"
+[ ! -L "$HOME_DIR/agents/demo.md" ]; check $? "36 the dangling agent link is pruned"
+[ ! -e "$HOME_DIR/agents/demo.md" ]; check $? "36 nothing is left where the agent link was"
+echo "agent" > "$FIX/claude/agents/demo.md"
+
 summary
