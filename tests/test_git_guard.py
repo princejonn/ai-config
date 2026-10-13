@@ -40,6 +40,15 @@ PAUSED_RULE = "a chore(paused): commit lands only on a paused/<N>-<k> branch, re
 PAUSED_PERMITTED = "git switch -c paused/<N>-<k> as its own command, then git commit -F - -- <paths>."
 GH_REPO_RULE = "a gh --repo flag quoted with its value is one shell word that never reaches gh as a flag."
 GH_REPO_PERMITTED = "--repo <owner/name> as two shell words."
+GH_MERGE_RULE = "merging a pull request, enabling its auto-merge or updating its branch is the owner's decision."
+GH_MERGE_PERMITTED = "leave the pull request open; gh pr view <N> --repo <owner/name> reads its state."
+GH_ALIAS_RULE = "gh alias set/import defines a command the guard cannot see."
+GH_ALIAS_PERMITTED = "the plain gh command."
+GH_API_BODY_RULE = "a gh api body read from a file or stdin is text the guard cannot read."
+GH_API_BODY_PERMITTED = "the fields as words in the command: -f key=value."
+GH_CLOSING_RULE = "a closing keyword before an issue reference in pull-request text closes the issue when the pull request merges."
+GH_CLOSING_PERMITTED = "Refs #<N>, which links the issue and closes nothing."
+GH_TEXT_PERMITTED = "a literal -t/-b value as its own word or --title=/--body=<value>, -F - with a heredoc, or -F <scratchpad file> as the whole command."
 FAKE_GIT = f"""#!{sys.executable}
 import os, sys, time
 time.sleep(float(os.environ["FAKE_GIT_SLEEP"]))
@@ -244,6 +253,8 @@ class GitPushTests(unittest.TestCase):
                 "git push -f origin feature/x",
                 "git push --force-with-lease origin HEAD",
                 "git push origin +main",
+                "git push --force origin feature/x",
+                "git push origin +feature/x",
             )
         )
 
@@ -2241,6 +2252,287 @@ class GhRepoFlagTests(unittest.TestCase):
             'gh label edit question --description "An unanswered ## Question comment: out of the queue until its ## Ruling is posted" --repo owner/name',
             'echo "--repo owner/name"',
             'git log --oneline -- "--repo owner/name"',
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_a_merge_behind_the_repo_flag_in_any_spelling_gh_parses_is_denied_as_a_merge(self):
+        for command in (
+            "gh --repo o/n pr merge 12",
+            "gh -R o/n pr update-branch 12",
+            "gh pr -R o/n merge 12",
+            "gh --repo=o/n pr merge 12",
+            "gh pr -Ro/n merge 12",
+            "gh -R=o/n pr merge 12",
+        ):
+            with self.subTest(command=command):
+                result = evaluate(command)
+                self.assertEqual(decision(result), "deny")
+                self.assertEqual(rule(result), GH_MERGE_RULE)
+                self.assertEqual(permitted(result), GH_MERGE_PERMITTED)
+
+    def test_a_closing_keyword_behind_the_repo_flag_is_denied_as_a_closing_keyword(self):
+        result = evaluate("gh --repo o/n pr create -t t -b 'Closes #58'")
+        self.assertEqual(decision(result), "deny")
+        self.assertEqual(rule(result), GH_CLOSING_RULE)
+        self.assertEqual(permitted(result), GH_CLOSING_PERMITTED)
+
+
+class GhGuardTests(unittest.TestCase):
+    def assert_denied(self, command, expected, alternative, cwd=MONOREPO):
+        result = evaluate(command, cwd)
+        self.assertEqual(decision(result), "deny")
+        self.assertEqual(rule(result), expected)
+        self.assertEqual(permitted(result), alternative)
+
+    def assert_unreadable_text(self, command, flag, subcommand="create", cwd=MONOREPO):
+        self.assert_denied(command, f"gh pr {subcommand} {flag} carries text the guard cannot read.", GH_TEXT_PERMITTED, cwd)
+
+    def directory_with(self, files):
+        """A fresh directory holding each name → bytes of files, resolved for the payload cwd."""
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        root = os.path.realpath(directory.name)
+        for name, content in files.items():
+            with open(os.path.join(root, name), "wb") as handle:
+                handle.write(content)
+        return root
+
+
+class GhMergeTests(GhGuardTests):
+    def test_denies_gh_pr_merge_in_every_form(self):
+        for command in ("gh pr merge 12", "gh pr merge 12 --auto --rebase", "gh pr merge --squash --delete-branch 12", "timeout 30 gh pr merge 12"):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_MERGE_RULE, GH_MERGE_PERMITTED)
+
+    def test_denies_gh_pr_update_branch_in_every_form(self):
+        for command in ("gh pr update-branch 12", "gh pr update-branch 12 --rebase"):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_MERGE_RULE, GH_MERGE_PERMITTED)
+
+    def test_denies_gh_api_on_a_pull_merge_merge_async_or_update_branch_path_whatever_its_number_or_query_string(self):
+        for command in (
+            "gh api -X PUT repos/o/n/pulls/12/merge",
+            "gh api -X PUT 'repos/o/n/pulls/12/merge?x=1'",
+            "gh api -X PUT repos/o/n/pulls/12/update-branch",
+            "gh api -X PUT repos/o/n/pulls/12/merge-async",
+            'gh api -X PUT "repos/o/n/pulls/$PR/merge"',
+        ):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_MERGE_RULE, GH_MERGE_PERMITTED)
+
+    def test_denies_gh_api_graphql_text_carrying_a_merge_auto_merge_enqueue_or_update_branch_mutation(self):
+        for command in (
+            "gh api graphql -f query='mutation { enablePullRequestAutoMerge(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
+            "gh api graphql -f query='mutation { mergePullRequest(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
+            "gh api graphql -f query='mutation { updatePullRequestBranch(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
+            "gh api graphql -f query='mutation { enqueuePullRequest(input: {pullRequestId: \"x\"}) { clientMutationId } }'",
+        ):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_MERGE_RULE, GH_MERGE_PERMITTED)
+
+    def test_permits_reading_and_listing_pull_requests(self):
+        for command in ("gh pr view 12 --json state", "gh pr list --state open --head feature/x", "gh api repos/o/n/pulls/12 --jq .state"):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+
+class GhAliasTests(GhGuardTests):
+    def test_denies_gh_alias_set_and_import_in_every_form(self):
+        for command in ("gh alias set pm 'pr merge'", "gh alias set --shell m '!gh pr merge $1'", "gh alias import aliases.yml", "gh alias import -"):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_ALIAS_RULE, GH_ALIAS_PERMITTED)
+
+
+class GhApiBodyTests(GhGuardTests):
+    def test_denies_a_graphql_or_pulls_body_read_from_a_file_or_stdin(self):
+        for command in (
+            "gh api graphql --input q.json",
+            "gh api graphql --input -",
+            "gh api graphql -F query=@merge.graphql",
+            "gh api graphql --field query=@-",
+            "gh api repos/o/n/pulls/12 --input body.json",
+        ):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_API_BODY_RULE, GH_API_BODY_PERMITTED)
+        self.assert_denied("gh api -X PUT repos/o/n/pulls/12/merge -F commit_title=@t.txt", GH_MERGE_RULE, GH_MERGE_PERMITTED)
+
+    def test_permits_graphql_and_pulls_calls_whose_fields_are_words_in_the_command(self):
+        for command in ("gh api graphql -f query='query { viewer { login } }'", "gh api repos/o/n/pulls/12 --jq .state"):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+
+class GhPrClosingKeywordTests(GhGuardTests):
+    def test_denies_a_closing_keyword_before_an_issue_reference_in_any_title_body_or_attach_text(self):
+        for command in (
+            "gh pr create -t t -b 'Closes #58'",
+            "gh pr create --title t --body 'Closes #58'",
+            "gh pr create --title=t --body='Fixes OWNER/REPO#58'",
+            "gh pr create -t t -b 'Fixes " + "o" * 39 + "/" + "r" * 100 + "#58'",
+            "gh pr create -t t -b 'Fixes " + "o" * 100 + "/" + "r" * 100 + "#58'",
+            "gh pr create -t t -b 'Resolves https://github.com/o/n/issues/58'",
+            "gh pr create -t 'fix: x, resolves #58' -b b",
+            "gh pr edit 12 --body 'Fixes #58'",
+            "gh pr create -t t -b b --attach './a.png#Closes #58'",
+        ):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_CLOSING_RULE, GH_CLOSING_PERMITTED)
+
+    def test_permits_refs_before_an_issue_reference(self):
+        self.assertIsNone(evaluate("gh pr create --title t --body 'Refs #58'"))
+
+    def test_reads_a_dollar_or_backtick_inside_single_quotes_as_literal_text(self):
+        for command in ("gh pr create -t 'feat: add `x`' -b b", "gh pr create -t 'don'\\''t `x`' -b b"):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+
+    def test_reads_the_heredoc_bash_delivers_as_written(self):
+        for command in (
+            "gh pr create -t t -F - <<'EOF'\nRefs #12\nEOF",
+            'gh pr create -t t -F - <<"EOF"\nRefs #12\nEOF',
+            "gh pr create -t t -F - <<EOF\nRefs #12\nEOF",
+            "gh pr create -t t -F - <<'EOF'\n$(git log --format=%B origin/main..HEAD)\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command))
+        for command in ("gh pr create -t t -F - <<'EOF'\nCloses #12\nEOF", "gh pr create -t t -F - <<EOF\nCloses #12\nEOF"):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_CLOSING_RULE, GH_CLOSING_PERMITTED)
+
+    def test_reads_only_the_heredoc_the_gh_segment_itself_opens(self):
+        self.assert_unreadable_text("printf 'Closes #12\\n' | gh pr create -t t -F - ; cat <<'EOF'\nRefs #1\nEOF", "-F")
+        self.assert_denied("cat > x <<'EOF'\nRefs #1\nEOF\ngh pr create -t t -F - <<'EOF'\nCloses #12\nEOF", GH_CLOSING_RULE, GH_CLOSING_PERMITTED)
+
+    def test_reads_a_body_file_named_by_the_whole_command_against_the_payload_cwd(self):
+        cwd = self.directory_with({"f": b"Refs #58\n"})
+        for command in ("gh pr create -t t -F f", "gh pr create -t t --body-file f", "gh pr edit 12 -F f", f"gh pr create -t t -F {cwd}/f"):
+            with self.subTest(command=command):
+                self.assertIsNone(evaluate(command, cwd))
+        cwd = self.directory_with({"f": b"Fixes #58\n"})
+        for command in ("gh pr create -t t -F f", "gh pr create -t t --body-file f", "gh pr edit 12 -F f", f"gh pr create -t t -F {cwd}/f"):
+            with self.subTest(command=command):
+                self.assert_denied(command, GH_CLOSING_RULE, GH_CLOSING_PERMITTED, cwd)
+
+    def test_a_closing_keyword_body_at_the_size_cap_is_judged_well_inside_the_hook_timeout(self):
+        for unit, count in ((b"fixes:http://", 80_659), (b"fixes-", 174_762)):
+            body = unit * count
+            with self.subTest(unit=unit):
+                self.assertLessEqual(len(body), 1 << 20)
+                cwd = self.directory_with({"f": body})
+                started = time.monotonic()
+                result = evaluate("gh pr create -t t -F f", cwd)
+                elapsed = time.monotonic() - started
+                self.assertIsNone(result)
+                self.assertLess(elapsed, 2)
+
+    def test_a_redirection_between_a_text_flag_and_its_value_does_not_hide_the_value(self):
+        self.assert_denied("gh pr create -t t -b > out 'Closes #58'", GH_CLOSING_RULE, GH_CLOSING_PERMITTED)
+
+
+class GhPrUnreadableTextTests(GhGuardTests):
+    def test_denies_fill_template_editor_web_and_recover(self):
+        for command, flag in (
+            ("gh pr create --fill", "--fill"),
+            ("gh pr create -f", "-f"),
+            ("gh pr create --fill-first", "--fill-first"),
+            ("gh pr create --fill-verbose", "--fill-verbose"),
+            ("gh pr create -t t -T pull_request_template.md", "-T"),
+            ("gh pr create -e", "-e"),
+            ("gh pr create -w", "-w"),
+            ("gh pr create --recover r.json", "--recover"),
+        ):
+            with self.subTest(command=command):
+                self.assert_unreadable_text(command, flag)
+
+    def test_denies_a_title_or_body_value_the_shell_expands_whatever_it_holds(self):
+        with mock.patch.dict(os.environ, {"BODY": "Refs #58"}):
+            for command, flag in (
+                ('gh pr create -t t -b "$BODY"', "-b"),
+                ('gh pr create --title t --body "$BODY"', "--body"),
+                ('gh pr create -t "feat: add `x`" -b b', "-t"),
+                ("gh pr create -t t -b $'Refs #1'", "-b"),
+            ):
+                with self.subTest(command=command):
+                    self.assert_unreadable_text(command, flag)
+
+    def test_denies_a_text_flag_joined_to_its_value_or_inside_a_short_flag_cluster(self):
+        cwd = self.directory_with({"f": b"Refs #58\n"})
+        for command, flag in (
+            ("gh pr create -t t -db'Closes #58'", "-b"),
+            ("gh pr create -t t -b'Closes #58'", "-b"),
+            ("gh pr create -t t -Ff", "-F"),
+            ("gh pr create -t t --body-file=f", "--body-file"),
+            ("gh pr create -t=x -b b", "-t"),
+        ):
+            with self.subTest(command=command):
+                self.assert_unreadable_text(command, flag, cwd=cwd)
+
+    def test_denies_stdin_body_without_a_heredoc_the_guard_reads(self):
+        for command in (
+            "gh pr create -t t -F -",
+            "gh pr create -t t -F - <<\\EOF\nRefs #12\nEOF",
+            "gh pr create -t t -F /dev/stdin <<'EOF'\nRefs #58\nEOF",
+            "gh pr create -t t -F - < f",
+            "gh pr create -t t -F - <<< 'Refs #1'",
+            "gh pr create -t t -F - 3<<'EOF'\nRefs #1\nEOF",
+            "gh pr create -t t -F - '<<EOF'\nRefs #1\nEOF",
+            "gh pr create -t t -F - # <<EOF\nRefs #1\nEOF",
+            'gh pr create -t t -F - <<E"OF"\nRefs #1\nEOF',
+            "gh pr create -t t -F - <<'A' <<'B'\nRefs #1\nA\nRefs #2\nB",
+        ):
+            with self.subTest(command=command):
+                self.assert_unreadable_text(command, "-F")
+
+    def test_denies_a_bare_heredoc_whose_body_bash_expands_or_joins(self):
+        for command in (
+            "gh pr create -t t -F - <<EOF\n$(git log --format=%B origin/main..HEAD)\nEOF",
+            "gh pr create -t t -F - <<EOF\nFixes \\\n#58\nEOF",
+        ):
+            with self.subTest(command=command):
+                self.assert_unreadable_text(command, "-F")
+
+    def test_denies_a_body_file_that_is_not_the_whole_command(self):
+        cwd = self.directory_with({"f": b"Refs #58\n"})
+        self.assert_unreadable_text("printf 'Closes #12\\n' > f && gh pr create -t t -F f", "-F", cwd=cwd)
+
+    def test_denies_a_body_file_it_cannot_resolve_open_or_decode_and_raises_nothing(self):
+        for cwd in (self.directory_with({}), self.directory_with({"f": b"\xff\xfe"}), ""):
+            with self.subTest(cwd=cwd):
+                self.assert_unreadable_text("gh pr create -t t -F f", "-F", cwd=cwd)
+
+    def test_denies_a_body_file_larger_than_the_guard_reads(self):
+        cwd = self.directory_with({"f": b"x" * ((1 << 20) + 1)})
+        self.assert_unreadable_text("gh pr create -t t -F f", "-F", cwd=cwd)
+
+    def test_denies_a_body_file_under_dev_even_when_it_reaches_a_regular_file(self):
+        cwd = self.directory_with({"f": b"Refs #58\n"})
+        with open(os.path.join(cwd, "f"), "rb") as handle:
+            self.assert_unreadable_text(f"gh pr create -t t -F /dev/fd/{handle.fileno()}", "-F", cwd=cwd)
+
+    def test_denies_a_text_source_in_a_gh_pr_create_a_subshell_substitution_or_shell_string_runs(self):
+        for command in ("( gh pr create -t t -b b )", "echo $(gh pr create -t t -b b)", 'bash -c "gh pr create -t t -b b"'):
+            with self.subTest(command=command):
+                self.assert_unreadable_text(command, "-t")
+
+    def test_denies_a_text_flag_with_no_word_after_it(self):
+        for command, flag in (("gh pr create -t t -F", "-F"), ("xargs gh pr create -t t -b", "-b"), ("gh pr create -b 'Closes #58", "-b")):
+            with self.subTest(command=command):
+                self.assert_unreadable_text(command, flag)
+
+
+class GhPermittedCommandsTests(unittest.TestCase):
+    def test_permits_every_issue_pr_read_push_and_graphql_command_the_tree_runs(self):
+        for command in (
+            'gh issue close 58 --comment "abc1234 feat(x): y"',
+            "gh issue comment 58 --body-file f.md",
+            "gh pr view 12 --json state",
+            "gh pr list --state open --head feature/x",
+            "git push origin feature/x",
+            "git push origin --delete paused/58-1",
+            "gh api graphql -f query='query($owner:String!,$name:String!){repository(owner:$owner,name:$name){issue(number:58){blockedBy(first:50){nodes{number state}} subIssues(first:50){nodes{number state}}}}}' -F owner=o -F name=n",
+            "gh api graphql -f query='mutation { addSubIssue(input: {issueId: \"I_1\", subIssueId: \"I_2\"}) { issue { number } subIssue { number } } }'",
+            "gh api graphql -f query='mutation { addBlockedBy(input: {issueId: \"I_1\", blockingIssueId: \"I_2\"}) { issue { number } blockingIssue { number } } }'",
         ):
             with self.subTest(command=command):
                 self.assertIsNone(evaluate(command))

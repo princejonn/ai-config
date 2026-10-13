@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""PreToolUse hook (Bash): denies destructive git forms, a push in any form but git push origin <branch> or git push origin --delete paused/<N>-<k>, a chore(paused): commit that is not the whole command on a paused/* branch, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, a test run piped through a pager, and a gh --repo flag quoted together with its value; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
+"""PreToolUse hook (Bash): denies destructive git forms, a push in any form but git push origin <branch> or git push origin --delete paused/<N>-<k>, a chore(paused): commit that is not the whole command on a paused/* branch, any rm of a path the tree cannot regenerate, a commit subject that is not Conventional or a message with a bare §, a test run piped through a pager, a gh --repo flag quoted together with its value, and, with gh's -R/--repo dropped from the leading words: gh pr merge and gh pr update-branch and their gh api pulls/<N>/merge, pulls/<N>/merge-async, pulls/<N>/update-branch and GraphQL forms, gh alias set and import, a gh api body to graphql or pulls/ read from a file or stdin, and gh pr create or edit text that carries a closing keyword or that the guard cannot read: --fill, a template, the editor, the browser, --recover, a shell-expanded or joined -t/-b, -F - without its own heredoc, -F <file> that is not the whole command or not readable; the settings `attribution` key stops Claude adding a trailer, the commit-text scan here is the backstop."""
 
 import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 import time
@@ -19,6 +20,7 @@ UNRESOLVABLE_TARGET = re.compile(r"^~|[*?\[]|\$(?!TMPDIR(?=/|$)|\{TMPDIR\}(?=/|$
 UNRESOLVABLE_NAME = re.compile(r"^~|\$|`")
 UNRESOLVABLE_PATHSPEC = re.compile(r"\$(?!PWD(?=/|$)|\{PWD\})|`")
 UNRESOLVABLE_PROGRAM = re.compile(r"^[$`]")
+UNRESOLVABLE_BODY_FILE = re.compile(r"^~|[*?\[$`]")
 SEGMENT_SPLIT = re.compile(r"(\|\||&&|\|&|;|\n|\||(?<![&<>])&(?![&>]))")
 PIPE_OPERATORS = {"|", "|&"}
 GIT_GLOBAL_OPTIONS_WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--attr-source"}
@@ -46,6 +48,26 @@ STASH_READ_ONLY_SUBCOMMANDS = {"list", "show"}
 PUSH_COMMAND = re.compile(r"^git push origin (?!HEAD$|@$|(?:refs|heads|remotes|tags)/)\w[\w./-]*$")
 PAUSED_BRANCH_DELETE = re.compile(r"^git push origin --delete paused/[0-9]+-[0-9]+$")
 SPLIT_REPO_FLAG = re.compile(r"^--repo(?:\s|=\S*\s)")
+GH_REPO_FLAG_WITH_VALUE = {"-R", "--repo"}
+GH_REPO_FLAG_JOINED = ("-R", "--repo=")
+GH_PR_DOORS = {"merge", "update-branch"}
+GH_API_PULL_DOOR = re.compile(r"(?:^|/)pulls/[^/?#\s]+/(?:merge|merge-async|update-branch)/?(?:[?#]|$)", re.IGNORECASE)
+GH_GRAPHQL_DOORS = ("mergePullRequest", "enablePullRequestAutoMerge", "updatePullRequestBranch", "enqueuePullRequest")
+GH_ALIAS_DOORS = {"set", "import"}
+GH_API_TEXT_ENDPOINT = re.compile(r"graphql|pulls/", re.IGNORECASE)
+GH_PR_TEXT_SUBCOMMANDS = {"create", "edit"}
+GH_TEXT_LETTERS, GH_UNREADABLE_LETTERS, GH_VALUE_LETTERS = "tbF", "fTew", "aBHlmprR"
+GH_TEXT_OPTIONS = {"--title", "--body", "--attach"}
+GH_BODY_FILE_OPTION = "--body-file"
+GH_UNREADABLE_OPTIONS = {"--fill", "--fill-first", "--fill-verbose", "--template", "--editor", "--web", "--recover"}
+GH_VALUE_OPTIONS = {
+    "--assignee", "--base", "--head", "--label", "--milestone", "--project", "--reviewer", "--repo",
+    "--add-assignee", "--add-label", "--add-project", "--add-reviewer",
+    "--remove-assignee", "--remove-label", "--remove-project", "--remove-reviewer",
+}
+GH_TEXT, GH_STDIN, GH_FILE = "text", "stdin", "file"
+BODY_FILE_MAX_BYTES = 1 << 20
+CLOSING_KEYWORD = re.compile(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\b\s*(?::\s*)?(?:#\d+|[\w.-]{1,100}/[\w.-]{1,100}#\d+|https?://[^\s/]+/[^\s/]+/[^\s/]+/issues/\d+)", re.IGNORECASE)
 COMMIT_SHORT_VALUE_LETTERS = "mFCct"
 COMMIT_LONG_VALUE_OPTIONS = {"--message": "m", "--file": "F", "--reuse-message": "C", "--reedit-message": "c", "--template": "t"}
 CONVENTIONAL_SUBJECT = re.compile(r"^(build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test)(\([a-z0-9][a-z0-9./,-]*\))?: \S")
@@ -385,29 +407,37 @@ def segment_offsets(masked):
         offset += len(part)
 
 
-def tokenize(segment):
-    """Splits a segment into words with quotes removed and comments dropped; an unterminated quote falls back to a whitespace split."""
-    words, current = [], None
+def written_words(segment):
+    """Splits a segment into (word, as written) pairs with quotes removed and comments dropped; None when a quote never closes."""
+    words, current, start = [], None, 0
     for span in spans(segment):
         chunk = segment[span.start : span.end]
         if span.kind in QUOTES and not span.closed:
-            return segment.split()
+            return None
         if span.kind == COMMENT:
             continue
         if span.kind == WORD or (span.kind == OPERATOR and chunk == "\n"):
-            for char in chunk:
-                if char not in WHITESPACE:
-                    current = (current or "") + char
+            for index in range(span.start, span.end):
+                if segment[index] not in WHITESPACE:
+                    start = index if current is None else start
+                    current = (current or "") + segment[index]
                 elif current is not None:
-                    words.append(current)
+                    words.append((current, segment[start:index]))
                     current = None
             continue
         piece = quote_removed(segment, span) if span.kind in QUOTES else unescaped(chunk, False) if span.kind == ESCAPE else chunk
         if piece or span.kind in QUOTES:
+            start = span.start if current is None else start
             current = (current or "") + piece
     if current is not None:
-        words.append(current)
+        words.append((current, segment[start:]))
     return words
+
+
+def tokenize(segment):
+    """Splits a segment into words with quotes removed and comments dropped; an unterminated quote falls back to a whitespace split."""
+    words = written_words(segment)
+    return segment.split() if words is None else [word for word, _ in words]
 
 
 def skip_options(tokens, with_value):
@@ -749,17 +779,22 @@ def descriptor_start(segment, index):
     return start if start < index and (start == 0 or segment[start - 1] in WHITESPACE) else index
 
 
-def redirections_removed(segment):
-    """The segment's text with each redirection, its file descriptor and its target word taken out."""
+def operators_removed(segment, kinds):
+    """The segment's text with each span of these kinds, its file descriptor and its target word taken out."""
     scanned = spans(segment)
     kept, end = [], 0
     for position, span in enumerate(scanned):
-        if span.kind != REDIRECTION:
+        if span.kind not in kinds:
             continue
         kept.append(segment[end : descriptor_start(segment, span.start)])
         end = target_end(segment, scanned[position + 1 :])
     kept.append(segment[end:])
     return "".join(kept).strip()
+
+
+def redirections_removed(segment):
+    """The segment's text with each redirection, its file descriptor and its target word taken out."""
+    return operators_removed(segment, (REDIRECTION,))
 
 
 def check_git(subcommand, args, global_options, cwd, text):
@@ -835,10 +870,223 @@ def check_git(subcommand, args, global_options, cwd, text):
     return None
 
 
-def check_gh(tokens):
-    if program(tokens) != "gh" or not any(SPLIT_REPO_FLAG.match(token) for token in tokens[1:]):
+def gh_words(text):
+    """The words bash hands gh, each with its form as written: redirections and heredocs out, quotes removed, wrappers stripped; None when a quote never closes."""
+    words = written_words(operators_removed(text, (REDIRECTION, HEREDOC_OPERATOR)))
+    if words is None:
         return None
-    return deny("a gh --repo flag quoted with its value is one shell word that never reaches gh as a flag.", "--repo <owner/name> as two shell words.")
+    _, stripped = strip_wrappers([word for word, _ in words])
+    end = len(words) - (1 if stripped and words[-1][0] == "}" else 0)
+    return [(word, written) for word, (_, written) in zip(stripped, words[end - len(stripped) : end])]
+
+
+def repo_flag_dropped(words):
+    """The words with every leading repo flag dropped, in each spelling gh parses: -R or --repo with the word after it, or one word opening -R or --repo=."""
+    index = 0
+    while index < len(words) and words[index][0].startswith("-"):
+        if words[index][0] in GH_REPO_FLAG_WITH_VALUE:
+            index += 2
+        elif words[index][0].startswith(GH_REPO_FLAG_JOINED):
+            index += 1
+        else:
+            break
+    return words[index:]
+
+
+def gh_command(words):
+    """Returns (command, rest) for the words after gh: the command word and the words after it, the repo flag dropped before each."""
+    leading = repo_flag_dropped(words)
+    if not leading:
+        return None, []
+    return leading[0][0], repo_flag_dropped(leading[1:])
+
+
+def gh_subcommand(rest):
+    """Returns (subcommand, the words after it): the first word of rest that does not open -."""
+    for position, (word, _) in enumerate(rest):
+        if not word.startswith("-"):
+            return word, rest[position + 1 :]
+    return None, []
+
+
+def first_option_letter(word):
+    """The first letter of a short-flag cluster that gh's pr create and pr edit tables name, else None."""
+    return next((letter for letter in word[1:] if letter in GH_TEXT_LETTERS + GH_UNREADABLE_LETTERS + GH_VALUE_LETTERS), None)
+
+
+def gh_option_source(flag, following):
+    """The source a text option takes from the word after it, as (flag, kind, value, written); kind is None when there is no word."""
+    if following is None:
+        return flag, None, None, ""
+    value, written = following
+    if flag in ("-F", GH_BODY_FILE_OPTION):
+        return flag, GH_STDIN if value == "-" else GH_FILE, value, written
+    return flag, GH_TEXT, value, written
+
+
+def gh_text_sources(words):
+    """Yields (flag, kind, value, written) for each title or body source of a gh pr create or edit, in word order; kind is None for one the guard cannot read."""
+    index = 0
+    while index < len(words):
+        word, written = words[index]
+        following = words[index + 1] if index + 1 < len(words) else None
+        if word == "--":
+            return
+        if word.startswith("--"):
+            name, joined, value = word.partition("=")
+            if name in GH_UNREADABLE_OPTIONS or (name == GH_BODY_FILE_OPTION and joined):
+                yield name, None, None, written
+            elif name in GH_TEXT_OPTIONS and joined:
+                yield name, GH_TEXT, value, written
+            elif name in GH_TEXT_OPTIONS or name == GH_BODY_FILE_OPTION:
+                yield gh_option_source(name, following)
+                index += 1
+            elif name in GH_VALUE_OPTIONS and not joined:
+                index += 1
+        elif word in ("-t", "-b", "-F"):
+            yield gh_option_source(word, following)
+            index += 1
+        elif word.startswith("-") and len(word) > 1:
+            letter = first_option_letter(word)
+            if letter is not None and letter in GH_TEXT_LETTERS + GH_UNREADABLE_LETTERS:
+                yield f"-{letter}", None, None, written
+            elif letter is not None and word.index(letter) == len(word) - 1:
+                index += 1
+        index += 1
+
+
+def opens_merge_door(name, subcommand, rest):
+    """gh pr merge or update-branch, or gh api with a word on a pulls/<N>/merge, merge-async or update-branch path or carrying a merge, auto-merge, enqueue or branch-update mutation."""
+    if name == "pr":
+        return subcommand in GH_PR_DOORS
+    return name == "api" and any(GH_API_PULL_DOOR.search(word) or any(door in word for door in GH_GRAPHQL_DOORS) for word, _ in rest)
+
+
+def reads_api_body(word):
+    return word == "--input" or word.startswith("--input=") or "=@" in word
+
+
+def deny_gh_merge():
+    return deny(
+        "merging a pull request, enabling its auto-merge or updating its branch is the owner's decision.",
+        "leave the pull request open; gh pr view <N> --repo <owner/name> reads its state.",
+    )
+
+
+def deny_gh_closing():
+    return deny(
+        "a closing keyword before an issue reference in pull-request text closes the issue when the pull request merges.",
+        "Refs #<N>, which links the issue and closes nothing.",
+    )
+
+
+def shell_expands(written):
+    """True when the word as written carries a $ or a backtick outside single quotes, so bash hands gh text the guard does not see."""
+    return any(span.kind != SINGLE and ("$" in written[span.start : span.end] or "`" in written[span.start : span.end]) for span in spans(written))
+
+
+def deny_gh_text(subcommand, flag):
+    return deny(
+        f"gh pr {subcommand} {flag} carries text the guard cannot read.",
+        "a literal -t/-b value as its own word or --title=/--body=<value>, -F - with a heredoc, or -F <scratchpad file> as the whole command.",
+    )
+
+
+def reads_stdin(segment, span):
+    """A redirection or heredoc operator on descriptor 0: one opening < with no descriptor written, or any with 0 written."""
+    descriptor = segment[descriptor_start(segment, span.start) : span.start]
+    return descriptor == "0" or (descriptor == "" and segment[span.start] == "<")
+
+
+def gh_heredoc_text(text, remainder):
+    """The body of the one heredoc the gh segment itself opens on stdin, as bash delivers it; None when stdin comes from anywhere else, when HEREDOC does not match at that operator with the delimiter the shell reads, or when a bare delimiter leaves a $, a backtick or a backslash for bash to expand."""
+    scanned = spans(text)
+    stdin = [(position, span) for position, span in enumerate(scanned) if span.kind in (REDIRECTION, HEREDOC_OPERATOR) and reads_stdin(text, span)]
+    if len(stdin) != 1 or stdin[0][1].kind != HEREDOC_OPERATOR:
+        return None
+    position, span = stdin[0]
+    match = HEREDOC.match(remainder, span.start)
+    if match is None or match.group(2) != heredoc_delimiter(text, scanned[position + 1 :]):
+        return None
+    if not match.group(1) and any(char in match.group(3) for char in "$`\\"):
+        return None
+    return match.group(3)
+
+
+def body_file_text(path, written, cwd, command):
+    """The text of the file -F names, read only when the command is that one segment, the path as written is literal, and it resolves against a non-empty cwd to a regular UTF-8 file outside /dev/ of at most BODY_FILE_MAX_BYTES; None otherwise."""
+    if not sole_segment(command) or UNRESOLVABLE_BODY_FILE.search(written):
+        return None
+    if not os.path.isabs(path):
+        if not cwd:
+            return None
+        path = os.path.join(cwd, path)
+    try:
+        if under_prefix(os.path.realpath(path), "/dev"):
+            return None
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+    except (OSError, ValueError):
+        return None
+    try:
+        status = os.fstat(descriptor)
+        if not stat.S_ISREG(status.st_mode) or status.st_size > BODY_FILE_MAX_BYTES:
+            return None
+        data = b""
+        while len(data) <= BODY_FILE_MAX_BYTES:
+            chunk = os.read(descriptor, BODY_FILE_MAX_BYTES + 1 - len(data))
+            if not chunk:
+                return data.decode("utf-8")
+            data += chunk
+        return None
+    except (OSError, ValueError):
+        return None
+    finally:
+        os.close(descriptor)
+
+
+def gh_source_text(kind, value, written, text, remainder, cwd, command):
+    """The text a title or body source hands gh as the guard reads it, or None when it cannot."""
+    if kind == GH_TEXT:
+        return None if shell_expands(written) else value
+    if kind == GH_STDIN:
+        return gh_heredoc_text(text, remainder)
+    if kind == GH_FILE:
+        return body_file_text(value, written, cwd, command)
+    return None
+
+
+def check_gh_text(subcommand, words, readable, text, remainder, cwd, command):
+    """The first title or body source of a gh pr create or edit the guard cannot read is denied; then every text it reads is judged for a closing keyword."""
+    texts = []
+    for flag, kind, value, written in gh_text_sources(words):
+        source = gh_source_text(kind, value, written, text, remainder, cwd, command) if readable else None
+        if source is None:
+            return deny_gh_text(subcommand, flag)
+        texts.append(source)
+    if any(CLOSING_KEYWORD.search(judged) for judged in texts):
+        return deny_gh_closing()
+    return None
+
+
+def check_gh(tokens, cwd, text, command, remainder):
+    """text is the segment's own text, None when a subshell, a substitution or a shell string runs it; command is the whole Bash command; remainder is the command from the segment on, which carries the segment's heredoc."""
+    if program(tokens) != "gh":
+        return None
+    if any(SPLIT_REPO_FLAG.match(token) for token in tokens[1:]):
+        return deny("a gh --repo flag quoted with its value is one shell word that never reaches gh as a flag.", "--repo <owner/name> as two shell words.")
+    words = gh_words(text) if text is not None else None
+    readable = words is not None
+    name, rest = gh_command(words[1:] if readable else [(token, token) for token in tokens[1:]])
+    subcommand, arguments = gh_subcommand(rest)
+    if opens_merge_door(name, subcommand, rest):
+        return deny_gh_merge()
+    if name == "alias" and subcommand in GH_ALIAS_DOORS:
+        return deny("gh alias set/import defines a command the guard cannot see.", "the plain gh command.")
+    if name == "api" and any(GH_API_TEXT_ENDPOINT.search(word) for word, _ in rest) and any(reads_api_body(word) for word, _ in rest):
+        return deny("a gh api body read from a file or stdin is text the guard cannot read.", "the fields as words in the command: -f key=value.")
+    if name == "pr" and subcommand in GH_PR_TEXT_SUBCOMMANDS:
+        return check_gh_text(subcommand, arguments, readable, text, remainder, cwd if isinstance(cwd, str) else "", command)
+    return None
 
 
 def resolve_rm_target(target):
@@ -1310,7 +1558,7 @@ def evaluate(hook_input):
                     return decision
                 if pauses_work(args, remainder) and not on_paused_branch(segment, command, global_options, cwd, deadline):
                     return deny_paused_branch()
-        decision = check_gh(tokens)
+        decision = check_gh(tokens, cwd, None if nested else segment, command, remainder)
         if decision is not None:
             return decision
         try:
