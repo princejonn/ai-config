@@ -75,6 +75,7 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "issue-triage": {},
     "issue-question": {},
     "issue-answer": {},
+    "open-pull-request": {},
 }
 SKILLS_WITH_INPUT = {"author-gherkin", "design-surface", "implement", "issue-answer", "issue-next", "issue-question", "issue-triage", "issue-write", "plan-phases", "research", "review-change", "test", "verify-claim"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
@@ -409,6 +410,16 @@ ISSUE_NEXT_NO_BRIEF_LEAVES_AS_BACKLOG = "One with no `## Brief` leaves as a back
 ISSUE_NEXT_BACKLOG_DERIVED = "A backlog winner leaves as these fields, derived from the state:"
 GH_REPO_FLAG = "--repo <owner/name>"
 GH_CODE_SPAN = re.compile(r"`gh [^`]*`")
+OPEN_PULL_REQUEST_OPENAI_POLICY = "policy:\n  allow_implicit_invocation: false\n"
+OPEN_PULL_REQUEST_CREATE = "gh pr create --repo"
+OPEN_PULL_REQUEST_CREATE_FILL = (("<owner/name>", "o/n"), ("<base>", "main"), ("<head>", "feature/58-open-pull-request"), ("<title>", "'feat(skills): add open-pull-request'"))
+OPEN_PULL_REQUEST_BODY = "abc1234 feat(skills): add open-pull-request\n\nRefs #58\n"
+OPEN_PULL_REQUEST_REPO_CALLS = ("gh pr list", "gh pr create", "gh pr view")
+OPEN_PULL_REQUEST_DOORS_OUTSIDE_THE_GUARD = ("gh pr new", "installed gh alias", "extension", "createPullRequest", 'query="$(', "merges", "git/refs")
+OPEN_PULL_REQUEST_CREATE_BRANCHES = ("--base <base>", "--head <head>")
+OPEN_PULL_REQUEST_STOP = "A command below that exits non-zero, a Write that fails, or a call the harness denies, stops the run with its exit status or reason and its output printed; nothing after it runs."
+OPEN_PULL_REQUEST_CLOSING_KEYWORD_STEP = "7. A title or body line carrying close, closes, closed, fix, fixes, fixed, resolve, resolves or resolved, in any case, immediately before `#<N>`, `<owner>/<repo>#<N>` or an issue URL, with an optional colon between, stops the run with the line printed."
+OPEN_PULL_REQUEST_REPORT_STOP = "Created, reused or preview only; number, URL, state, head, base and SHA; each mismatch with both values. A stop: the step and what it printed; at steps 1–9, or at step 10 before the create ran, that nothing was created; at step 10 after the create ran, that whether a pull request exists is unverified and that a re-run's step 9 finds it; at step 11, the number and URL step 9 or 10 printed, that the read-back failed and, after step 9's reuse, that nothing was created."
 QUESTION_COMMENT_HEADING = "## Question"
 RULING_COMMENT_HEADING = "## Ruling"
 QUESTION_LABEL_DESCRIPTION = '"An unanswered ## Question comment: out of the queue until its ## Ruling is posted"'
@@ -2185,6 +2196,62 @@ class CommitItemPushGuardTest(unittest.TestCase):
                 command = pushes[0].replace("<branch>", branch)
                 with self.subTest(command=command):
                     self.assertIsNone(git_guard.evaluate({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": cwd, "tool_input": {"command": command}}))
+
+
+class OpenPullRequestTest(unittest.TestCase):
+    def skill_body(self):
+        path = SKILLS / "open-pull-request" / "SKILL.md"
+        self.assertTrue(path.is_file(), path)
+        _, body = skill_docs()["open-pull-request"]
+        return body
+
+    def test_open_pull_request_ships_an_openai_yaml_whose_policy_disallows_implicit_invocation(self):
+        path = SKILLS / "open-pull-request" / "agents" / "openai.yaml"
+        self.assertTrue(path.is_file(), path)
+        self.assertEqual(read(path), OPEN_PULL_REQUEST_OPENAI_POLICY)
+
+    def test_the_guard_permits_the_one_gh_pr_create_open_pull_request_runs_with_a_body_file_carrying_refs(self):
+        creates = [span for span in re.findall(r"`([^`]+)`", section(self.skill_body(), "Steps")) if span.startswith(OPEN_PULL_REQUEST_CREATE)]
+        self.assertEqual(len(creates), 1, creates)
+        for branch in OPEN_PULL_REQUEST_CREATE_BRANCHES:
+            with self.subTest(branch=branch):
+                self.assertIn(branch, creates[0])
+        with tempfile.TemporaryDirectory() as directory:
+            cwd = os.path.realpath(directory)
+            body_file = os.path.join(cwd, "pull-request-feature-58-open-pull-request.md")
+            with open(body_file, "w", encoding="utf-8") as handle:
+                handle.write(OPEN_PULL_REQUEST_BODY)
+            command = creates[0]
+            for placeholder, value in (*OPEN_PULL_REQUEST_CREATE_FILL, ("<scratchpad file>", body_file)):
+                command = command.replace(placeholder, value)
+            self.assertNotIn("<", command, command)
+            self.assertIsNone(git_guard.evaluate({"hook_event_name": "PreToolUse", "tool_name": "Bash", "cwd": cwd, "tool_input": {"command": command}}))
+
+    def test_every_gh_pr_call_open_pull_request_runs_carries_the_repo_as_two_words_and_gh_repo_view_takes_it_as_its_argument(self):
+        spans = re.findall(r"`([^`]+)`", self.skill_body())
+        pr_calls = [span for span in spans if span.startswith(OPEN_PULL_REQUEST_REPO_CALLS)]
+        self.assertEqual({prefix for prefix in OPEN_PULL_REQUEST_REPO_CALLS for span in pr_calls if span.startswith(prefix)}, set(OPEN_PULL_REQUEST_REPO_CALLS))
+        for span in pr_calls:
+            with self.subTest(call=span):
+                self.assertIn(GH_REPO_FLAG, span)
+        views = [span for span in spans if span.startswith("gh repo view")]
+        self.assertEqual(len(views), 1, views)
+        self.assertTrue(views[0].startswith("gh repo view <owner/name> "), views[0])
+
+    def test_open_pull_request_steps_name_every_door_outside_the_guard(self):
+        steps = section(self.skill_body(), "Steps")
+        for door in OPEN_PULL_REQUEST_DOORS_OUTSIDE_THE_GUARD:
+            with self.subTest(door=door):
+                self.assertIn(door, steps)
+
+    def test_open_pull_request_step_7_stops_on_a_closing_keyword_only_immediately_before_the_issue_reference_as_the_guard_reads_it(self):
+        self.assertIn(OPEN_PULL_REQUEST_CLOSING_KEYWORD_STEP, section(self.skill_body(), "Steps").splitlines())
+
+    def test_open_pull_request_reports_a_stop_by_its_step_and_claims_nothing_created_only_where_the_create_has_not_run(self):
+        body = self.skill_body()
+        self.assertIn(OPEN_PULL_REQUEST_STOP, section(body, "Steps").splitlines())
+        report = [line for line in section(body, "Report").splitlines() if line and not line.startswith("## ")]
+        self.assertEqual(report, [OPEN_PULL_REQUEST_REPORT_STOP])
 
 
 def phrase_homes(phrase, tree=CLAUDE):

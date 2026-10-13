@@ -58,6 +58,9 @@ pair issue-triage \
 pair issue-write \
   'Turn this finding into an issue: render accepts an empty name and returns an empty tag.' \
   'Triage issue #15 before we start on it — challenge its proposal.'
+pair open-pull-request \
+  'Open a pull request from the branch I just pushed and show me the preview before you create it.' \
+  'Commit the accepted change-set for #15 by its paths and push its branch.'
 pair plan-phases \
   'Give me a phased execution plan for splitting widget.py into a package, with invariants and an exit check per phase.' \
   'Rename widget.py to renderer.py and update the README.'
