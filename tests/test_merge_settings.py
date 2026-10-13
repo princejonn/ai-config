@@ -77,6 +77,9 @@ LIVE_PERMISSIONS = {"allow": LIVE_ALLOW, "ask": LIVE_ASK}
 LIVE_SETTINGS = {"hooks": LIVE_HOOKS, "attribution": LIVE_ATTRIBUTION, "permissions": LIVE_PERMISSIONS}
 
 FOREIGN_HANDLER = {"type": "command", "command": "/usr/local/bin/other-hook", "timeout": 5}
+DISPATCH_GUARD_HANDLER = {"type": "command", "command": f"python3 {LIVE_HOOKS_DIR}/dispatch-guard.py", "timeout": 10}
+AGENT_GROUP = {"matcher": "Agent", "hooks": [DISPATCH_GUARD_HANDLER]}
+STRANDED_SETTINGS = {"hooks": {**LIVE_HOOKS, "PreToolUse": [AGENT_GROUP, *LIVE_HOOKS["PreToolUse"]]}}
 
 
 def rendered(document):
@@ -195,6 +198,41 @@ class MergeSettingsTest(unittest.TestCase):
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(self.read(), {"hooks": LIVE_HOOKS})
+
+    def test_unnamed_handler_in_the_hooks_dir_is_removed(self):
+        self.settings.write_text(rendered(STRANDED_SETTINGS), encoding="utf-8")
+        self.write_manifest(HOOKS_ONLY_MANIFEST)
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout, f"  settings: updated {self.settings}\n")
+        self.assertEqual(self.read(), {"hooks": LIVE_HOOKS})
+
+    def test_shared_group_keeps_its_handler_outside_the_hooks_dir(self):
+        shared = {"type": "command", "command": "/usr/local/bin/shared-hook"}
+        document = {"hooks": {"PreToolUse": [{"matcher": "Agent", "hooks": [DISPATCH_GUARD_HANDLER, shared]}]}}
+        self.settings.write_text(rendered(document), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(
+            self.read()["hooks"]["PreToolUse"],
+            [{"matcher": "Agent", "hooks": [shared]}, *LIVE_HOOKS["PreToolUse"]],
+        )
+
+    def test_unnamed_handler_outside_the_hooks_dir_is_kept(self):
+        for script in ("/elsewhere/dispatch-guard.py", "/elsewhere/hooks/dispatch-guard.py"):
+            with self.subTest(script=script):
+                kept = {"matcher": "Agent", "hooks": [{"type": "command", "command": f"python3 {script}", "timeout": 10}]}
+                self.settings.write_text(rendered({"hooks": {"PreToolUse": [kept]}}), encoding="utf-8")
+                proc = self.run_merge()
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual(self.read()["hooks"]["PreToolUse"], [kept, *LIVE_HOOKS["PreToolUse"]])
+
+    def test_unnamed_handler_in_a_subdirectory_of_the_hooks_dir_is_kept(self):
+        kept = {"matcher": "Agent", "hooks": [{"type": "command", "command": f"python3 {LIVE_HOOKS_DIR}/sub/dispatch-guard.py"}]}
+        self.settings.write_text(rendered({"hooks": {"PreToolUse": [kept]}}), encoding="utf-8")
+        proc = self.run_merge()
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.read()["hooks"]["PreToolUse"], [kept, *LIVE_HOOKS["PreToolUse"]])
 
     def test_default_added_when_absent(self):
         self.settings.write_text(rendered({"model": "opus"}), encoding="utf-8")
@@ -412,6 +450,16 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(proc.stdout, "  settings: would change\n")
         self.assertEqual(self.settings.read_bytes(), before)
 
+    def test_check_with_an_unnamed_hooks_dir_handler_exits_1_and_writes_nothing(self):
+        self.settings.write_text(rendered(STRANDED_SETTINGS), encoding="utf-8")
+        self.write_manifest(HOOKS_ONLY_MANIFEST)
+        before = self.settings.read_bytes()
+        proc = self.run_merge("--check")
+        self.assertEqual(proc.returncode, 1)
+        self.assertEqual(proc.stdout, "  settings: would change\n")
+        self.assertEqual(self.settings.read_bytes(), before)
+        self.assertEqual(sorted(os.listdir(self.dir)), ["manifest.json", "settings.json"])
+
     def test_check_exits_0_when_the_user_list_carries_every_manifest_entry(self):
         permissions = {"allow": ["Bash(ls:*)", *LIVE_ALLOW], "ask": LIVE_ASK}
         self.settings.write_text(rendered({**LIVE_SETTINGS, "permissions": permissions}), encoding="utf-8")
@@ -448,6 +496,17 @@ class MergeSettingsTest(unittest.TestCase):
         self.assertEqual(list(result["hooks"].keys()), ["Stop", "PreToolUse", "SubagentStop", "SessionStart"])
 
     def test_command_uses_bare_python3_and_quotes_path(self):
+        proc = self.run_merge(hooks_dir="/tmp/with space/hooks")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        commands = [g["hooks"][0]["command"] for g in self.read()["hooks"]["PreToolUse"]]
+        self.assertEqual(
+            commands,
+            ["python3 '/tmp/with space/hooks/git-guard.py'", "python3 '/tmp/with space/hooks/write-guard.py'"],
+        )
+
+    def test_hooks_dir_with_space_owns_its_quoted_handler(self):
+        handler = {"type": "command", "command": "python3 '/tmp/with space/hooks/dispatch-guard.py'", "timeout": 10}
+        self.settings.write_text(rendered({"hooks": {"PreToolUse": [{"matcher": "Agent", "hooks": [handler]}]}}), encoding="utf-8")
         proc = self.run_merge(hooks_dir="/tmp/with space/hooks")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         commands = [g["hooks"][0]["command"] for g in self.read()["hooks"]["PreToolUse"]]

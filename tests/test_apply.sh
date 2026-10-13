@@ -410,4 +410,23 @@ grep -q "^  foreign: $HOME_DIR/skills/stray$" "$OUT"; check $? "34 the stray ent
 run_apply --check
 [ "$status" = 1 ]; check $? "34 a stray entry alongside the synced skills dir fails check"
 
+fresh_home
+run_apply
+cp "$FIX/claude/settings.json" "$WORK/manifest.before"
+rm "$FIX/claude/hooks/demo.py"
+python3 -c '
+import json, sys
+doc = json.load(open(sys.argv[1]))
+doc["hooks"] = {}
+open(sys.argv[1], "w").write(json.dumps(doc, indent=2) + "\n")
+' "$FIX/claude/settings.json"
+run_apply
+[ "$status" = 0 ]; check $? "35 a hook script gone from the tree: apply exits 0"
+grep -q "^  prune: $HOME_DIR/hooks/demo.py -> $FIX/claude/hooks/demo.py$" "$OUT"; check $? "35 the dangling hook link is pruned"
+! grep -q 'demo\.py' "$HOME_DIR/settings.json"; check $? "35 settings.json keeps no handler for the gone script"
+run_apply --check
+[ "$status" = 0 ]; check $? "35 check after the apply exits 0"
+echo "print('hook')" > "$FIX/claude/hooks/demo.py"
+cp "$WORK/manifest.before" "$FIX/claude/settings.json"
+
 summary

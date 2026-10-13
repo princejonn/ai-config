@@ -45,17 +45,20 @@ def command_arguments(handler: Any) -> list[str]:
         return []
 
 
-def is_owned(handler: Any, owned_scripts: set[str]) -> bool:
-    return any(os.path.basename(argument) in owned_scripts for argument in command_arguments(handler))
+def is_owned(handler: Any, owned_scripts: set[str], hooks_dir: Path) -> bool:
+    return any(
+        os.path.basename(argument) in owned_scripts or Path(argument).parent == hooks_dir
+        for argument in command_arguments(handler)
+    )
 
 
-def without_owned(groups: list[Any], owned_scripts: set[str]) -> list[Any]:
+def without_owned(groups: list[Any], owned_scripts: set[str], hooks_dir: Path) -> list[Any]:
     retained_groups: list[Any] = []
     for group in groups:
         if not isinstance(group, dict) or not isinstance(group.get("hooks"), list):
             retained_groups.append(group)
             continue
-        retained_handlers = [h for h in group["hooks"] if not is_owned(h, owned_scripts)]
+        retained_handlers = [h for h in group["hooks"] if not is_owned(h, owned_scripts, hooks_dir)]
         if retained_handlers:
             retained_groups.append({**group, "hooks": retained_handlers})
     return retained_groups
@@ -85,7 +88,7 @@ def merge_hooks(document: dict[str, Any], manifest: HooksManifest, hooks_dir: Pa
     preexisting_empty = {event for event, groups in hooks.items() if groups == []}
     for event, groups in hooks.items():
         if isinstance(groups, list):
-            hooks[event] = without_owned(groups, owned_scripts)
+            hooks[event] = without_owned(groups, owned_scripts, hooks_dir)
     for event, entries in manifest.items():
         groups = hooks.setdefault(event, [])
         if not isinstance(groups, list):
