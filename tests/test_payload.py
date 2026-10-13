@@ -445,6 +445,9 @@ ISSUE_QUESTION_FILED_FROM = "Filed from: <issue-write | issue-triage | deliver |
 ISSUE_QUESTION_VIEW = "`gh issue view <N> --json body,comments --repo <owner/name>`"
 ISSUE_QUESTION_STATE_CITES_ISSUE_NEXT = "its state is its body and every comment, read as `issue-next` § Output reads them"
 ISSUE_QUESTION_RECOMMENDER_STATE = "the item's state, the question and the files it turns on"
+ISSUE_QUESTION_RECOMMENDER_BARE = "The question goes to `recommender`, spawned bare"
+ISSUE_QUESTION_RECOMMENDER_NO_USER_MODEL = "a model the user asked for does not reach it"
+ISSUE_QUESTION_RECOMMENDER_MODEL_HOME = "per `skills/deliver/references/tiers.md` § Model"
 ISSUE_ANSWER_LIST = "`gh issue list --state open --limit 1000 --label question --json number,title,labels,comments --repo <owner/name>`"
 ISSUE_ANSWER_PICK_UNANSWERED = "lists with a `## Question` still unanswered"
 ISSUE_ANSWER_PASSED_OVER = "The items the pick passes over are named in that same one line, and the pick goes on."
@@ -1540,6 +1543,18 @@ class SkillPassagesTest(unittest.TestCase):
                 self.assertIn(passage, step)
         self.assertLess(step.index(ISSUE_QUESTION_VIEW), step.index(ISSUE_QUESTION_RECOMMENDER_STATE))
         self.assertEqual(body.count("gh issue view"), 1)
+
+    def test_issue_question_spawns_the_recommender_bare_and_cites_the_model_section(self):
+        _, body = skill_docs()["issue-question"]
+        step = next(line for line in section(body, "Method").splitlines() if line.startswith("1. "))
+        for passage in (ISSUE_QUESTION_RECOMMENDER_BARE, ISSUE_QUESTION_RECOMMENDER_NO_USER_MODEL, ISSUE_QUESTION_RECOMMENDER_MODEL_HOME):
+            with self.subTest(passage=passage):
+                self.assertIn(passage, step)
+        self.assertLess(step.index(ISSUE_QUESTION_RECOMMENDER_BARE), step.index(ISSUE_QUESTION_RECOMMENDER_NO_USER_MODEL))
+        self.assertLess(step.index(ISSUE_QUESTION_RECOMMENDER_MODEL_HOME), step.index(ISSUE_QUESTION_RECOMMENDER_STATE))
+        cited = re.search(r"tiers\.md` § (.+)$", ISSUE_QUESTION_RECOMMENDER_MODEL_HOME).group(1)
+        self.assertIn(f"\n## {cited}\n", read(SKILLS / "deliver" / "references" / "tiers.md"))
+        self.assertNotIn(MODEL_RECOMMENDER_EXEMPTION, body)
 
     def test_issue_answer_presents_one_item_under_questions_then_posts_the_ruling_and_removes_the_question_label(self):
         _, body = skill_docs()["issue-answer"]
