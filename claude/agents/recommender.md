@@ -1,6 +1,6 @@
 ---
 name: recommender
-description: Recommends an answer to a question on a tracker item, each option with an example and its cost, in the order rules/decisions.md gives; dispatched through issue-question, not invoked directly.
+description: Recommends an answer to a question on a tracker item, each option with an example and its cost, in the order rules/decisions.md gives.
 color: purple
 model: fable
 effort: xhigh

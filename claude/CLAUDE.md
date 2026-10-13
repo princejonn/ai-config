@@ -56,7 +56,7 @@ of the repo's agents passes `effort`; a built-in agent type inherits the session
 | `commit-item` | an item is accepted and the gate is green |
 | `open-pull-request` | the user asks for a pull request from a pushed branch — preview, then create on their word; never from a brief, a report or a step |
 | `issue-write` | a discussion with the user yields items to add — one `issue-writer` per discussion, in the background, the user's words verbatim under the brief's `Decisions made:`; the chat carries on in the same turn and, when it returns, relays its one line per item and starts `issue-triage` on each new item unasked |
-| `issue-next` | what to work on next — one item, dispatches nothing |
+| `issue-next` | what to work on next — one item |
 | `issue-triage` | a named issue is judged before work: draft, critique, duplicate, done |
 | `issue-question` | a question on a named item needs the user's word — filed with a recommendation, the item leaves the queue |
 | `issue-answer` | the open questions are asked for, or one is ruled on — one item, the ruling to the tracker |

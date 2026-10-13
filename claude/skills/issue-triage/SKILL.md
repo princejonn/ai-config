@@ -1,6 +1,6 @@
 ---
 name: issue-triage
-description: "Judges one tracker item the user names and readies it without asking them: a thin one — missing a label set, a goal or an acceptance — has those drafted and applied, and a complete one has its evidence, its acceptance lines and its proposal challenged through a review whose fix list it applies. Rules out a duplicate and work the tree already satisfies, posts the brief, plan and design the item needs, holds only a finding the user must decide, and files the question whether the item is ready. Use when asking to triage, tidy, label, challenge or ready a named issue before it is worked on, when a ruling on an item restarts its triage, when an item comes back BLOCKED for a missing acceptance section, or when an item may duplicate another or already be done."
+description: "Judges one tracker item the user names and readies it without asking them: a thin one — missing a label set, a goal or an acceptance — has those drafted and applied, and a complete one has its evidence, its acceptance lines and its proposal challenged through a review whose fix list it applies. Rules out a duplicate and work the tree already satisfies, posts the brief, plan and design the item needs, holds only a finding the user must decide, and files the question whether the item is ready. Use when asking to triage, tidy, label, challenge or ready a named issue before it is worked on, when a ruling on an item restarts its triage, when an item comes back BLOCKED for a missing acceptance section, or when an item may duplicate another or already be done. Dispatches `reviewer` and `verifier`."
 ---
 
 # Triage an issue
@@ -19,7 +19,7 @@ An item is thin when it carries no label from one of the three sets `issue-write
 
 The run is § Draft for a thin item, then § Duplicate, then § Done — an item closed there takes nothing further — then § Critique, which runs again after every edit until it returns `ACCEPTED`, a finding is held or the item is split, then § Ready. The headings below stand in reading order; this sentence is the order they run.
 
-Nothing here asks the user. Everything found is applied, save the four findings only the user decides, which are held — filed through `issue-question` with a recommender run, the item out of the queue until the ruling restarts this skill: a change to the § Goal or the scope; a sentence `issue-write` § Refuse would name as missing; a choice `rules/decisions.md` does not settle; a finding § Critique's stop rule trips on — a disagreement that survived two critique runs, or a defect two runs in a row each traced to the previous run's edit. A held finding ends the run once every other finding is applied; the restart carries the rulings in § Critique's `Decisions made:` and runs the critique again. A split ends the run too, the original waiting on its pieces per `issue-next` § Skip.
+Nothing here asks the user. Everything found is applied, save the four findings only the user decides, which are held — filed through `issue-question`, the item out of the queue until the ruling restarts this skill: a change to the § Goal or the scope; a sentence `issue-write` § Refuse would name as missing; a choice `rules/decisions.md` does not settle; a finding § Critique's stop rule trips on — a disagreement that survived two critique runs, or a defect two runs in a row each traced to the previous run's edit. A held finding ends the run once every other finding is applied; the restart carries the rulings in § Critique's `Decisions made:` and runs the critique again. A split ends the run too, the original waiting on its pieces per `issue-next` § Skip.
 
 ## Draft
 
@@ -85,7 +85,7 @@ Reached when the critique returns `ACCEPTED`. Every file this skill writes — a
 - `## Plan` — for `tier: complex` when the item carries none: the high-level plan, one line per step in order, each with the invariant it keeps; `plan-phases` details it in `deliver`.
 - `## Design` — when the item changes a public surface and carries none: `design-surface` runs on the item, and its § Exit posts the comment.
 
-Then the ready question, `Is #N ready to deliver as briefed?`, filed through `issue-question` only when every comment above is posted and no `## Question` on the item is unanswered: its recommendation is ready, linking the `## Brief`, `## Plan` and `## Design` comments the item carries, so `issue-question` runs no recommender for it. The ruling is `issue-answer`'s: ready sets `ready` there, and any other ruling restarts this skill with it.
+Then the ready question, `Is #N ready to deliver as briefed?`, filed through `issue-question` only when every comment above is posted and no `## Question` on the item is unanswered: its recommendation is ready, linking the `## Brief`, `## Plan` and `## Design` comments the item carries. The ruling is `issue-answer`'s: ready sets `ready` there, and any other ruling restarts this skill with it.
 
 ## Apply
 

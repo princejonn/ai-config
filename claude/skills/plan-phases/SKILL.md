@@ -21,7 +21,7 @@ The brief takes the shape `rules/brief.md` defines, and adds the design when the
 3. **Wide refactors** that no vertical slice keeps green run expand → migrate → contract: add the new form beside the old, move callers in batches that each leave the tree green, remove the old form last.
 4. **Order by dependency and risk.** Front-load the riskiest unknowns so the plan fails fast; leave mechanical follow-through for late phases.
 5. **Define verification per phase.** Name the exact command that proves the phase landed. A phase without an exit check is not a phase.
-6. **State invariants and stop conditions.** Name what must hold tree-wide after each phase, and which assumption, if broken, means the developer stops and returns rather than works around.
+6. **State invariants and stop conditions.** Name what must hold tree-wide after each phase, and which assumption, if broken, means implementation stops and returns rather than works around.
 7. **Name the unknowns.** Decisions needing user input, assumptions you could not verify, and external dependencies go in their own section — never buried inside a phase.
 8. **Plan migration and rollback** whenever the work touches persisted data, published contracts, or live systems.
 

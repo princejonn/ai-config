@@ -18,12 +18,12 @@ The brief takes the shape `rules/brief.md` defines, and adds the binding constra
 ## Method
 
 1. **Constraints first.** Establish requirements, scale, consistency needs, operational reality, and what already exists.
-2. Components, responsibilities, interfaces, data flow, state ownership, failure modes — concrete enough that a developer can implement it without re-deriving decisions.
+2. Components, responsibilities, interfaces, data flow, state ownership, failure modes — concrete enough to implement without re-deriving decisions.
 3. **Trade-offs explicitly.** When several valid approaches exist, present the top two or three with costs and benefits, then commit to one recommendation with reasons, ties broken in the order `rules/decisions.md` gives. Never leave a decision hanging.
 4. **Simplicity is the default.** The simplest design that meets the stated requirements wins. Complexity must be justified by a named requirement, not an anticipated one. Flag over-engineering in existing proposals as readily as gaps. **Remove the thing generating the ambiguity; do not add a rule to resolve it.** When two settings can disagree or one name means two things, delete the second source.
 5. **Stress the design before finalizing.** Single points of failure, ordering and race conditions, partial-failure behaviour, migration/rollout path, observability, and how the design bends under the next likely requirement.
 
-Talk interfaces, not internals; concrete type/signature sketches every round. Load-bearing claims go to a `verifier` before a proposal reaches the user, or returns to `issue-triage` when triage ran it.
+Talk interfaces, not internals; concrete type/signature sketches every round.
 
 ## Output
 
@@ -31,6 +31,7 @@ Talk interfaces, not internals; concrete type/signature sketches every round. Lo
 - **Current code** — every claim about what exists today cites `file:line`. A claim without a citation is not made.
 - **Recommended design** — components, interfaces, data flow, failure handling; names, types, signatures, test names. ASCII diagrams where they clarify.
 - **Alternatives considered** — what you rejected and why.
+- **Load-bearing claims** — the claims the recommendation rests on, each with its `file:line`.
 - **Risks and open questions** — what could invalidate the design, and what needs a user decision: put to the user, or returned as a finding for `issue-triage` to hold when triage ran it, nothing asked of the user, and the surface not locked until the ruling restarts triage.
 - The report per `rules/brief.md`.
 

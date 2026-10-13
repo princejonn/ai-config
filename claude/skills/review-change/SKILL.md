@@ -40,7 +40,7 @@ The brief takes the shape `rules/brief.md` defines, and adds the change-set to r
 
 - **Every finding names the contract it violates**: the brief, a repository instruction file, a public specification section, or the language/library. A finding whose violated contract you cannot name is one you do not report. A finding grounded only in how the code is currently used is contract invention — do not report it.
 - Verify each finding by reading the code. If you cannot confirm it, label it uncertain — never present speculation as fact.
-- Each finding carries: severity, `file:line`, the contract, the mechanism stated so a developer can act **without re-investigating**, and a concrete failure scenario (these inputs/state → this wrong outcome).
+- Each finding carries: severity, `file:line`, the contract, the mechanism stated so the fix can be made **without re-investigating**, and a concrete failure scenario (these inputs/state → this wrong outcome).
 - **One rule violated at many sites is ONE finding**: representative examples plus the command that enumerates the rest.
 - Severity, by whether it blocks acceptance:
   - **Blocker** — correctness, security, or data loss.
@@ -56,7 +56,7 @@ The brief takes the shape `rules/brief.md` defines, and adds the change-set to r
 
 ## Output
 
-- Lead with a **numbered list of fixes, not prose** — the developer works that list directly.
+- Lead with a **numbered list of fixes, not prose** — the author works that list directly.
 - Then a disposition for **every** item you were asked to cover, including repository-instruction compliance. A scope item passed over in silence reads as reviewed-and-clean; say explicitly when you found nothing.
 - Then what you could **not** cover, and which claims you verified by execution versus by reading.
 - Then `Standards: ACCEPTED` or `Standards: NOT ACCEPTED`, and `Spec: ACCEPTED` or `Spec: NOT ACCEPTED` — each `NOT ACCEPTED` when that axis holds a finding at Blocker or Fix severity.

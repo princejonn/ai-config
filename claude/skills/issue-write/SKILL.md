@@ -1,6 +1,6 @@
 ---
 name: issue-write
-description: "Drafts one tracker item in the shape this repository's items have, labelled for type — bug, feature, enhancement or documentation, with story for one written from the user's side — and for priority and tier, then creates it with `gh issue create`. Use when a discussion with the user yields a finding, a request, an idea or a user story to add as an issue; a description too vague for a goal or an observable acceptance comes back as a question instead of an item."
+description: "Drafts one tracker item in the shape this repository's items have, labelled for type — bug, feature, enhancement or documentation, with story for one written from the user's side — and for priority and tier, then creates it with `gh issue create`. Use when a discussion with the user yields a finding, a request, an idea or a user story to add as an issue; a description too vague for a goal or an observable acceptance comes back as a question instead of an item. Dispatches `verifier`."
 ---
 
 # Write an issue

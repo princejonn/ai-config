@@ -1,6 +1,6 @@
 ---
 name: issue-question
-description: "Files one question on one tracker item — the question, each option with an example and its cost, and one recommendation — as a comment, and labels the item question so it leaves the queue until the user rules. Use when a question on a named issue needs the user's word while other items continue, when triage holds a finding or asks whether an item is ready, or when a deviation from the agreed design is to be filed on its item; a question with no item is not filed here."
+description: "Files one question on one tracker item — the question, each option with an example and its cost, and one recommendation — as a comment, and labels the item question so it leaves the queue until the user rules. Use when a question on a named issue needs the user's word while other items continue, when triage holds a finding or asks whether an item is ready, or when a deviation from the agreed design is to be filed on its item; a question with no item is not filed here. Dispatches `recommender` and `verifier`."
 ---
 
 # File a question

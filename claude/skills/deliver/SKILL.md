@@ -1,6 +1,6 @@
 ---
 name: deliver
-description: "Runs an agreed item to committable code through agents: tiering, one living brief with its ledgers, review rounds to acceptance, a circuit breaker. Use once work is agreed; questions belong to design-surface or plan-phases."
+description: "Runs an agreed item to committable code through agents: tiering, one living brief with its ledgers, review rounds to acceptance, a circuit breaker. Use once work is agreed; questions belong to design-surface or plan-phases. Dispatches `developer`, `researcher`, `reviewer`, `tester` and `verifier`."
 ---
 
 # Deliver

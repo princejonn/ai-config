@@ -7,7 +7,7 @@ description: "Gets a review of a diff, or a challenge of a plan's premises, from
 
 ## Why
 
-A same-model reviewer shares the author's blind spots. A different model family is a decorrelation seam. Its output is a list of claims, never a verdict.
+A same-model review shares the author's blind spots. A different model family is a decorrelation seam. Its output is a list of claims, never a verdict.
 
 ## Policy
 
@@ -45,7 +45,7 @@ Give the Bash tool `timeout: 600000`, its maximum in milliseconds; the script bo
 
 ## Adjudicate
 
-- Every finding is checked before it reaches the user or a brief: read the code it names, or send a load-bearing one to a `verifier`.
+- Every finding is checked against the code it names before it reaches the user or a brief.
 - Drop what is disproved, keep what is confirmed, and say which is which.
 - You own the verdict, not Codex.
 

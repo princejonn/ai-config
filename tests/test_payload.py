@@ -127,8 +127,9 @@ ISSUE_WRITER_BODY = (
 )
 RESEARCHER_DISPATCH = "dispatched by the chat per the research routing in tiers.md"
 RESEARCH_LANE_KINDS = ("enumerates", "interprets")
-NOT_INVOKED_DIRECTLY = "not invoked directly"
-DISPATCHED_THROUGH_A_SKILL = re.compile(r"dispatched through /?([a-z0-9-]+)")
+SKILL_NAME_CHARACTER = "[a-z0-9-]"
+HIGHER_ORDER_SKILLS = {"deliver", "issue-question", "issue-triage", "issue-write"}
+DISPATCH_MARKER = re.compile(r"(?:^|\s)Dispatches ([^.]*)\.$")
 BROAD_GATHERING_TO_RESEARCH = "broad source gathering (research)"
 CIRCUIT_BREAKER_PASSAGES = (
     "re-tiers",
@@ -309,7 +310,7 @@ DELIVER_MEMO_ENTERS_THE_BRIEF = "the memo, not the material, enters the brief"
 DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it as `<repo>/.tmp/design-<slug>.md`, `<slug>` formed from its brief's Goal as `skills/deliver/SKILL.md` § Interruptions forms `<item>`, `.tmp/` as it gives it for the living brief — and hands it to `deliver`, or back to `issue-triage` when triage ran it."
 DESIGN_DESCRIPTION_MODES = "inline with the user or inside issue-triage on an item with nothing asked of them"
 DESIGN_ROW_MODES = "with the user before code, or inside `issue-triage` without them"
-DESIGN_CLAIMS_VERIFIED_BEFORE_THE_USER_OR_TRIAGE = "Load-bearing claims go to a `verifier` before a proposal reaches the user, or returns to `issue-triage` when triage ran it."
+DESIGN_LOAD_BEARING_CLAIMS_OUTPUT = "- **Load-bearing claims** — the claims the recommendation rests on, each with its `file:line`."
 DESIGN_USER_DECISION_PUT_OR_RETURNED = "what needs a user decision: put to the user, or returned as a finding for `issue-triage` to hold when triage ran it, nothing asked of the user, and the surface not locked until the ruling restarts triage"
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
@@ -485,7 +486,7 @@ ISSUE_TRIAGE_HELD_CLASSES = (
     "a choice `rules/decisions.md` does not settle",
     "a finding § Critique's stop rule trips on — a disagreement that survived two critique runs, or a defect two runs in a row each traced to the previous run's edit",
 )
-ISSUE_TRIAGE_HELD_FILED = "filed through `issue-question` with a recommender run"
+ISSUE_TRIAGE_HELD_FILED = "filed through `issue-question`, the item out of the queue until the ruling restarts this skill"
 ISSUE_TRIAGE_HELD_ENDS_RUN = "A held finding ends the run once every other finding is applied; the restart carries the rulings in § Critique's `Decisions made:` and runs the critique again."
 ISSUE_TRIAGE_SPLIT_ENDS_RUN = "A split ends the run too, the original waiting on its pieces per `issue-next` § Skip."
 ISSUE_TRIAGE_DRAFT_APPLIED = ("Both are applied before anything else runs", "`gh issue edit <N> --add-label <label> --add-label <label>`", "`gh issue edit <N> --body-file <path>`")
@@ -525,7 +526,6 @@ ISSUE_TRIAGE_READY_QUESTION = "`Is #N ready to deliver as briefed?`"
 ISSUE_TRIAGE_READY_QUESTION_GATE = (
     "filed through `issue-question` only when every comment above is posted and no `## Question` on the item is unanswered",
     "its recommendation is ready, linking the `## Brief`, `## Plan` and `## Design` comments the item carries",
-    "`issue-question` runs no recommender for it",
     "The ruling is `issue-answer`'s: ready sets `ready` there, and any other ruling restarts this skill with it.",
 )
 ISSUE_TRIAGE_APPLY_PRECEDENCE = "by precedence — done, duplicate, split, question, ready"
@@ -693,6 +693,24 @@ def skill_docs():
 
 def agent_docs():
     return {p.stem: parse_frontmatter(read(p)) for p in agent_files()}
+
+
+def dispatched_agents(body, agents):
+    return {agent for agent in agents if re.search(rf"\b{re.escape(agent)}s?\b", body, re.IGNORECASE)}
+
+
+def skill_mention(skill):
+    return re.compile(rf"(?<!{SKILL_NAME_CHARACTER}){re.escape(skill)}(?!{SKILL_NAME_CHARACTER})", re.IGNORECASE)
+
+
+def marked_agents(description):
+    marker = DISPATCH_MARKER.search(description)
+    return None if marker is None else set(re.findall(r"`([a-z0-9-]+)`", marker.group(1)))
+
+
+def dispatch_marker(agents):
+    *rest, last = [f"`{agent}`" for agent in sorted(agents)]
+    return f"Dispatches {', '.join(rest)} and {last}." if rest else f"Dispatches {last}."
 
 
 def section(body, heading):
@@ -863,12 +881,11 @@ class AgentsTest(unittest.TestCase):
         offsets = [text.index(passage) for passage in ISSUE_WRITER_BODY]
         self.assertEqual(offsets, sorted(offsets))
 
-    def test_recommender_is_read_only_on_fable_at_xhigh_effort_and_dispatched_through_issue_question(self):
+    def test_recommender_is_read_only_on_fable_at_xhigh_effort(self):
         fields, _ = agent_docs()["recommender"]
         self.assertEqual(fields["tools"], RECOMMENDER_TOOLS)
         self.assertEqual(fields["model"], "fable")
         self.assertEqual(fields["effort"], "xhigh")
-        self.assertIn("dispatched through issue-question", fields["description"])
 
     def test_no_agent_description_names_a_tier_or_a_model(self):
         for stem, (fields, _) in agent_docs().items():
@@ -885,14 +902,12 @@ class AgentsTest(unittest.TestCase):
             with self.subTest(kind=kind):
                 self.assertIn(kind, description)
 
-    def test_an_agent_description_says_not_invoked_directly_only_when_a_skill_dispatches_it(self):
-        skills = set(skill_docs())
-        for stem, (fields, _) in agent_docs().items():
-            if NOT_INVOKED_DIRECTLY in fields["description"]:
-                with self.subTest(agent=stem):
-                    dispatch = DISPATCHED_THROUGH_A_SKILL.search(fields["description"])
-                    self.assertIsNotNone(dispatch)
-                    self.assertIn(dispatch.group(1), skills)
+    def test_no_agent_description_names_the_skill_that_dispatches_it(self):
+        agents = agent_docs()
+        for skill, (_, body) in skill_docs().items():
+            for agent in sorted(dispatched_agents(body, set(agents))):
+                with self.subTest(agent=agent, skill=skill):
+                    self.assertNotRegex(agents[agent][0]["description"], skill_mention(skill))
 
     def test_verify_claim_and_the_verifier_send_broad_source_gathering_to_the_research_skill(self):
         for door, text in (("verify-claim", skill_docs()["verify-claim"][0]["description"]), ("verifier", agent_docs()["verifier"][1])):
@@ -1123,6 +1138,103 @@ class DescriptionsTest(unittest.TestCase):
             for name, (fields, _) in docs.items():
                 with self.subTest(kind=kind, name=name):
                     self.assertNotIn("\u2192", fields["description"])
+
+
+class DispatchMarkerTest(unittest.TestCase):
+    def test_marked_agents_reads_the_closing_dispatches_sentence(self):
+        cases = (
+            ("Runs an item. Use once it is agreed. Dispatches `developer`, `reviewer` and `verifier`.", {"developer", "reviewer", "verifier"}),
+            ("Writes items. Dispatches `issue-writer` and `verifier`.", {"issue-writer", "verifier"}),
+            ("Dispatches `verifier`.", {"verifier"}),
+            ("Files one question. Use when a ruling is needed.", None),
+        )
+        for description, expected in cases:
+            with self.subTest(description=description):
+                self.assertEqual(marked_agents(description), expected)
+
+    def test_dispatches_nothing_is_a_marker_naming_no_agent(self):
+        self.assertEqual(marked_agents("Returns the next item. Dispatches nothing."), set())
+
+    def test_a_dispatches_sentence_before_the_last_is_no_marker(self):
+        self.assertIsNone(marked_agents("Dispatches `verifier`. Use when a claim needs checking."))
+
+    def test_dispatched_agents_counts_an_agent_named_bare_plural_possessive_or_in_code_and_not_a_longer_word(self):
+        agents = {"developer", "issue-writer", "reviewer", "tester", "verifier"}
+        cases = (
+            ("Code is committable when a reviewer accepts it.", {"reviewer"}),
+            ("Reviewer and tester run in turn.", {"reviewer", "tester"}),
+            ("Parallel developers run in separate worktrees.", {"developer"}),
+            ("Findings come back in the reviewer's fix-list form.", {"reviewer"}),
+            ("Each claim goes to a `verifier`.", {"verifier"}),
+            ("A reviewership, an attester and issue-write name no agent.", set()),
+        )
+        for body, expected in cases:
+            with self.subTest(body=body):
+                self.assertEqual(dispatched_agents(body, agents), expected)
+
+    def test_skill_mention_matches_a_skill_name_bare_capitalised_in_code_or_after_a_slash_and_not_when_a_letter_digit_or_hyphen_extends_it(self):
+        cases = (
+            ("Recommends an answer, run by issue-question.", "issue-question", True),
+            ("Deliver hands it the brief.", "deliver", True),
+            ("Runs inside `deliver` once an item is agreed.", "deliver", True),
+            ("Dispatched through /issue-triage.", "issue-triage", True),
+            ("Use when tests are the deliverable.", "deliver", False),
+            ("Hands the change to the tester.", "test", False),
+            ("Writes the items, the issue-writer's job.", "issue-write", False),
+            ("Keeps a test-driven change small.", "test", False),
+            ("Runs the pre-deliver check.", "deliver", False),
+            ("Names the issue-write2 draft.", "issue-write", False),
+            ("Runs the redeliver check.", "deliver", False),
+            ("Names the 2deliver draft.", "deliver", False),
+        )
+        for text, skill, expected in cases:
+            with self.subTest(text=text, skill=skill):
+                self.assertEqual(skill_mention(skill).search(text) is not None, expected)
+
+
+class HigherOrderSkillsTest(unittest.TestCase):
+    def test_a_skill_whose_body_names_an_agent_carries_the_dispatch_marker(self):
+        agents = set(agent_docs())
+        for name, (fields, body) in skill_docs().items():
+            dispatched = dispatched_agents(body, agents)
+            if dispatched:
+                with self.subTest(skill=name):
+                    self.assertIsNotNone(marked_agents(fields["description"]), sorted(dispatched))
+
+    def test_a_dispatch_marker_names_at_least_one_agent(self):
+        for name, (fields, _) in skill_docs().items():
+            marked = marked_agents(fields["description"])
+            if marked is not None:
+                with self.subTest(skill=name):
+                    self.assertTrue(marked)
+
+    def test_a_dispatch_marker_names_no_agent_its_body_does_not_dispatch(self):
+        agents = set(agent_docs())
+        for name, (fields, body) in skill_docs().items():
+            for agent in sorted(marked_agents(fields["description"]) or ()):
+                with self.subTest(skill=name, agent=agent):
+                    self.assertIn(agent, dispatched_agents(body, agents))
+
+    def test_a_dispatch_marker_names_every_agent_its_body_dispatches(self):
+        agents = set(agent_docs())
+        for name, (fields, body) in skill_docs().items():
+            marked = marked_agents(fields["description"])
+            if marked is None:
+                continue
+            for agent in sorted(dispatched_agents(body, agents)):
+                with self.subTest(skill=name, agent=agent):
+                    self.assertIn(agent, marked)
+
+    def test_a_dispatch_marker_lists_its_agents_alphabetically_each_in_code_the_last_after_and_with_no_oxford_comma(self):
+        for name, (fields, _) in skill_docs().items():
+            marked = marked_agents(fields["description"])
+            if marked:
+                with self.subTest(skill=name):
+                    self.assertTrue(fields["description"].endswith(f" {dispatch_marker(marked)}"), fields["description"])
+
+    def test_the_higher_order_skills_are_exactly_the_expected_set(self):
+        marked = {name for name, (fields, _) in skill_docs().items() if marked_agents(fields["description"]) is not None}
+        self.assertEqual(marked, HIGHER_ORDER_SKILLS)
 
 
 class SkillPassagesTest(unittest.TestCase):
@@ -1721,7 +1833,7 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertEqual(offsets, sorted(offsets))
         self.assertIn(ISSUE_TRIAGE_NO_ASK, state)
 
-    def test_issue_triage_holds_exactly_the_four_findings_the_user_decides_the_fourth_either_trip_of_the_stop_rule_files_each_with_a_recommender_run_and_ends_the_run(self):
+    def test_issue_triage_holds_exactly_the_four_findings_the_user_decides_the_fourth_either_trip_of_the_stop_rule_files_each_through_issue_question_out_of_the_queue_and_ends_the_run(self):
         _, body = skill_docs()["issue-triage"]
         state = re.sub(r"\s+", " ", section(body, "State"))
         for passage in (ISSUE_TRIAGE_HELD_FILED, *ISSUE_TRIAGE_HELD_CLASSES, ISSUE_TRIAGE_HELD_ENDS_RUN):
@@ -1791,7 +1903,7 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertEqual(body.count(ISSUE_TRIAGE_EVIDENCE_FILE), 1)
         self.assertEqual(body.count(ISSUE_TRIAGE_EVIDENCE_POST), 1)
 
-    def test_issue_triage_ready_files_the_ready_question_after_the_evidence_with_no_question_unanswered_and_no_recommender_and_leaves_the_ruling_to_issue_answer(self):
+    def test_issue_triage_ready_files_the_ready_question_after_the_evidence_with_no_question_unanswered_and_leaves_the_ruling_to_issue_answer(self):
         _, body = skill_docs()["issue-triage"]
         ready = re.sub(r"\s+", " ", section(body, "Ready"))
         passages = (ISSUE_TRIAGE_READY_QUESTION, *ISSUE_TRIAGE_READY_QUESTION_GATE)
@@ -2017,9 +2129,12 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(DESIGN_EXIT_RETURNS_THE_DESIGN, section(body, "Exit"))
         self.assertNotIn("writ", body.lower())
 
-    def test_design_surface_sends_load_bearing_claims_to_a_verifier_before_a_proposal_reaches_the_user_or_returns_to_triage(self):
+    def test_design_surface_output_lists_the_load_bearing_claims_each_with_its_file_line_before_the_risks(self):
         _, body = skill_docs()["design-surface"]
-        self.assertIn(DESIGN_CLAIMS_VERIFIED_BEFORE_THE_USER_OR_TRIAGE, section(body, "Method"))
+        lines = section(body, "Output").splitlines()
+        self.assertIn(DESIGN_LOAD_BEARING_CLAIMS_OUTPUT, lines)
+        risks = next(i for i, line in enumerate(lines) if line.startswith("- **Risks and open questions**"))
+        self.assertEqual(lines.index(DESIGN_LOAD_BEARING_CLAIMS_OUTPUT), risks - 1)
 
     def test_design_surface_output_puts_a_user_decision_to_the_user_or_returns_it_as_a_finding_for_triage_to_hold_asking_the_user_nothing_and_leaves_the_surface_unlocked_until_the_ruling_restarts_triage(self):
         _, body = skill_docs()["design-surface"]

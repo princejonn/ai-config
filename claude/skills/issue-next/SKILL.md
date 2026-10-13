@@ -1,6 +1,6 @@
 ---
 name: issue-next
-description: "Returns the next open item from the tracker as the fields a brief needs, ordered `priority: blocker` first, then by status, then urgency, and blocked by nothing open. Use when asking what to work on next or which open issue is most urgent. Dispatches nothing."
+description: "Returns the next open item from the tracker as the fields a brief needs, ordered `priority: blocker` first, then by status, then urgency, and blocked by nothing open. Use when asking what to work on next or which open issue is most urgent."
 ---
 
 # Next issue
