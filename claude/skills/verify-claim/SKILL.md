@@ -1,15 +1,13 @@
 ---
 name: verify-claim
-description: "Checks one load-bearing claim, or a small coupled set, before it is ratified into a design, plan or review verdict or relayed to the user as fact — 'nothing else calls this', 'the RFC requires X', 'the dependency is at version Y', 'all N sites were fixed', a bug diagnosis, a tracker item's premise. Returns VERIFIED, DISPROVEN or UNVERIFIABLE with falsification-grade evidence. Not for reviewing a change-set (review-change) or broad source gathering (research)."
-context: fork
-agent: verifier
+description: "Checks one load-bearing claim, or a small coupled set — 'nothing else calls this', 'the RFC requires X', 'the dependency is at version Y', 'all N sites were fixed', a bug diagnosis, a tracker item's premise. Use in a verifier agent before the claim is ratified into a design, plan or review verdict or relayed to the user as fact. Returns VERIFIED, DISPROVEN or UNVERIFIABLE with falsification-grade evidence. Not for reviewing a change-set (review-change) or broad source gathering (research)."
 ---
 
 # Verify
 
 ## Input
 
-The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and adds each claim verbatim, its role (what decision rests on it) and where to start looking. When the claim is true under one reading and false under another, the verdict is `UNVERIFIABLE` and the missing artefact is the choice between the readings — list them.
+The brief takes the shape `rules/brief.md` defines, and adds each claim verbatim, its role (what decision rests on it) and where to start looking. When the claim is true under one reading and false under another, the verdict is `UNVERIFIABLE` and the missing artefact is the choice between the readings — list them.
 
 ## What counts as a claim
 

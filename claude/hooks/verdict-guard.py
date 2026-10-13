@@ -27,7 +27,6 @@ REVIEWER = (("ACCEPTED", "NOT ACCEPTED", "BLOCKED"), ends_with_verdict, "reviewe
 
 VERDICTS = {
     "reviewer": REVIEWER,
-    "reviewer-complex": REVIEWER,
     "verifier": (("VERIFIED", "DISPROVEN", "UNVERIFIABLE"), states_verdict, "verifier output must state VERIFIED, DISPROVEN or UNVERIFIABLE per claim"),
 }
 

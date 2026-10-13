@@ -121,15 +121,17 @@ grep -q '^test-2$' "$DRY"; check $? "10 a later pair is tagged by its ordinal"
 [ "$?" = 2 ]; check $? "11 --only naming no pair exits 2"
 grep -q '^pressure: no prompt pair named ghost$' "$ERR"; check $? "11 --only naming no pair says which"
 
-for agent in researcher-trivial researcher researcher-complex; do
+for pair in researcher:research reviewer:review-change verifier:verify-claim; do
+  agent="${pair%%:*}"
+  skill="${pair##*:}"
   DEDICATED="$WORK/dedicated-$agent.jsonl"
   { init_event; agent_event "$agent"; result_event success; } > "$DEDICATED"
-  run_verdict "$DEDICATED" research "$PROMPT"
+  run_verdict "$DEDICATED" "$skill" "$PROMPT"
   verdict_is yes "12 a dispatch to $agent, whose skills are exactly the skill under test"
 done
 
 DEDICATED_SIBLING="$WORK/dedicated-sibling.jsonl"
-{ init_event; agent_event researcher-trivial; result_event error_max_turns; } > "$DEDICATED_SIBLING"
+{ init_event; agent_event researcher; result_event error_max_turns; } > "$DEDICATED_SIBLING"
 run_verdict "$DEDICATED_SIBLING" verify-claim "$PROMPT"
 verdict_is no "13 a dispatch to an agent whose skills are exactly a sibling, in a stream cut at the turn cap"
 
@@ -166,5 +168,13 @@ UNTYPED="$WORK/untyped.jsonl"
 { init_event; untyped_agent_event; result_event error_max_turns; } > "$UNTYPED"
 run_verdict "$UNTYPED" research "$PROMPT"
 verdict_is cut "18 an Agent call carrying no subagent type in a stream cut at the turn cap"
+
+ADDED="$WORK/added"
+CLAUDE_CONFIG_DIR="$CONFIG" /bin/bash "$HERE/pressure.sh" --only test --dry-run > "$ADDED" 2>"$ERR"
+check $? "19 --dry-run exits 0"
+[ "$(grep -c "^  \(fire   \|no-fire\) claude -p '" "$ADDED")" = 4 ]; check $? "19 the prompt is the first argument after -p on every fire and no-fire line"
+[ "$(grep -c -- "--max-turns 3 --add-dir '$HERE/../claude' '$CONFIG' </dev/null\$" "$ADDED")" = 4 ]; check $? "19 every fire and no-fire line ends with --add-dir on the config tree and the Claude config dir"
+CLAUDE_CONFIG_DIR= HOME="$HOME_DIR" /bin/bash "$HERE/pressure.sh" --only test --dry-run > "$ADDED" 2>"$ERR"
+[ "$(grep -c -- "--add-dir '$HERE/../claude' '$HOME_DIR/.claude' </dev/null\$" "$ADDED")" = 4 ]; check $? "19 an empty CLAUDE_CONFIG_DIR falls back to the Claude dir under HOME"
 
 summary

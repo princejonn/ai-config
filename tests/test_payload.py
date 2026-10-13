@@ -24,6 +24,9 @@ SPEC.loader.exec_module(verdict_guard)
 GUARD_SPEC = importlib.util.spec_from_file_location("git_guard", HOOKS / "git-guard.py")
 git_guard = importlib.util.module_from_spec(GUARD_SPEC)
 GUARD_SPEC.loader.exec_module(git_guard)
+DISPATCH_SPEC = importlib.util.spec_from_file_location("dispatch_guard", HOOKS / "dispatch-guard.py")
+dispatch_guard = importlib.util.module_from_spec(DISPATCH_SPEC)
+DISPATCH_SPEC.loader.exec_module(dispatch_guard)
 RENDER_SPEC = importlib.util.spec_from_file_location("render_agents_md", SCRIPTS / "render_agents_md.py")
 render_agents_md = importlib.util.module_from_spec(RENDER_SPEC)
 RENDER_SPEC.loader.exec_module(render_agents_md)
@@ -58,8 +61,8 @@ EFFORTS = {"low", "medium", "high", "xhigh", "max"}
 
 SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "research": {},
-    "verify-claim": {"context": "fork", "agent": "verifier"},
-    "review-change": {"context": "fork", "agent": "reviewer"},
+    "verify-claim": {},
+    "review-change": {},
     "commit-item": {},
     "design-surface": {},
     "plan-phases": {},
@@ -77,47 +80,37 @@ SKILL_FIELDS_BEYOND_NAME_AND_DESCRIPTION = {
     "issue-answer": {},
     "open-pull-request": {},
 }
-SKILLS_WITH_INPUT = {"author-gherkin", "design-surface", "implement", "issue-answer", "issue-next", "issue-question", "issue-triage", "issue-write", "plan-phases", "research", "review-change", "test", "verify-claim"}
+SKILLS_WITH_INPUT = {"author-gherkin", "design-surface", "diagnose-root-cause", "implement", "issue-answer", "issue-next", "issue-question", "issue-triage", "issue-write", "plan-phases", "research", "review-change", "test", "verify-claim"}
 AGENT_KEYS = {"name", "description", "color", "model", "effort", "tools"}
-DEVELOPER_AGENTS = {"developer-trivial", "developer", "developer-complex"}
-RESEARCHER_AGENTS = {"researcher-trivial", "researcher", "researcher-complex"}
+TIERS = ("trivial", "standard", "complex")
 EXPECTED_AGENT_SKILLS = {
-    **{name: ["implement", "test", "diagnose-root-cause", "author-gherkin"] for name in DEVELOPER_AGENTS},
-    **{name: ["research"] for name in RESEARCHER_AGENTS},
+    "developer": ["implement", "test", "diagnose-root-cause", "author-gherkin"],
+    "researcher": ["research"],
+    "reviewer": ["review-change"],
     "tester": ["test", "author-gherkin"],
-    "reviewer-complex": ["review-change"],
+    "verifier": ["verify-claim"],
     "issue-writer": ["issue-write"],
 }
 EXPECTED_AGENT_MODELS = {
-    "developer-trivial": "sonnet",
     "developer": "opus",
-    "developer-complex": "fable",
     "issue-writer": "opus",
     "recommender": "fable",
-    "researcher-trivial": "sonnet",
     "researcher": "opus",
-    "researcher-complex": "fable",
     "reviewer": "opus",
-    "reviewer-complex": "fable",
     "tester": "opus",
     "verifier": "opus",
 }
 EXPECTED_AGENT_COLORS = {
-    "developer-trivial": "blue",
     "developer": "blue",
-    "developer-complex": "blue",
     "issue-writer": "orange",
     "recommender": "purple",
-    "researcher-trivial": "red",
     "researcher": "red",
-    "researcher-complex": "red",
     "reviewer": "yellow",
-    "reviewer-complex": "yellow",
     "tester": "cyan",
     "verifier": "green",
 }
-EXPECTED_AGENTS = {"developer-trivial", "developer", "developer-complex", "issue-writer", "recommender", "researcher-trivial", "researcher", "researcher-complex", "reviewer", "reviewer-complex", "tester", "verifier"}
-ROUTED_ONLY_AGENTS = {"issue-writer", "recommender", "researcher-trivial", "researcher", "researcher-complex", "reviewer", "reviewer-complex", "verifier"}
+EXPECTED_AGENTS = {"developer", "issue-writer", "recommender", "researcher", "reviewer", "tester", "verifier"}
+ROUTED_ONLY_AGENTS = {"issue-writer", "recommender", "researcher", "reviewer", "verifier"}
 RECOMMENDER_TOOLS = "Read, Grep, Glob, WebFetch, WebSearch"
 ISSUE_WRITER_TOOLS = "Agent, Skill, Bash, Read, Write, Grep, Glob"
 ISSUE_WRITER_DISPATCH = "dispatched by the chat in the background, one per discussion"
@@ -139,19 +132,30 @@ DISPATCHED_THROUGH_A_SKILL = re.compile(r"dispatched through /?([a-z0-9-]+)")
 BROAD_GATHERING_TO_RESEARCH = "broad source gathering (research)"
 CIRCUIT_BREAKER_PASSAGES = (
     "re-tiers",
-    "`reviewer-complex`",
+    "`developer` and `reviewer` at rung 1 of `references/tiers.md` § Model",
+    "the escalation reported to the user",
     "a defect trip re-tiers the item whose fixes carried the defect",
     "a disagreement trip at any tier, end the run",
 )
-TIER_ROUTING_ROWS = (
-    "| `trivial` | `developer-trivial` | `reviewer` |",
-    "| `standard` | `developer` | `reviewer` |",
-    "| `complex` | `developer-complex` | `reviewer-complex` |",
+TIER_MODEL_ROWS = (
+    "| `trivial` | `sonnet` |",
+    "| `standard` | `opus` |",
+    "| `complex` | `fable` |",
 )
+MODEL_PRECEDENCE = "An agent's model is chosen when it is spawned, by the first rung that applies:"
+MODEL_RUNGS = (
+    "1. Circuit-breaker escalation (`references/review-loop.md`), reported to the user when the rounds restart — every `developer`, `researcher` and `reviewer` spawn for the re-tiered item, at `fable`.",
+    "2. The user's request, for one spawn or standing until revoked — `developer`, `researcher`, `reviewer`, `tester`, `verifier`, `issue-writer` and the built-in agent types, at the model asked for.",
+    "3. The table — `developer`, `researcher` and `reviewer`, at their work's tier: a researcher at its lane's tier per § Research routing, a batched review at the highest tier in its batch, `opus` for any batch holding a standard item, and a review with no item at `standard`.",
+    "4. The pin — `tester`, `verifier` and `issue-writer` spawn bare and run their frontmatter `model`; a built-in agent type, which has no frontmatter, the `model: opus` `CLAUDE.md` passes.",
+)
+MODEL_BATCH_RULE = "a batched review at the highest tier in its batch, `opus` for any batch holding a standard item"
+MODEL_NO_ITEM_RULE = "a review with no item at `standard`"
+MODEL_RECOMMENDER_EXEMPTION = "`recommender` is on no rung: it spawns bare and always runs `fable`."
 RESEARCH_ROUTING_ROWS = (
-    "| `trivial` | enumerates | `researcher-trivial` |",
-    "| `standard` | interprets | `researcher` |",
-    "| `complex` | interprets for a complex-tier item | `researcher-complex` |",
+    "| `trivial` | enumerates |",
+    "| `standard` | interprets |",
+    "| `complex` | interprets for a complex-tier item |",
 )
 
 ONE_HOME_PHRASES = {
@@ -198,6 +202,9 @@ ONE_HOME_PHRASES = {
     "counts as interpreting": "claude/skills/deliver/references/tiers.md",
     "An interpreting lane with no item is standard": "claude/skills/deliver/references/tiers.md",
     "re-runs at complex": "claude/skills/deliver/references/tiers.md",
+    "the first rung that applies": "claude/skills/deliver/references/tiers.md",
+    "the highest tier in its batch": "claude/skills/deliver/references/tiers.md",
+    "is on no rung": "claude/skills/deliver/references/tiers.md",
     "splits into one issue per feature": "claude/skills/issue-write/SKILL.md",
     "bug, feature, enhancement, documentation": "claude/skills/issue-next/SKILL.md",
     "overriding what it names": "claude/skills/issue-next/SKILL.md",
@@ -285,7 +292,7 @@ DELIVER_INTAKE_PATHS_RESOLVE_AT_THE_ROOT = "Its paths are repo-relative; the bri
 DELIVER_INTAKE_PLAN_COMMENT = "For `tier: complex`, the item's latest `## Plan` comment is what `plan-phases` details into the plan the brief carries."
 DELIVER_INTAKE_CHECKS_THE_BRIEF = "Before the item runs, inline or dispatched, the brief is checked against the tree."
 DELIVER_INTAKE_CONTRADICTION = (
-    "A file it names that is gone, or a premise `/verify-claim` returns `DISPROVEN` for, contradicts the brief",
+    "A file it names that is gone, or a premise a `verifier` returns `DISPROVEN` for, contradicts the brief",
     "filed as a question through `issue-question` on the item, `Filed from: deliver § Intake`",
     "the filing takes `ready` off",
     "nothing runs",
@@ -293,14 +300,16 @@ DELIVER_INTAKE_CONTRADICTION = (
 DELIVER_INTAKE_FILED_FROM = "deliver § Intake"
 IMPLEMENT_ROW_TIER_GATE = "inline for a one-liner tiered `trivial`, otherwise"
 IMPLEMENT_DESCRIPTION_TIER_GATE = "inline for a one-liner tiered trivial, otherwise"
-RESEARCH_ROW_AGENT = "in the tier's researcher agent"
+RESEARCH_ROW_AGENT = "in a `researcher` agent"
 RESEARCH_DESCRIPTION_AGENT = "in a researcher agent"
-DELIVER_RESEARCH_READS = "Bulk and interpreting reads go to the tier's researcher per `references/tiers.md`"
+DELIVER_RESEARCH_READS = "Bulk and interpreting reads go to a `researcher` at its model per `references/tiers.md`"
+DELIVER_FRESH_REVIEWER = "A fresh `reviewer` each round on the living brief, its model per `references/tiers.md`."
+CLAUDE_MD_MODEL_AT_DISPATCH = "`developer`, `researcher` and `reviewer` take `model:` on every spawn, `tester`, `verifier` and `issue-writer` only on the user's request, and `recommender` never, each as the precedence in `skills/deliver/references/tiers.md` says; no spawn of the repo's agents passes `effort`; a built-in agent type inherits the session's model, so pass `model: opus`, or the model the user asked for."
 DELIVER_MEMO_ENTERS_THE_BRIEF = "the memo, not the material, enters the brief"
 DESIGN_EXIT_RETURNS_THE_DESIGN = "When the surface is locked, return it in the message — internals are Claude's to decide. The chat posts it on the tracker item as a comment opening `## Design` (`gh issue comment <N> --body-file <scratchpad file>`) — with no item, records it as `<repo>/.tmp/design-<slug>.md`, `<slug>` formed from its brief's Goal as `skills/deliver/SKILL.md` § Interruptions forms `<item>`, `.tmp/` as it gives it for the living brief — and hands it to `deliver`, or back to `issue-triage` when triage ran it."
 DESIGN_DESCRIPTION_MODES = "inline with the user or inside issue-triage on an item with nothing asked of them"
 DESIGN_ROW_MODES = "with the user before code, or inside `issue-triage` without them"
-DESIGN_CLAIMS_VERIFIED_BEFORE_THE_USER_OR_TRIAGE = "Load-bearing claims go to `verify-claim` before a proposal reaches the user, or returns to `issue-triage` when triage ran it."
+DESIGN_CLAIMS_VERIFIED_BEFORE_THE_USER_OR_TRIAGE = "Load-bearing claims go to a `verifier` before a proposal reaches the user, or returns to `issue-triage` when triage ran it."
 DESIGN_USER_DECISION_PUT_OR_RETURNED = "what needs a user decision: put to the user, or returned as a finding for `issue-triage` to hold when triage ran it, nothing asked of the user, and the surface not locked until the ruling restarts triage"
 BRIEF_FIELD_LABELS = ("Goal:", "Item:", "Acceptance:", "Files in scope:", "Decisions made:", "Verification:", "Invariant:", "Instructions:", "Tier:", "Out of scope:")
 ISSUE_BODY_HEADINGS = ("## Goal", "## Why", "## Proposal", "## Acceptance", "## Related")
@@ -362,7 +371,7 @@ ISSUE_WRITE_CHECK_BULLETS = {
         "a closed one stops nothing here",
     ),
     "- Evidence:": (
-        "each load-bearing § Why claim goes through `/verify-claim`",
+        "each load-bearing § Why claim goes to a `verifier`",
         "A `DISPROVEN` claim is corrected from the verdict's evidence or struck",
         "a Goal that rests on a struck claim stops the item, returned with the verdict",
         "an `UNVERIFIABLE` claim stops nothing here, and `issue-triage` § Critique judges it",
@@ -527,7 +536,7 @@ ISSUE_TRIAGE_SPLIT_PIECES = ("created through `issue-write` from § Create step 
 ISSUE_TRIAGE_DUPLICATE_CLOSE = "`gh issue close <N> --duplicate-of <M> --comment <text>`"
 ISSUE_TRIAGE_DUPLICATE_NO_LABEL = "no label"
 DELIVER_DEVIATION_FILED = "when the ruling is the user's, file it through `issue-question` on the item, pause the item and continue the loop with the next"
-DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes through `/verify-claim` before it enters a brief"
+DELIVER_RULING_PREMISE = "a factual premise inside a ruling goes to a `verifier` before it enters a brief"
 DELIVER_OPEN_ENTRY_UNCOMMITTED = "An item with an open ledger entry is not committed to the working branch until the user rules"
 DELIVER_LIVING_BRIEF_PER_ITEM = "**One living brief per item**, carrying the invariant ledger"
 DELIVER_BATCHED_ROUND_FILES_PER_ITEM = "A batched round reads every brief in its batch and files its findings and its artefact under each item it covers; `<round>` counts per item and never restarts."
@@ -783,11 +792,10 @@ class AgentsTest(unittest.TestCase):
             with self.subTest(agent=stem):
                 self.assertEqual(fields["model"], EXPECTED_AGENT_MODELS[stem])
 
-    def test_every_sonnet_and_opus_agent_runs_at_xhigh_effort(self):
+    def test_every_agent_runs_at_xhigh_effort(self):
         for stem, (fields, _) in agent_docs().items():
-            if fields["model"] in {"sonnet", "opus"}:
-                with self.subTest(agent=stem):
-                    self.assertEqual(fields["effort"], "xhigh")
+            with self.subTest(agent=stem):
+                self.assertEqual(fields["effort"], "xhigh")
 
     def test_frontmatter_matches_expected_table(self):
         for stem, (fields, _) in agent_docs().items():
@@ -852,47 +860,27 @@ class AgentsTest(unittest.TestCase):
         offsets = [text.index(passage) for passage in ISSUE_WRITER_BODY]
         self.assertEqual(offsets, sorted(offsets))
 
-    def test_recommender_is_read_only_at_high_effort_and_dispatched_through_issue_question(self):
+    def test_recommender_is_read_only_on_fable_at_xhigh_effort_and_dispatched_through_issue_question(self):
         fields, _ = agent_docs()["recommender"]
         self.assertEqual(fields["tools"], RECOMMENDER_TOOLS)
-        self.assertEqual(fields["effort"], "high")
+        self.assertEqual(fields["model"], "fable")
+        self.assertEqual(fields["effort"], "xhigh")
         self.assertIn("dispatched through issue-question", fields["description"])
 
-    def test_each_tiered_agent_is_named_once_in_tiers_and_its_description_names_its_frontmatter_model(self):
-        docs = agent_docs()
-        tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
-        for stem in DEVELOPER_AGENTS | RESEARCHER_AGENTS:
-            with self.subTest(agent=stem):
-                fields, _ = docs[stem]
-                self.assertEqual(tiers.count(f"| `{stem}` |"), 1)
-                self.assertIn(fields["model"], fields["description"].lower())
+    def test_no_agent_description_names_a_tier_or_a_model(self):
+        for stem, (fields, _) in agent_docs().items():
+            for word in (*TIERS, *sorted(MODELS)):
+                with self.subTest(agent=stem, word=word):
+                    self.assertNotRegex(fields["description"], rf"(?i)\b{word}\b")
 
-    def test_the_three_researcher_agents_preload_the_research_skill_share_one_body_and_differ_in_model(self):
-        docs = agent_docs()
-        researchers = [docs[stem] for stem in sorted(RESEARCHER_AGENTS)]
-        for stem, (fields, _) in zip(sorted(RESEARCHER_AGENTS), researchers):
-            with self.subTest(agent=stem):
-                self.assertEqual(fields["skills"], ["research"])
-        self.assertEqual(len({fields["model"] for fields, _ in researchers}), len(RESEARCHER_AGENTS))
-        self.assertEqual(len({fields["tools"] for fields, _ in researchers}), 1)
-        self.assertEqual(len({body for _, body in researchers}), 1)
+    def test_the_researcher_description_says_the_chat_dispatches_it_per_the_research_routing(self):
+        self.assertIn(RESEARCHER_DISPATCH, agent_docs()["researcher"][0]["description"])
 
-    def test_each_researcher_description_says_the_chat_dispatches_it_per_the_research_routing(self):
-        docs = agent_docs()
-        for stem in RESEARCHER_AGENTS:
-            with self.subTest(agent=stem):
-                self.assertIn(RESEARCHER_DISPATCH, docs[stem][0]["description"])
-
-    def test_each_researcher_description_names_its_research_routing_lane_and_not_the_other_lane_kind(self):
-        docs = agent_docs()
-        for row in RESEARCH_ROUTING_ROWS:
-            _, lane, stem = (cell.strip().strip("`") for cell in row.strip("|").split("|"))
-            with self.subTest(agent=stem):
-                description = docs[stem][0]["description"]
-                self.assertIn(lane, description)
-                for kind in RESEARCH_LANE_KINDS:
-                    if not lane.startswith(kind):
-                        self.assertNotIn(kind, description)
+    def test_the_researcher_description_names_both_research_lane_kinds(self):
+        description = agent_docs()["researcher"][0]["description"]
+        for kind in RESEARCH_LANE_KINDS:
+            with self.subTest(kind=kind):
+                self.assertIn(kind, description)
 
     def test_an_agent_description_says_not_invoked_directly_only_when_a_skill_dispatches_it(self):
         skills = set(skill_docs())
@@ -907,14 +895,6 @@ class AgentsTest(unittest.TestCase):
         for door, text in (("verify-claim", skill_docs()["verify-claim"][0]["description"]), ("verifier", agent_docs()["verifier"][1])):
             with self.subTest(door=door):
                 self.assertIn(BROAD_GATHERING_TO_RESEARCH, text)
-
-    def test_no_fork_target_preloads_a_skill(self):
-        docs = agent_docs()
-        targets = {fields["agent"] for fields, _ in skill_docs().values() if fields.get("context") == "fork"}
-        self.assertTrue(targets)
-        for stem in targets:
-            with self.subTest(agent=stem):
-                self.assertNotIn("skills", docs[stem][0])
 
 
 class RulesTest(unittest.TestCase):
@@ -1032,6 +1012,15 @@ class HooksTest(unittest.TestCase):
         entry = next(e for e in manifest["hooks"]["SubagentStop"] if e["script"] == "verdict-guard.py")
         self.assertEqual(set(entry["matcher"].split("|")), set(verdict_guard.VERDICTS))
 
+    def test_dispatch_guard_runs_on_every_agent_call(self):
+        manifest = json.loads(read(MANIFEST))
+        entries = [e for e in manifest["hooks"]["PreToolUse"] if e["script"] == "dispatch-guard.py"]
+        self.assertEqual([e["matcher"] for e in entries], ["Agent"])
+
+    def test_dispatch_guard_judges_only_agents_the_tree_defines(self):
+        judged = {*dispatch_guard.MODEL_AT_DISPATCH, dispatch_guard.FABLE_ONLY}
+        self.assertLessEqual(judged, {p.stem for p in agent_files()})
+
 
 class ClaudeMdTest(unittest.TestCase):
     def test_at_most_8600_bytes(self):
@@ -1090,8 +1079,17 @@ class ClaudeMdTest(unittest.TestCase):
         self.assertIn(QUESTION_ONE_LINE, paragraph)
         self.assertNotIn(QUESTION_ONE_LINE, rendered)
 
-    def test_built_in_agent_types_are_dispatched_with_opus(self):
-        self.assertIn("a built-in agent type inherits the session's model, so pass `model: opus`", re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
+    def test_developer_researcher_and_reviewer_take_model_on_every_spawn_and_built_in_types_pass_opus(self):
+        self.assertIn(CLAUDE_MD_MODEL_AT_DISPATCH, re.sub(r"\s+", " ", read(CLAUDE / "CLAUDE.md")))
+
+    def test_review_change_and_verify_claim_rows_and_descriptions_both_run_in_their_agent(self):
+        body = read(CLAUDE / "CLAUDE.md")
+        for skill, agent in (("review-change", "reviewer"), ("verify-claim", "verifier")):
+            with self.subTest(skill=skill):
+                row = next(line for line in body.splitlines() if line.startswith(f"| `{skill}` |"))
+                self.assertIn(f"— in a `{agent}` agent", row)
+                fields, _ = skill_docs()[skill]
+                self.assertIn(f"in a {agent} agent", fields["description"])
 
     def test_real_tree_render_has_no_line_with_forks_into_or_select_tool_and_keeps_verify_then_claim(self):
         rendered = render_agents_md.render(CLAUDE / "CLAUDE.md", RULES)
@@ -1516,7 +1514,7 @@ class SkillPassagesTest(unittest.TestCase):
     def test_issue_question_retries_the_recommender_once_on_a_disproven_claim_and_runs_none_only_for_the_ready_question(self):
         _, body = skill_docs()["issue-question"]
         method = section(body, "Method")
-        self.assertIn("/verify-claim", method)
+        self.assertIn("a `verifier`", method)
         self.assertIn("DISPROVEN", method)
         self.assertEqual(method.count(ISSUE_QUESTION_RETRY_ONCE), 1)
         step = next(line for line in method.splitlines() if line.startswith("1. "))
@@ -1851,12 +1849,9 @@ class SkillPassagesTest(unittest.TestCase):
                 _, body = skill_docs()[skill]
                 self.assertIn(call, section(body, heading))
 
-    def test_deliver_rounds_name_both_review_routes_and_point_at_tiers(self):
+    def test_deliver_rounds_dispatch_a_fresh_reviewer_with_its_model_per_tiers(self):
         _, body = skill_docs()["deliver"]
-        rounds = section(body, "Rounds")
-        for passage in ("`reviewer` through `/review-change`", "`reviewer-complex` dispatched by the chat", "`references/tiers.md`"):
-            with self.subTest(passage=passage):
-                self.assertIn(passage, rounds)
+        self.assertIn(DELIVER_FRESH_REVIEWER, section(body, "Rounds"))
 
     def test_deliver_rounds_file_a_deviation_needing_the_user_through_issue_question_pause_the_item_and_verify_a_ruling_premise(self):
         _, body = skill_docs()["deliver"]
@@ -2007,7 +2002,7 @@ class SkillPassagesTest(unittest.TestCase):
         self.assertIn(DESIGN_EXIT_RETURNS_THE_DESIGN, section(body, "Exit"))
         self.assertNotIn("writ", body.lower())
 
-    def test_design_surface_sends_load_bearing_claims_to_verify_claim_before_a_proposal_reaches_the_user_or_returns_to_triage(self):
+    def test_design_surface_sends_load_bearing_claims_to_a_verifier_before_a_proposal_reaches_the_user_or_returns_to_triage(self):
         _, body = skill_docs()["design-surface"]
         self.assertIn(DESIGN_CLAIMS_VERIFIED_BEFORE_THE_USER_OR_TRIAGE, section(body, "Method"))
 
@@ -2024,7 +2019,7 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(sentence=sentence[:60]):
                 self.assertIn("triage", sentence)
 
-    def test_deliver_rounds_send_bulk_and_interpreting_reads_to_the_tier_researcher_and_brief_the_memo(self):
+    def test_deliver_rounds_send_bulk_and_interpreting_reads_to_a_researcher_at_its_tiers_model_and_brief_the_memo(self):
         _, body = skill_docs()["deliver"]
         rounds = section(body, "Rounds")
         for passage in (DELIVER_RESEARCH_READS, DELIVER_MEMO_ENTERS_THE_BRIEF):
@@ -2038,6 +2033,13 @@ class SkillPassagesTest(unittest.TestCase):
             with self.subTest(skill=name):
                 self.assertIn("rules/brief.md", section(docs[name][1], "Input"))
 
+    def test_every_skill_an_agent_preloads_has_an_input_section_stating_the_brief_shape(self):
+        preloaded = {skill for fields, _ in agent_docs().values() for skill in fields.get("skills", [])}
+        self.assertTrue(preloaded)
+        for name in sorted(preloaded):
+            with self.subTest(skill=name):
+                self.assertIn(name, SKILLS_WITH_INPUT)
+
 
 class DeliverReferencesTest(unittest.TestCase):
     def test_deliver_carries_tiers_and_review_loop(self):
@@ -2047,17 +2049,49 @@ class DeliverReferencesTest(unittest.TestCase):
                 self.assertTrue((SKILLS / "deliver" / "references" / name).is_file())
                 self.assertIn(f"references/{name}", body)
 
-    def test_tier_routing_pairs_each_developer_with_the_reviewer_that_reviews_its_items(self):
+    def test_tier_model_table_maps_trivial_to_sonnet_standard_to_opus_and_complex_to_fable(self):
         tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
-        for row in TIER_ROUTING_ROWS:
+        for row in TIER_MODEL_ROWS:
             with self.subTest(row=row):
                 self.assertEqual(tiers.count(row), 1)
+
+    def test_model_section_carries_the_tier_table_the_four_rungs_in_order_the_batch_and_no_item_rules_and_the_recommender_exemption(self):
+        model = section(read(SKILLS / "deliver" / "references" / "tiers.md"), "Model")
+        for row in TIER_MODEL_ROWS:
+            with self.subTest(row=row):
+                self.assertEqual(model.count(row), 1)
+        self.assertIn(MODEL_PRECEDENCE, model)
+        for rung in MODEL_RUNGS:
+            with self.subTest(rung=rung[:24]):
+                self.assertIn(rung, model)
+        offsets = [model.index(rung) for rung in MODEL_RUNGS]
+        self.assertEqual(offsets, sorted(offsets))
+        self.assertLess(model.index(MODEL_PRECEDENCE), offsets[0])
+        self.assertIn(MODEL_BATCH_RULE, model)
+        self.assertIn(MODEL_NO_ITEM_RULE, model)
+        self.assertIn(MODEL_RECOMMENDER_EXEMPTION, model)
+        self.assertLess(offsets[-1], model.index(MODEL_RECOMMENDER_EXEMPTION))
 
     def test_research_routing_sends_an_enumerating_lane_to_trivial_and_an_interpreting_lane_by_its_item_tier(self):
         tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
         for row in RESEARCH_ROUTING_ROWS:
             with self.subTest(row=row):
                 self.assertEqual(tiers.count(row), 1)
+
+    def test_rung_3_cites_the_research_routing_section_by_its_heading_text(self):
+        tiers = read(SKILLS / "deliver" / "references" / "tiers.md")
+        cited = re.search(r"per § (.+?),", MODEL_RUNGS[2]).group(1)
+        self.assertIn(f"\n## {cited}\n", tiers)
+
+    def test_research_routing_table_carries_no_agent_column(self):
+        routing = section(read(SKILLS / "deliver" / "references" / "tiers.md"), "Research routing")
+        rows = [line for line in routing.splitlines() if line.startswith("|")]
+        self.assertTrue(rows)
+        self.assertNotIn("Agent", [cell.strip() for cell in rows[0].strip("|").split("|")])
+        for row in rows:
+            for agent in agent_docs():
+                with self.subTest(row=row, agent=agent):
+                    self.assertNotIn(agent, row)
 
     def test_blast_radius_keeps_an_item_out_of_trivial_and_never_makes_it_complex(self):
         lines = read(SKILLS / "deliver" / "references" / "tiers.md").splitlines()

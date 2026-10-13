@@ -38,7 +38,7 @@ Two Goals are the same outcome when reading both says so — never by scoring th
 
 ## Critique
 
-The item goes to `/review-change` as this brief, in the shape `rules/brief.md` defines:
+The item goes to a `reviewer`, its model per `skills/deliver/references/tiers.md`, as this brief, in the shape `rules/brief.md` defines:
 
 ```text
 Goal:            judge item #N — the right change, at a stated cost, observable when done
@@ -75,7 +75,7 @@ Findings come back in the reviewer's fix-list form, and the verdict decides what
 
 ## Done
 
-Each acceptance line of the item or its draft goes to `/verify-claim` as one claim against the tree and `git log`. One `DISPROVEN` or `UNVERIFIABLE` line is not done: the item stays open. When no verdict cites a commit, the item is not done either: it stays open. `VERIFIED` for every line runs `git branch -r --contains <hash>` on each commit the verdicts cite, against the remote-tracking refs as they stand, with no fetch. A branch printed for every commit is done: the item closes with a comment carrying those commits, and the closed twin too when § Duplicate handed one over. Nothing printed for one of them is not done: the item stays open, each commit without a branch unpushed. An item with no acceptance line, in body or draft, has no § Done.
+Each acceptance line of the item or its draft goes to a `verifier` as one claim against the tree and `git log`. One `DISPROVEN` or `UNVERIFIABLE` line is not done: the item stays open. When no verdict cites a commit, the item is not done either: it stays open. `VERIFIED` for every line runs `git branch -r --contains <hash>` on each commit the verdicts cite, against the remote-tracking refs as they stand, with no fetch. A branch printed for every commit is done: the item closes with a comment carrying those commits, and the closed twin too when § Duplicate handed one over. Nothing printed for one of them is not done: the item stays open, each commit without a branch unpushed. An item with no acceptance line, in body or draft, has no § Done.
 
 ## Ready
 

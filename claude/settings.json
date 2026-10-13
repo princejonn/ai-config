@@ -2,10 +2,11 @@
   "hooks": {
     "PreToolUse": [
       {"matcher": "Bash", "script": "git-guard.py", "timeout": 10},
-      {"matcher": "Edit|Write|NotebookEdit", "script": "write-guard.py", "timeout": 10}
+      {"matcher": "Edit|Write|NotebookEdit", "script": "write-guard.py", "timeout": 10},
+      {"matcher": "Agent", "script": "dispatch-guard.py", "timeout": 5}
     ],
     "SubagentStop": [
-      {"matcher": "reviewer|reviewer-complex|verifier", "script": "verdict-guard.py", "timeout": 5}
+      {"matcher": "reviewer|verifier", "script": "verdict-guard.py", "timeout": 5}
     ],
     "SessionStart": [
       {"matcher": "*", "script": "announce-instructions.py", "timeout": 5},

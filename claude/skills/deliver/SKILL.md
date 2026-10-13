@@ -17,7 +17,7 @@ Explore → plan → implement → verify. Code is committable when a reviewer a
 - Tier every item per `references/tiers.md` before it runs: the tier sets whether `plan-phases` runs first, what the brief carries and where review sits.
 - A one-liner tiered `trivial` runs `implement` inline; every other item gets a brief.
 - A tracker item's brief is the `## Brief` comment `issue-next` hands out, later rulings under `Decisions made:` included. Its paths are repo-relative; the brief written for the agent resolves each against the repository root. For `tier: complex`, the item's latest `## Plan` comment is what `plan-phases` details into the plan the brief carries.
-- Before the item runs, inline or dispatched, the brief is checked against the tree. A file it names that is gone, or a premise `/verify-claim` returns `DISPROVEN` for, contradicts the brief: the contradiction is filed as a question through `issue-question` on the item, `Filed from: deliver § Intake` — the filing takes `ready` off — and nothing runs.
+- Before the item runs, inline or dispatched, the brief is checked against the tree. A file it names that is gone, or a premise a `verifier` returns `DISPROVEN` for, contradicts the brief: the contradiction is filed as a question through `issue-question` on the item, `Filed from: deliver § Intake` — the filing takes `ready` off — and nothing runs.
 
 ## Living brief and ledgers
 
@@ -27,11 +27,11 @@ Explore → plan → implement → verify. Code is committable when a reviewer a
 
 - Once the work is agreed, run it to the end and report; questions belong to `design-surface` or `plan-phases`.
 - Every spawn runs in the background: the orchestrator ends its turn and resumes on the completion notification, so steering arrives mid-run and folds into the running item or the next brief. Steering that changes the nature of the work re-tiers its item as if dispatched fresh.
-- A load-bearing claim goes through `/verify-claim` before it enters a brief or a verdict. Bulk and interpreting reads go to the tier's researcher per `references/tiers.md`, and the memo, not the material, enters the brief.
-- A fresh reviewer each round on the living brief, the tier's per `references/tiers.md`: `reviewer` through `/review-change`, `reviewer-complex` dispatched by the chat. The developer works the fixes it returns.
+- A load-bearing claim goes to a `verifier` before it enters a brief or a verdict. Bulk and interpreting reads go to a `researcher` at its model per `references/tiers.md`, and the memo, not the material, enters the brief.
+- A fresh `reviewer` each round on the living brief, its model per `references/tiers.md`. The developer works the fixes it returns.
 - A `BLOCKED` review names what the brief lacks: complete the brief and re-dispatch; it is not a round and does not count toward the circuit breaker.
 - A `NOT ACCEPTED` review opens a round run per `references/review-loop.md`.
-- A brief — initial or fix round — that would add a surface, change a behaviour, accept a limitation or extend scope beyond the design the user agreed to is a deviation: record it in the living brief with one concrete example (what happens, under what conditions, what the user observes); when the ruling is the user's, file it through `issue-question` on the item, pause the item and continue the loop with the next; a factual premise inside a ruling goes through `/verify-claim` before it enters a brief. An item with an open ledger entry is not committed to the working branch until the user rules; the others commit as they are accepted, and the final report leads with the ledger.
+- A brief — initial or fix round — that would add a surface, change a behaviour, accept a limitation or extend scope beyond the design the user agreed to is a deviation: record it in the living brief with one concrete example (what happens, under what conditions, what the user observes); when the ruling is the user's, file it through `issue-question` on the item, pause the item and continue the loop with the next; a factual premise inside a ruling goes to a `verifier` before it enters a brief. An item with an open ledger entry is not committed to the working branch until the user rules; the others commit as they are accepted, and the final report leads with the ledger.
 - Nothing skips a step because the change looks small; if a step does not apply, say why.
 
 ## Interruptions

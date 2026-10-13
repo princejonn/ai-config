@@ -1,15 +1,13 @@
 ---
 name: review-change
-description: "Reviews one change-set against the brief it was built to on two axes, standards and spec, each with its own disposition. Returns a numbered fix list and ACCEPTED / NOT ACCEPTED, or BLOCKED when the brief is incomplete. Use when a change-set awaits acceptance or a re-review with a ledger. Read-only; fixes go to the developer."
-context: fork
-agent: reviewer
+description: "Reviews one change-set against the brief it was built to on two axes, standards and spec, each with its own disposition. Returns a numbered fix list and ACCEPTED / NOT ACCEPTED, or BLOCKED when the brief is incomplete. Use in a reviewer agent when a change-set awaits acceptance or a re-review with a ledger. Read-only; fixes go to the developer."
 ---
 
 # Review
 
 ## Input
 
-The brief arrives as `$ARGUMENTS` in the shape `rules/brief.md` defines, and adds the change-set to review (files, diff, or range) and, for a re-review, the adjudication ledger and invariant ledger. Without the change-set or the acceptance lines there is nothing to accept: put the question under `## Questions` and end `BLOCKED`.
+The brief takes the shape `rules/brief.md` defines, and adds the change-set to review (files, diff, or range) and, for a re-review, the adjudication ledger and invariant ledger. Without the change-set or the acceptance lines there is nothing to accept: put the question under `## Questions` and end `BLOCKED`.
 
 ## Grounding
 

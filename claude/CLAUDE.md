@@ -33,22 +33,25 @@ brief — a search whose hits are read, a suite run, a dependency source read. T
 passage; this chat judges it. A skill is the procedure; an agent runs one and returns the
 deliverable in the message — compact, complete, never a raw log. When capacity is limited, narrow
 scope, never method; Claude Code refuses a sub-agent once 20 run at once by default, so a fan-out
-is sized to that cap divided by what one lane forks. The repo's agents pin `model` and `effort`, so
-they spawn bare; a built-in agent type inherits the session's model, so pass `model: opus`.
+is sized to that cap divided by what one lane forks. `developer`, `researcher` and `reviewer` take
+`model:` on every spawn, `tester`, `verifier` and `issue-writer` only on the user's request, and
+`recommender` never, each as the precedence in `skills/deliver/references/tiers.md` says; no spawn
+of the repo's agents passes `effort`; a built-in agent type inherits the session's model, so pass
+`model: opus`, or the model the user asked for.
 
 | Skill | Fires when |
 |---|---|
-| `research` | enumerate files and call sites, or interpret a specification — in the tier's researcher agent |
-| `verify-claim` | a count, citation, completeness claim or diagnosis, before it is relayed or acted on — forks into `verifier` |
+| `research` | enumerate files and call sites, or interpret a specification — in a `researcher` agent |
+| `verify-claim` | a count, citation, completeness claim or diagnosis, before it is relayed or acted on — in a `verifier` agent |
 | `design-surface` | a public surface or its meaning changes — with the user before code, or inside `issue-triage` without them |
 | `plan-phases` | the item touches an invariant, state boundary, security or several packages |
-| `implement` | any code change — inline for a one-liner tiered `trivial`, otherwise in the tier's developer agent |
+| `implement` | any code change — inline for a one-liner tiered `trivial`, otherwise in a `developer` agent |
 | `diagnose-root-cause` | behaviour is wrong and the cause is unknown — before implement; a budgeted flake goes to `test` |
 | `second-opinion-codex` | a diff or a plan needs a different model family's attack — Codex, read-only |
 | `author-skill` | a skill, rule or agent in the config repo changes |
 | `test` | tests are the deliverable (`tester`) or need their red-before-green proof, or a brief budgets a sampled run |
 | `author-gherkin` | a public surface needs feature files (`tester`) |
-| `review-change` | a change-set awaits acceptance — forks into `reviewer` |
+| `review-change` | a change-set awaits acceptance — in a `reviewer` agent |
 | `deliver` | agreed work: developer → review rounds → tester → review delta → docs → commit |
 | `commit-item` | an item is accepted and the gate is green |
 | `open-pull-request` | the user asks for a pull request from a pushed branch — preview, then create on their word; never from a brief, a report or a step |

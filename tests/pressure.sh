@@ -7,11 +7,13 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
-SKILLS_DIR="$HERE/../claude/skills"
-AGENTS_DIR="$HERE/../claude/agents"
+CONFIG_DIR="$HERE/../claude"
+CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+SKILLS_DIR="$CONFIG_DIR/skills"
+AGENTS_DIR="$CONFIG_DIR/agents"
 TIMEOUT=120
 GRACE=5
-MAX_TURNS=2
+MAX_TURNS=3
 
 SKILL=()
 FIRE=()
@@ -71,7 +73,7 @@ pair research \
   'Work out what RFC 3986 section 2.3 requires of unreserved characters; the design rests on the answer.' \
   'Review the staged change-set against its brief and give me ACCEPTED or NOT ACCEPTED.'
 pair review-change \
-  'Review the staged change-set against its brief and give me ACCEPTED or NOT ACCEPTED.' \
+  'Review the staged change-set against this brief and give me ACCEPTED or NOT ACCEPTED. Goal: render wraps a name in angle brackets. Acceptance: render("x") → "<x>". Files in scope: widget.py, test_widget.py. Tier: trivial.' \
   'Get Codex to look at this diff.'
 pair second-opinion-codex \
   'Get Codex to attack the premises of this plan before we accept it.' \
@@ -176,7 +178,7 @@ single_quoted() {
 }
 
 command_line() {
-  echo "claude -p $(single_quoted "$1") --output-format stream-json --verbose --max-turns $MAX_TURNS </dev/null"
+  echo "claude -p $(single_quoted "$1") --output-format stream-json --verbose --max-turns $MAX_TURNS --add-dir $(single_quoted "$CONFIG_DIR") $(single_quoted "$CLAUDE_HOME") </dev/null"
 }
 
 if $dry_run; then
@@ -191,7 +193,9 @@ fi
 run_prompt() {
   local stream="$1" prompt="$2" pid waited
   # exec, so $! is claude itself: killing the subshell around it would leave claude orphaned.
-  (cd "$PROJECT" && exec claude -p "$prompt" --output-format stream-json --verbose --max-turns "$MAX_TURNS") \
+  # --add-dir, because the session starts in default permission mode, where a read outside the
+  # project is denied with no one to prompt and a skill's references stay unread.
+  (cd "$PROJECT" && exec claude -p "$prompt" --output-format stream-json --verbose --max-turns "$MAX_TURNS" --add-dir "$CONFIG_DIR" "$CLAUDE_HOME") \
     >"$stream" 2>"$stream.err" </dev/null &
   pid=$!
   waited=0
@@ -290,7 +294,7 @@ command_expanded() {
   local session transcript
   session="$(stream_query "$1" session-id)"
   [ -n "$session" ] || return 1
-  transcript="$(find "${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects" -maxdepth 2 -name "$session.jsonl" 2>/dev/null | head -1)"
+  transcript="$(find "$CLAUDE_HOME/projects" -maxdepth 2 -name "$session.jsonl" 2>/dev/null | head -1)"
   [ -n "$transcript" ] || return 1
   grep -qE "<command-name>/?$2</command-name>" "$transcript"
 }

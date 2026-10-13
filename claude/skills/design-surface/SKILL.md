@@ -23,7 +23,7 @@ The brief takes the shape `rules/brief.md` defines, and adds the binding constra
 4. **Simplicity is the default.** The simplest design that meets the stated requirements wins. Complexity must be justified by a named requirement, not an anticipated one. Flag over-engineering in existing proposals as readily as gaps. **Remove the thing generating the ambiguity; do not add a rule to resolve it.** When two settings can disagree or one name means two things, delete the second source.
 5. **Stress the design before finalizing.** Single points of failure, ordering and race conditions, partial-failure behaviour, migration/rollout path, observability, and how the design bends under the next likely requirement.
 
-Talk interfaces, not internals; concrete type/signature sketches every round. Load-bearing claims go to `verify-claim` before a proposal reaches the user, or returns to `issue-triage` when triage ran it.
+Talk interfaces, not internals; concrete type/signature sketches every round. Load-bearing claims go to a `verifier` before a proposal reaches the user, or returns to `issue-triage` when triage ran it.
 
 ## Output
 

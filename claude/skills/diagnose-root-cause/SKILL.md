@@ -5,6 +5,10 @@ description: "Finds the root cause of a defect before any fix — a reproducer f
 
 # Debug
 
+## Input
+
+The brief takes the shape `rules/brief.md` defines, and adds the symptom — what was seen and what was expected — the command or steps that showed it, and where to start looking.
+
 ## Rule
 
 No fix without a root cause shown by a reproducer, or a probable factor the brief's Decisions made accepts. A fix that makes the symptom go away without a named mechanism is a guess, and a guess that passes is the most expensive kind.

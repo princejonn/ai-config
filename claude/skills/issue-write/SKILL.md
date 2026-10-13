@@ -48,7 +48,7 @@ One refusal per description. If the answer still leaves the same sentence missin
 Every item § Refuse lets through is checked before § Create; one a check stops gets nothing created and returns what stopped it.
 
 - Duplicate: `issue-triage` § Duplicate's comparison set and sameness test, applied to the tracker and to the rest of the set. An open item with the same Goal stops it, returned by number, and so does an item earlier in the set, returned by title; a closed one stops nothing here.
-- Evidence: each load-bearing § Why claim goes through `/verify-claim`. A `DISPROVEN` claim is corrected from the verdict's evidence or struck, and a Goal that rests on a struck claim stops the item, returned with the verdict; an `UNVERIFIABLE` claim stops nothing here, and `issue-triage` § Critique judges it.
+- Evidence: each load-bearing § Why claim goes to a `verifier`. A `DISPROVEN` claim is corrected from the verdict's evidence or struck, and a Goal that rests on a struck claim stops the item, returned with the verdict; an `UNVERIFIABLE` claim stops nothing here, and `issue-triage` § Critique judges it.
 - Done: the Goal read against the tree. A file:line that already satisfies it stops the item, returned with it.
 
 A dependent follows its blocker in the set: a blocker stopped as a duplicate is replaced in the dependent's dependency line by the open item it matched, and a blocker refused or stopped otherwise leaves the dependent uncreated too, returned with the blocker's reason.

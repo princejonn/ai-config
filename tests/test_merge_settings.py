@@ -14,8 +14,9 @@ MANIFEST_HOOKS = {
     "PreToolUse": [
         {"matcher": "Bash", "script": "git-guard.py", "timeout": 10},
         {"matcher": "Edit|Write|NotebookEdit", "script": "write-guard.py", "timeout": 10},
+        {"matcher": "Agent", "script": "dispatch-guard.py", "timeout": 5},
     ],
-    "SubagentStop": [{"matcher": "reviewer|reviewer-complex|verifier", "script": "verdict-guard.py", "timeout": 5}],
+    "SubagentStop": [{"matcher": "reviewer|verifier", "script": "verdict-guard.py", "timeout": 5}],
     "SessionStart": [
         {"matcher": "*", "script": "announce-instructions.py", "timeout": 5},
         {"matcher": "*", "script": "drift-notice.py", "timeout": 10},
@@ -49,10 +50,16 @@ LIVE_HOOKS = {
                 {"type": "command", "command": "python3 /Users/someone/.claude/hooks/write-guard.py", "timeout": 10}
             ],
         },
+        {
+            "matcher": "Agent",
+            "hooks": [
+                {"type": "command", "command": "python3 /Users/someone/.claude/hooks/dispatch-guard.py", "timeout": 5}
+            ],
+        },
     ],
     "SubagentStop": [
         {
-            "matcher": "reviewer|reviewer-complex|verifier",
+            "matcher": "reviewer|verifier",
             "hooks": [
                 {"type": "command", "command": "python3 /Users/someone/.claude/hooks/verdict-guard.py", "timeout": 5}
             ],
@@ -77,9 +84,9 @@ LIVE_PERMISSIONS = {"allow": LIVE_ALLOW, "ask": LIVE_ASK}
 LIVE_SETTINGS = {"hooks": LIVE_HOOKS, "attribution": LIVE_ATTRIBUTION, "permissions": LIVE_PERMISSIONS}
 
 FOREIGN_HANDLER = {"type": "command", "command": "/usr/local/bin/other-hook", "timeout": 5}
-DISPATCH_GUARD_HANDLER = {"type": "command", "command": f"python3 {LIVE_HOOKS_DIR}/dispatch-guard.py", "timeout": 10}
-AGENT_GROUP = {"matcher": "Agent", "hooks": [DISPATCH_GUARD_HANDLER]}
-STRANDED_SETTINGS = {"hooks": {**LIVE_HOOKS, "PreToolUse": [AGENT_GROUP, *LIVE_HOOKS["PreToolUse"]]}}
+RETIRED_GUARD_HANDLER = {"type": "command", "command": f"python3 {LIVE_HOOKS_DIR}/retired-guard.py", "timeout": 10}
+RETIRED_GROUP = {"matcher": "Agent", "hooks": [RETIRED_GUARD_HANDLER]}
+STRANDED_SETTINGS = {"hooks": {**LIVE_HOOKS, "PreToolUse": [RETIRED_GROUP, *LIVE_HOOKS["PreToolUse"]]}}
 
 
 def rendered(document):
@@ -209,7 +216,7 @@ class MergeSettingsTest(unittest.TestCase):
 
     def test_shared_group_keeps_its_handler_outside_the_hooks_dir(self):
         shared = {"type": "command", "command": "/usr/local/bin/shared-hook"}
-        document = {"hooks": {"PreToolUse": [{"matcher": "Agent", "hooks": [DISPATCH_GUARD_HANDLER, shared]}]}}
+        document = {"hooks": {"PreToolUse": [{"matcher": "Agent", "hooks": [RETIRED_GUARD_HANDLER, shared]}]}}
         self.settings.write_text(rendered(document), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -219,7 +226,7 @@ class MergeSettingsTest(unittest.TestCase):
         )
 
     def test_unnamed_handler_outside_the_hooks_dir_is_kept(self):
-        for script in ("/elsewhere/dispatch-guard.py", "/elsewhere/hooks/dispatch-guard.py"):
+        for script in ("/elsewhere/retired-guard.py", "/elsewhere/hooks/retired-guard.py"):
             with self.subTest(script=script):
                 kept = {"matcher": "Agent", "hooks": [{"type": "command", "command": f"python3 {script}", "timeout": 10}]}
                 self.settings.write_text(rendered({"hooks": {"PreToolUse": [kept]}}), encoding="utf-8")
@@ -228,7 +235,7 @@ class MergeSettingsTest(unittest.TestCase):
                 self.assertEqual(self.read()["hooks"]["PreToolUse"], [kept, *LIVE_HOOKS["PreToolUse"]])
 
     def test_unnamed_handler_in_a_subdirectory_of_the_hooks_dir_is_kept(self):
-        kept = {"matcher": "Agent", "hooks": [{"type": "command", "command": f"python3 {LIVE_HOOKS_DIR}/sub/dispatch-guard.py"}]}
+        kept = {"matcher": "Agent", "hooks": [{"type": "command", "command": f"python3 {LIVE_HOOKS_DIR}/sub/retired-guard.py"}]}
         self.settings.write_text(rendered({"hooks": {"PreToolUse": [kept]}}), encoding="utf-8")
         proc = self.run_merge()
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -501,18 +508,26 @@ class MergeSettingsTest(unittest.TestCase):
         commands = [g["hooks"][0]["command"] for g in self.read()["hooks"]["PreToolUse"]]
         self.assertEqual(
             commands,
-            ["python3 '/tmp/with space/hooks/git-guard.py'", "python3 '/tmp/with space/hooks/write-guard.py'"],
+            [
+                "python3 '/tmp/with space/hooks/git-guard.py'",
+                "python3 '/tmp/with space/hooks/write-guard.py'",
+                "python3 '/tmp/with space/hooks/dispatch-guard.py'",
+            ],
         )
 
     def test_hooks_dir_with_space_owns_its_quoted_handler(self):
-        handler = {"type": "command", "command": "python3 '/tmp/with space/hooks/dispatch-guard.py'", "timeout": 10}
+        handler = {"type": "command", "command": "python3 '/tmp/with space/hooks/retired-guard.py'", "timeout": 10}
         self.settings.write_text(rendered({"hooks": {"PreToolUse": [{"matcher": "Agent", "hooks": [handler]}]}}), encoding="utf-8")
         proc = self.run_merge(hooks_dir="/tmp/with space/hooks")
         self.assertEqual(proc.returncode, 0, proc.stderr)
         commands = [g["hooks"][0]["command"] for g in self.read()["hooks"]["PreToolUse"]]
         self.assertEqual(
             commands,
-            ["python3 '/tmp/with space/hooks/git-guard.py'", "python3 '/tmp/with space/hooks/write-guard.py'"],
+            [
+                "python3 '/tmp/with space/hooks/git-guard.py'",
+                "python3 '/tmp/with space/hooks/write-guard.py'",
+                "python3 '/tmp/with space/hooks/dispatch-guard.py'",
+            ],
         )
 
 

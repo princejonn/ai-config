@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Runs one standard-tier research lane on Opus that interprets a specification, dependency or corpus into an evidence memo; dispatched by the chat per the research routing in tiers.md.
+description: Runs one research lane that enumerates or interprets into an evidence memo; dispatched by the chat per the research routing in tiers.md.
 color: red
 model: opus
 effort: xhigh

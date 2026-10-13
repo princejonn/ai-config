@@ -45,7 +45,7 @@ Give the Bash tool `timeout: 600000`, its maximum in milliseconds; the script bo
 
 ## Adjudicate
 
-- Every finding is checked before it reaches the user or a brief: read the code it names, or run `/verify-claim` for a load-bearing one.
+- Every finding is checked before it reaches the user or a brief: read the code it names, or send a load-bearing one to a `verifier`.
 - Drop what is disproved, keep what is confirmed, and say which is which.
 - You own the verdict, not Codex.
 
