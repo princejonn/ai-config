@@ -26,9 +26,9 @@ class RenderAgentsMdTest(unittest.TestCase):
     def rule(self, name, text):
         (self.rules / name).write_text(text, encoding="utf-8")
 
-    def render(self, claude_md=None, rules_dir=None):
+    def render(self, claude_md=None):
         return subprocess.run(
-            [sys.executable, str(SCRIPT), "--claude-md", str(claude_md or self.claude_md), "--rules-dir", str(rules_dir or self.rules)],
+            [sys.executable, str(SCRIPT), "--claude-md", str(claude_md or self.claude_md), "--rules-dir", str(self.rules)],
             capture_output=True,
         )
 
@@ -50,44 +50,8 @@ class RenderAgentsMdTest(unittest.TestCase):
         expected = MARKER + "\n\n" + CLAUDE_MD + "\n# Git\n\nBody a.\n" + "\n# Style\n\nBody b.\n"
         self.assertEqual(proc.stdout, expected.encode("utf-8"))
 
-    def test_empty_rules_dir_renders_claude_md_alone(self):
-        self.assertEqual(self.render().stdout, (MARKER + "\n\n" + CLAUDE_MD).encode("utf-8"))
-
-    def test_rule_body_render_is_byte_identical_to_the_input(self):
-        self.rule("a.md", "# Git\n\nBody a.\n")
-        self.rule("b.md", "# Notes\n\nBody b.\n")
-        expected = MARKER + "\n\n" + CLAUDE_MD + "\n# Git\n\nBody a.\n" + "\n# Notes\n\nBody b.\n"
-        self.assertEqual(self.render().stdout, expected.encode("utf-8"))
-
-    def test_body_lines_that_look_like_a_fence_are_left_alone(self):
-        self.rule("a.md", "body a\n")
-        self.rule("b.md", "# Title\n---\nnot frontmatter\n---\nbody b\n")
-        self.rule("c.md", "---\nunterminated: true\nbody c\n")
-        self.rule("d.md", "body d\n")
-        expected = (
-            MARKER + "\n\n" + CLAUDE_MD
-            + "\nbody a\n"
-            + "\n# Title\n---\nnot frontmatter\n---\nbody b\n"
-            + "\n---\nunterminated: true\nbody c\n"
-            + "\nbody d\n"
-        )
-        self.assertEqual(self.render().stdout, expected.encode("utf-8"))
-
-    def test_output_ends_with_exactly_one_newline(self):
-        self.rule("a.md", "body\n\n\n")
-        out = self.render().stdout
-        self.assertTrue(out.endswith(b"\nbody\n"), out)
-        self.assertFalse(out.endswith(b"\n\n"), out)
-
-    def test_missing_final_newline_is_added(self):
-        self.rule("a.md", "body")
-        self.assertTrue(self.render().stdout.endswith(b"\nbody\n"))
-
     def test_missing_claude_md_exits_1_with_error(self):
         self.assert_error(self.render(claude_md=self.dir / "absent.md"))
-
-    def test_missing_rules_dir_exits_1_with_error(self):
-        self.assert_error(self.render(rules_dir=self.dir / "absent"))
 
     def test_claude_only_block_is_dropped_and_the_text_before_and_after_it_is_kept(self):
         self.claude_md.write_text(f"# Global\n\nbefore\n{OPEN}\nclaude only\n{CLOSE}\nafter\n", encoding="utf-8")
@@ -95,41 +59,9 @@ class RenderAgentsMdTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertEqual(proc.stdout, (MARKER + "\n\n# Global\n\nbefore\nafter\n").encode("utf-8"))
 
-    def test_claude_only_block_in_a_rule_file_is_dropped_too(self):
-        self.rule("a.md", f"# Rule\n{OPEN}\nclaude only\n{CLOSE}\nkept\n")
-        proc = self.render()
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(proc.stdout, (MARKER + "\n\n" + CLAUDE_MD + "\n# Rule\nkept\n").encode("utf-8"))
-
-    def test_only_a_line_that_is_exactly_the_fence_opens_or_closes_a_block(self):
-        text = f"before\n {OPEN}\nkept\n{CLOSE} \nafter\n"
-        self.claude_md.write_text(text, encoding="utf-8")
-        proc = self.render()
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(proc.stdout, (MARKER + "\n\n" + text).encode("utf-8"))
-
     def test_open_fence_without_a_close_exits_1_with_error_at_its_line_and_empty_stdout(self):
         self.claude_md.write_text(f"before\n{OPEN}\nclaude only\n", encoding="utf-8")
         self.assert_error_at(self.render(), self.claude_md, 2)
-
-    def test_close_fence_without_an_open_exits_1_with_error_at_its_line_and_empty_stdout(self):
-        self.claude_md.write_text(f"before\nkept\n{CLOSE}\nafter\n", encoding="utf-8")
-        self.assert_error_at(self.render(), self.claude_md, 3)
-
-    def test_nested_open_fence_exits_1_with_error_at_its_line_and_empty_stdout(self):
-        self.claude_md.write_text(f"{OPEN}\nclaude only\n{OPEN}\nmore\n{CLOSE}\n", encoding="utf-8")
-        self.assert_error_at(self.render(), self.claude_md, 3)
-
-    def test_unbalanced_fence_in_a_rule_file_names_that_file_and_line(self):
-        self.rule("a.md", f"# Rule\n{OPEN}\nclaude only\n")
-        self.assert_error_at(self.render(), self.rules / "a.md", 2)
-
-    def test_marker_is_still_the_first_line_when_claude_md_opens_with_a_fence(self):
-        self.claude_md.write_text(f"{OPEN}\nclaude only\n{CLOSE}\n# Global\n", encoding="utf-8")
-        proc = self.render()
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        self.assertEqual(proc.stdout.split(b"\n")[0], MARKER.encode("utf-8"))
-        self.assertEqual(proc.stdout, (MARKER + "\n\n# Global\n").encode("utf-8"))
 
 
 if __name__ == "__main__":

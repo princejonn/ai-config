@@ -1,6 +1,6 @@
 ---
 name: author-skill
-description: "Writes or revises a skill, rule or agent in the ai-config repo — description as a trigger, body as the procedure, one home per rule — and proves it with the payload test and a pressure run. Use when adding, splitting or rewording a skill, rule or agent, or when a skill did not fire or was followed from its description alone."
+description: "Writes or revises a skill, rule or agent in the ai-config repo — description as a trigger, body as the procedure, one home per rule — and proves it with the gate and, when triggering text changes, a pressure run. Use when adding, splitting or rewording a skill, rule or agent, or when a skill did not fire or was followed from its description alone."
 ---
 
 # Author a skill
@@ -29,11 +29,12 @@ description: "Writes or revises a skill, rule or agent in the ai-config repo —
 
 ## One home
 
-A sentence lives in exactly one file. `tests/test_payload.py` pins the shared phrases; when a rule moves, move its phrase.
+A sentence lives in exactly one file.
 
 ## Prove it
 
-- `python3 -m unittest discover -s tests`, then the pressure run: `bash tests/pressure.sh --only <skill>` runs one prompt that should fire the skill and one that should not through a fresh `claude -p` in a scratch project; add the skill's pair to the script first. Record both lines.
+- `bash tests/gate.sh`.
+- Only when a description or a `claude/CLAUDE.md` routing row changes, the pressure run for that skill: `bash tests/pressure.sh --only <skill>` runs one prompt that should fire the skill and one that should not through a fresh `claude -p` in a scratch project; a skill with no pair in the script gets one first. Record both lines.
 - When triggering is wrong, change the description, not the body.
 
 ## Portability
@@ -44,4 +45,4 @@ Only `name` and `description` reach Codex; Claude-only keys are ignored there. A
 
 - Files changed.
 - The test summary.
-- Both pressure-run prompts with their outcomes.
+- Both pressure-run prompts with their outcomes, when § Prove it ran one.

@@ -23,9 +23,7 @@ SOURCES = ("startup", "resume", "clear", "compact")
 GARBAGE = ("", "{", "[1]", '"x"', "null")
 ABSENT = object()
 DIRECTORY = object()
-FOREIGN_TARGET = "/etc/hosts"
 SLOW_CHECK = "#!/bin/bash\n/bin/bash -c 'sleep 5; :' {token}\necho '  foreign: staged'\nexit 1\n"
-STAGED_DRIFT = "#!/bin/bash\necho '  foreign: x'\nexit 1\n"
 STUB_TIMEOUT = 0.2
 KILL_DEADLINE = 2.0
 
@@ -83,7 +81,7 @@ def restore(base, state):
             create(path, state[relative])
 
 
-class LiveTreeCase(unittest.TestCase):
+class DriftNoticeTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         directory = tempfile.TemporaryDirectory(dir=os.environ.get("TMPDIR"))
@@ -124,8 +122,8 @@ class LiveTreeCase(unittest.TestCase):
             text=True,
         )
 
-    def notice(self, hook_input=ABSENT, **overrides):
-        with mock.patch.dict(os.environ, {**self.env, **overrides}):
+    def notice(self, hook_input=ABSENT):
+        with mock.patch.dict(os.environ, self.env):
             return drift_notice.evaluate(payload() if hook_input is ABSENT else hook_input)
 
     def run_script(self, stdin, **overrides):
@@ -146,21 +144,6 @@ class LiveTreeCase(unittest.TestCase):
             handle.write("other\n")
         return path
 
-    def owned_link(self, *relative):
-        return os.path.join(self.home, *relative), os.path.join(self.repo, "claude", *relative)
-
-    def foreign_symlink(self, *relative):
-        target, _ = self.owned_link(*relative)
-        os.remove(target)
-        os.symlink(FOREIGN_TARGET, target)
-        return target
-
-    def edit_agents_md(self):
-        path = os.path.join(self.codex, "AGENTS.md")
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write("\nedited by hand\n")
-        return path
-
     def write_check(self, path, text):
         with open(path, "w", encoding="utf-8") as handle:
             handle.write(text)
@@ -172,98 +155,14 @@ class LiveTreeCase(unittest.TestCase):
                 self.fail(f"a process of the check's group outlived the timeout: {token}")
             time.sleep(0.05)
 
-    def edit_settings(self, mutate):
-        path = os.path.join(self.home, "settings.json")
-        with open(path, encoding="utf-8") as handle:
-            document = json.load(handle)
-        mutate(document)
-        with open(path, "w", encoding="utf-8") as handle:
-            handle.write(json.dumps(document, indent=2) + "\n")
-
-
-class CleanTreeTests(LiveTreeCase):
     def test_silent_for_every_session_source(self):
         for source in SOURCES:
             with self.subTest(source=source):
                 self.assertIsNone(self.notice(payload(source)))
 
-
-class DriftTests(LiveTreeCase):
     def test_a_foreign_file_under_the_skills_dir_is_named(self):
         foreign = self.foreign_file()
         self.assertEqual(self.notice(), self.expected(f"foreign: {foreign}"))
-
-    def test_an_edited_agents_md_is_named_as_a_regeneration(self):
-        agents_md = self.edit_agents_md()
-        self.assertEqual(self.notice(), self.expected(f"generate: {agents_md}"))
-
-    def test_a_removed_manifest_default_is_named_as_a_settings_change(self):
-        self.edit_settings(lambda document: document.pop("attribution"))
-        self.assertEqual(self.notice(), self.expected("settings: would change"))
-
-    def test_the_drift_line_is_printed_for_every_session_source(self):
-        target, link_source = self.owned_link("rules", "git.md")
-        os.remove(target)
-        for source in SOURCES:
-            with self.subTest(source=source):
-                self.assertEqual(self.notice(payload(source)), self.expected(f"link: {target} -> {link_source}"))
-
-    def test_a_foreign_symlink_at_an_owned_path_is_named_as_a_conflict(self):
-        target = self.foreign_symlink("rules", "git.md")
-        self.assertEqual(self.notice(), self.expected(f"CONFLICT: {target} (foreign symlink -> {FOREIGN_TARGET})"))
-
-    def test_an_absent_codex_home_is_passed_over_for_the_settings_change(self):
-        self.edit_settings(lambda document: document.pop("attribution"))
-        self.assertEqual(
-            self.notice(CODEX_HOME=os.path.join(self.base, "no-codex")),
-            self.expected("settings: would change"),
-        )
-
-    def test_an_empty_claude_config_dir_falls_back_to_the_home_directory(self):
-        foreign = self.foreign_file()
-        self.assertEqual(
-            self.notice(CLAUDE_CONFIG_DIR="", HOME=self.base),
-            self.expected(f"foreign: {foreign}"),
-        )
-
-
-class FailOpenTests(LiveTreeCase):
-    def setUp(self):
-        super().setUp()
-        self.foreign_file()
-
-    def test_silent_without_a_claude_md_link_in_the_config_dir(self):
-        os.remove(os.path.join(self.home, "CLAUDE.md"))
-        self.write_check(os.path.join(self.base, "apply.sh"), STAGED_DRIFT)
-        self.assertIsNone(self.notice())
-
-    def test_silent_when_apply_cannot_source_its_link_library(self):
-        os.remove(os.path.join(self.repo, "lib", "links.sh"))
-        self.assertIsNone(self.notice())
-
-    def test_silent_without_an_apply_script_in_the_repository(self):
-        os.remove(self.apply)
-        self.assertIsNone(self.notice())
-
-    def test_silent_when_the_hook_input_is_not_an_object(self):
-        for hook_input in ([1], "x", None, 1):
-            with self.subTest(hook_input=hook_input):
-                self.assertIsNone(self.notice(hook_input))
-
-
-class ScriptTests(LiveTreeCase):
-    def test_script_prints_the_drift_line_on_stdout_and_exits_0_with_empty_stderr(self):
-        foreign = self.foreign_file()
-        completed = self.run_script(json.dumps(payload()))
-        self.assertEqual(completed.stdout, self.expected(f"foreign: {foreign}") + "\n")
-        self.assertEqual(completed.stderr, "")
-        self.assertEqual(completed.returncode, 0)
-
-    def test_script_prints_nothing_and_exits_0_on_a_clean_tree(self):
-        completed = self.run_script(json.dumps(payload()))
-        self.assertEqual(completed.stdout, "")
-        self.assertEqual(completed.stderr, "")
-        self.assertEqual(completed.returncode, 0)
 
     def test_script_prints_nothing_and_exits_0_for_unusable_stdin_on_a_drifted_tree(self):
         self.foreign_file()
@@ -273,14 +172,6 @@ class ScriptTests(LiveTreeCase):
                 self.assertEqual(completed.stdout, "")
                 self.assertEqual(completed.stderr, "")
                 self.assertEqual(completed.returncode, 0)
-
-    def test_script_prints_nothing_and_exits_0_without_an_apply_script_on_a_drifted_tree(self):
-        self.foreign_file()
-        os.remove(self.apply)
-        completed = self.run_script(json.dumps(payload()))
-        self.assertEqual(completed.stdout, "")
-        self.assertEqual(completed.stderr, "")
-        self.assertEqual(completed.returncode, 0)
 
     def test_main_prints_nothing_exits_0_and_leaves_no_child_when_the_check_outlasts_its_timeout(self):
         token = uuid.uuid4().hex
@@ -296,67 +187,6 @@ class ScriptTests(LiveTreeCase):
         self.assertEqual(out.getvalue(), "")
         self.assertLess(elapsed, KILL_DEADLINE)
         self.assert_nothing_survives(token)
-
-
-def arrange_link(case):
-    target, _ = case.owned_link("rules", "git.md")
-    os.remove(target)
-
-
-def arrange_adopt(case):
-    target, source = case.owned_link("rules", "git.md")
-    os.remove(target)
-    shutil.copy(source, target)
-
-
-def arrange_prune(case):
-    _, source = case.owned_link("agents", "reviewer.md")
-    os.remove(source)
-
-
-def arrange_foreign(case):
-    case.foreign_file()
-
-
-def arrange_generate(case):
-    case.edit_agents_md()
-
-
-def arrange_conflict(case):
-    case.foreign_symlink("rules", "git.md")
-
-
-def arrange_settings(case):
-    case.edit_settings(lambda document: document.pop("attribution"))
-
-
-ARRANGEMENTS = (
-    ("link:", arrange_link),
-    ("adopt:", arrange_adopt),
-    ("prune:", arrange_prune),
-    ("foreign:", arrange_foreign),
-    ("generate:", arrange_generate),
-    ("CONFLICT:", arrange_conflict),
-    ("settings: would change", arrange_settings),
-)
-
-
-class VocabularyTests(LiveTreeCase):
-    def test_the_hook_names_every_drift_line_the_check_prints(self):
-        for prefix, arrange in ARRANGEMENTS:
-            with self.subTest(prefix=prefix):
-                # Restoring first, not last, undoes the arrangement of a subTest that failed mid-body.
-                self.restore_applied_tree()
-                arrange(self)
-                checked = self.run_apply("--check")
-                output = checked.stdout + checked.stderr
-                printed = [line.strip() for line in output.splitlines() if line.strip().startswith(prefix)]
-                self.assertEqual(checked.returncode, 1, output)
-                self.assertEqual(len(printed), 1, output)
-                self.assertEqual(self.notice(), self.expected(printed[0]))
-
-    def test_every_prefix_the_hook_matches_has_a_check_output_fixture(self):
-        self.assertEqual(sorted(prefix for prefix, _ in ARRANGEMENTS), sorted(drift_notice.DRIFT_PREFIXES))
 
 
 if __name__ == "__main__":

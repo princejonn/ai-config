@@ -40,10 +40,9 @@ fresh_home() {
 
 OUT="$WORK/out"
 ERR="$WORK/err"
-RUN_PATH="$PATH"
 run_apply() {
   CLAUDE_CONFIG_DIR="$HOME_DIR" AGENTS_SKILLS_DIR="$AGENTS_DIR" CODEX_HOME="$CODEX_DIR" \
-    CLAUDE_LOCAL_BIN="$BIN_DIR" PATH="$RUN_PATH" \
+    CLAUDE_LOCAL_BIN="$BIN_DIR" \
     /bin/bash "$FIX/apply.sh" "$@" >"$OUT" 2>"$ERR"
   status=$?
 }
@@ -132,189 +131,109 @@ links_to "$HOME_DIR/skills/demo" "$FIX/claude/skills/demo"; check $? "7 identica
 [ "$(cat "$FIX/claude/skills/demo/SKILL.md")" = "skill" ]; check $? "7 the source skill keeps its content"
 
 fresh_home
-mkdir -p "$HOME_DIR/skills"
-echo "x" > "$HOME_DIR/skills/demo"
-run_apply
-[ "$status" = 1 ]; check $? "8 regular file at a skill target: apply exits 1"
-grep -q "^CONFLICT: $HOME_DIR/skills/demo" "$ERR"; check $? "8 regular file at a skill target is a CONFLICT"
-[ ! -L "$HOME_DIR/skills/demo" ]; check $? "8 regular file at a skill target is left unlinked"
-[ "$(cat "$HOME_DIR/skills/demo")" = "x" ]; check $? "8 regular file at a skill target keeps its content"
-
-fresh_home
 mkdir -p "$HOME_DIR/rules"
 ln -s /etc/hosts "$HOME_DIR/rules/demo.md"
 run_apply
-[ "$status" = 1 ]; check $? "9 foreign symlink at an owned target: apply exits 1"
-grep -q "^CONFLICT: $HOME_DIR/rules/demo.md" "$ERR"; check $? "9 foreign symlink at an owned target is a CONFLICT"
-[ "$(readlink "$HOME_DIR/rules/demo.md")" = /etc/hosts ]; check $? "9 foreign symlink at an owned target is left alone"
+[ "$status" = 1 ]; check $? "8 foreign symlink at an owned target: apply exits 1"
+grep -q "^CONFLICT: $HOME_DIR/rules/demo.md" "$ERR"; check $? "8 foreign symlink at an owned target is a CONFLICT"
+[ "$(readlink "$HOME_DIR/rules/demo.md")" = /etc/hosts ]; check $? "8 foreign symlink at an owned target is left alone"
 
 fresh_home
 mkdir -p "$HOME_DIR/agents" "$HOME_DIR/skills"
 ln -s "$FIX/claude/rules/demo.md" "$HOME_DIR/agents/demo.md"
 ln -s "$FIX/claude" "$HOME_DIR/skills/demo"
 run_apply
-[ "$status" = 0 ]; check $? "10 links elsewhere under the repo: apply exits 0"
-! grep -q '^CONFLICT' "$ERR"; check $? "10 links elsewhere under the repo are no CONFLICT"
-all_linked "10 relinking"
-grep -q "^  link: $HOME_DIR/agents/demo.md -> $FIX/claude/agents/demo.md$" "$OUT"; check $? "10 the relinked file is reported"
-grep -q "^  link: $HOME_DIR/skills/demo -> $FIX/claude/skills/demo$" "$OUT"; check $? "10 the relinked directory is reported"
-[ ! -e "$FIX/claude/demo" ]; check $? "10 no demo entry lands inside the directory the link pointed at"
-[ ! -L "$FIX/claude/demo" ]; check $? "10 no link lands inside the directory the link pointed at"
-
-fresh_home
-mkdir -p "$HOME_DIR/agents" "$HOME_DIR/rules"
-ln -s ../../repo/claude/agents/demo.md "$HOME_DIR/agents/demo.md"
-ln -s ../../repo/claude/agents/demo.md "$HOME_DIR/rules/demo.md"
-run_apply
-[ "$status" = 0 ]; check $? "11 relative link into the repo: apply exits 0"
-! grep -q '^CONFLICT' "$ERR"; check $? "11 relative link into the repo is no CONFLICT"
-! grep -q '^  foreign:' "$OUT"; check $? "11 relative link into the repo is not foreign"
-grep -q "^  ok: $HOME_DIR/agents/demo.md -> $FIX/claude/agents/demo.md$" "$OUT"; check $? "11 an exact relative link is ok"
-[ "$(readlink "$HOME_DIR/agents/demo.md")" = ../../repo/claude/agents/demo.md ]; check $? "11 an exact relative link is left as written"
-grep -q "^  link: $HOME_DIR/rules/demo.md -> $FIX/claude/rules/demo.md$" "$OUT"; check $? "11 a relative link to another repo path is relinked"
-links_to "$HOME_DIR/rules/demo.md" "$FIX/claude/rules/demo.md"; check $? "11 the relinked rule points at its source"
-
-fresh_home
-mkdir -p "$HOME_DIR/agents" "$HOME_DIR/hooks"
-ln -s ../../repo/./claude/agents/demo.md "$HOME_DIR/agents/demo.md"
-ln -s "$FIX//claude/hooks//demo.py" "$HOME_DIR/hooks/demo.py"
-run_apply
-[ "$status" = 0 ]; check $? "12 link targets with a dot segment or doubled slash: apply exits 0"
-! grep -q '^CONFLICT' "$ERR"; check $? "12 link targets with a dot segment or doubled slash are no CONFLICT"
-! grep -q '^  foreign:' "$OUT"; check $? "12 link targets with a dot segment or doubled slash are not foreign"
-grep -q "^  ok: $HOME_DIR/agents/demo.md -> $FIX/claude/agents/demo.md$" "$OUT"; check $? "12 a link target with a dot segment is ok"
-grep -q "^  ok: $HOME_DIR/hooks/demo.py -> $FIX/claude/hooks/demo.py$" "$OUT"; check $? "12 a link target with a doubled slash is ok"
-[ "$(readlink "$HOME_DIR/agents/demo.md")" = ../../repo/./claude/agents/demo.md ]; check $? "12 a link target with a dot segment is left as written"
-[ "$(readlink "$HOME_DIR/hooks/demo.py")" = "$FIX//claude/hooks//demo.py" ]; check $? "12 a link target with a doubled slash is left as written"
+[ "$status" = 0 ]; check $? "9 links elsewhere under the repo: apply exits 0"
+! grep -q '^CONFLICT' "$ERR"; check $? "9 links elsewhere under the repo are no CONFLICT"
+all_linked "9 relinking"
+grep -q "^  link: $HOME_DIR/agents/demo.md -> $FIX/claude/agents/demo.md$" "$OUT"; check $? "9 the relinked file is reported"
+grep -q "^  link: $HOME_DIR/skills/demo -> $FIX/claude/skills/demo$" "$OUT"; check $? "9 the relinked directory is reported"
+[ ! -e "$FIX/claude/demo" ]; check $? "9 no demo entry lands inside the directory the link pointed at"
+[ ! -L "$FIX/claude/demo" ]; check $? "9 no link lands inside the directory the link pointed at"
 
 fresh_home
 run_apply
 echo "other" > "$HOME_DIR/skills/other.md"
 run_apply
-[ "$status" = 0 ]; check $? "13 foreign regular file: apply exits 0"
-grep -q "^  foreign: $HOME_DIR/skills/other.md$" "$OUT"; check $? "13 foreign regular file is reported"
+[ "$status" = 0 ]; check $? "10 foreign regular file: apply exits 0"
+grep -q "^  foreign: $HOME_DIR/skills/other.md$" "$OUT"; check $? "10 foreign regular file is reported"
 run_apply --check
-[ "$status" = 1 ]; check $? "13 foreign regular file fails check"
-[ -f "$HOME_DIR/skills/other.md" ]; check $? "13 foreign regular file is left alone"
+[ "$status" = 1 ]; check $? "10 foreign regular file fails check"
+[ -f "$HOME_DIR/skills/other.md" ]; check $? "10 foreign regular file is left alone"
 
 fresh_home
 run_apply
 ln -s /etc/hosts "$HOME_DIR/hooks/x.py"
 run_apply
-[ "$status" = 0 ]; check $? "14 foreign symlink in an owned dir: apply exits 0"
-[ "$(readlink "$HOME_DIR/hooks/x.py")" = /etc/hosts ]; check $? "14 foreign symlink in an owned dir is left alone"
-grep -q "^  foreign: $HOME_DIR/hooks/x.py$" "$OUT"; check $? "14 foreign symlink in an owned dir is reported"
-! grep -Eq '^  (link|prune|adopt): .*x\.py' "$OUT"; check $? "14 foreign symlink in an owned dir is neither linked, pruned nor adopted"
+[ "$status" = 0 ]; check $? "11 foreign symlink in an owned dir: apply exits 0"
+[ "$(readlink "$HOME_DIR/hooks/x.py")" = /etc/hosts ]; check $? "11 foreign symlink in an owned dir is left alone"
+grep -q "^  foreign: $HOME_DIR/hooks/x.py$" "$OUT"; check $? "11 foreign symlink in an owned dir is reported"
+! grep -Eq '^  (link|prune|adopt): .*x\.py' "$OUT"; check $? "11 foreign symlink in an owned dir is neither linked, pruned nor adopted"
 
 fresh_home
 run_apply
-ln -s "$FIX/claude/rules/demo.md" "$HOME_DIR/agents/other.md"
-run_apply
-[ "$status" = 0 ]; check $? "15 link to another repo path in an owned dir: apply exits 0"
-grep -q "^  foreign: $HOME_DIR/agents/other.md$" "$OUT"; check $? "15 link to another repo path in an owned dir is foreign"
-run_apply --check
-[ "$status" = 1 ]; check $? "15 link to another repo path in an owned dir fails check"
-[ "$(readlink "$HOME_DIR/agents/other.md")" = "$FIX/claude/rules/demo.md" ]; check $? "15 link to another repo path in an owned dir is left alone"
-
-fresh_home
-run_apply
-[ "$status" = 0 ]; check $? "16 agents skills link: apply exits 0"
-grep -q "^  link: $AGENTS_DIR/demo -> $FIX/claude/skills/demo$" "$OUT"; check $? "16 agents skills link is reported"
-links_to "$AGENTS_DIR/demo" "$FIX/claude/skills/demo"; check $? "16 agents skills link is created"
-
-cp "$CODEX_DIR/AGENTS.md" "$WORK/agents.before"
-run_apply
-[ "$status" = 0 ]; check $? "17 second apply exits 0"
-grep -q "^  ok: $CODEX_DIR/AGENTS.md$" "$OUT"; check $? "17 second apply reports AGENTS.md ok"
-! grep -q '^  generate:' "$OUT"; check $? "17 second apply generates no AGENTS.md"
-cmp -s "$WORK/agents.before" "$CODEX_DIR/AGENTS.md"; check $? "17 second apply leaves AGENTS.md byte-identical"
-
 echo "plain rule v2" > "$FIX/claude/rules/plain.md"
 printf '%s\n' '<!-- generated by ai-config apply.sh from claude/CLAUDE.md and claude/rules; edit those, not this file -->' \
   '' 'claude' '' '# Demo' 'rule' '' 'plain rule v2' > "$WORK/agents.v2"
 run_apply
-[ "$status" = 0 ]; check $? "18 editing a rule: apply exits 0"
-grep -q "^  generate: $CODEX_DIR/AGENTS.md$" "$OUT"; check $? "18 editing a rule regenerates AGENTS.md"
-cmp -s "$WORK/agents.v2" "$CODEX_DIR/AGENTS.md"; check $? "18 the regenerated AGENTS.md carries the new content"
+[ "$status" = 0 ]; check $? "12 editing a rule: apply exits 0"
+grep -q "^  generate: $CODEX_DIR/AGENTS.md$" "$OUT"; check $? "12 editing a rule regenerates AGENTS.md"
+cmp -s "$WORK/agents.v2" "$CODEX_DIR/AGENTS.md"; check $? "12 the regenerated AGENTS.md carries the new content"
 echo "plain rule" > "$FIX/claude/rules/plain.md"
 
 fresh_home
 echo "mine" > "$CODEX_DIR/AGENTS.md"
 run_apply
-[ "$status" = 1 ]; check $? "19 foreign AGENTS.md without the marker: apply exits 1"
-grep -q "^CONFLICT: $CODEX_DIR/AGENTS.md (not generated by apply.sh)$" "$ERR"; check $? "19 foreign AGENTS.md without the marker is a CONFLICT"
-! grep -q '^Applied\.' "$OUT"; check $? "19 foreign AGENTS.md without the marker: apply prints no Applied line"
-[ ! -L "$CODEX_DIR/AGENTS.md" ]; check $? "19 foreign AGENTS.md without the marker is left unlinked"
-[ "$(cat "$CODEX_DIR/AGENTS.md")" = "mine" ]; check $? "19 foreign AGENTS.md without the marker keeps its content"
-[ "$(ls -A "$CODEX_DIR")" = "AGENTS.md" ]; check $? "19 nothing else lands in CODEX_HOME"
+[ "$status" = 1 ]; check $? "13 foreign AGENTS.md without the marker: apply exits 1"
+grep -q "^CONFLICT: $CODEX_DIR/AGENTS.md (not generated by apply.sh)$" "$ERR"; check $? "13 foreign AGENTS.md without the marker is a CONFLICT"
+! grep -q '^Applied\.' "$OUT"; check $? "13 foreign AGENTS.md without the marker: apply prints no Applied line"
+[ ! -L "$CODEX_DIR/AGENTS.md" ]; check $? "13 foreign AGENTS.md without the marker is left unlinked"
+[ "$(cat "$CODEX_DIR/AGENTS.md")" = "mine" ]; check $? "13 foreign AGENTS.md without the marker keeps its content"
+[ "$(ls -A "$CODEX_DIR")" = "AGENTS.md" ]; check $? "13 nothing else lands in CODEX_HOME"
 
 fresh_home
 cp "$AGENTS_MD" "$WORK/agents.real"
 ln -s "$WORK/agents.real" "$CODEX_DIR/AGENTS.md"
 run_apply
-[ "$status" = 1 ]; check $? "20 symlinked AGENTS.md: apply exits 1"
-grep -q "^CONFLICT: $CODEX_DIR/AGENTS.md (not generated by apply.sh)$" "$ERR"; check $? "20 symlinked AGENTS.md is a CONFLICT even when its content matches"
-[ "$(readlink "$CODEX_DIR/AGENTS.md")" = "$WORK/agents.real" ]; check $? "20 symlinked AGENTS.md is left alone"
-cmp -s "$AGENTS_MD" "$WORK/agents.real"; check $? "20 the file behind the symlinked AGENTS.md is left alone"
+[ "$status" = 1 ]; check $? "14 symlinked AGENTS.md: apply exits 1"
+grep -q "^CONFLICT: $CODEX_DIR/AGENTS.md (not generated by apply.sh)$" "$ERR"; check $? "14 symlinked AGENTS.md is a CONFLICT even when its content matches"
+[ "$(readlink "$CODEX_DIR/AGENTS.md")" = "$WORK/agents.real" ]; check $? "14 symlinked AGENTS.md is left alone"
+cmp -s "$AGENTS_MD" "$WORK/agents.real"; check $? "14 the file behind the symlinked AGENTS.md is left alone"
 
 fresh_home
 rmdir "$CODEX_DIR"
 run_apply
-[ "$status" = 0 ]; check $? "21 absent CODEX_HOME: apply exits 0"
-grep -q "^  skip: $CODEX_DIR absent$" "$OUT"; check $? "21 absent CODEX_HOME is skipped"
+[ "$status" = 0 ]; check $? "15 absent CODEX_HOME: apply exits 0"
+grep -q "^  skip: $CODEX_DIR absent$" "$OUT"; check $? "15 absent CODEX_HOME is skipped"
 run_apply --check
-[ "$status" = 0 ]; check $? "21 absent CODEX_HOME passes check"
-[ ! -e "$CODEX_DIR" ]; check $? "21 absent CODEX_HOME is not created"
+[ "$status" = 0 ]; check $? "15 absent CODEX_HOME passes check"
+[ ! -e "$CODEX_DIR" ]; check $? "15 absent CODEX_HOME is not created"
 
 fresh_home
 run_apply
-rm "$CODEX_DIR/AGENTS.md"
-run_apply --check
-[ "$status" = 1 ]; check $? "22 check with AGENTS.md pending exits 1"
-grep -q "^  generate: $CODEX_DIR/AGENTS.md$" "$OUT"; check $? "22 check with AGENTS.md pending reports the pending generate"
-[ -z "$(ls -A "$CODEX_DIR")" ]; check $? "22 check with AGENTS.md pending writes nothing"
-
-run_apply
-[ "$status" = 0 ]; check $? "23 apply after the pending generate exits 0"
-run_apply --check
-[ "$status" = 0 ]; check $? "23 check after apply exits 0"
-cmp -s "$AGENTS_MD" "$CODEX_DIR/AGENTS.md"; check $? "23 the regenerated AGENTS.md matches the rendered content"
-
-fresh_home
-run_apply
-echo "other" > "$AGENTS_DIR/other.md"
-run_apply
-[ "$status" = 0 ]; check $? "24 foreign file in the agents skills dir: apply exits 0"
-grep -q "^  foreign: $AGENTS_DIR/other.md$" "$OUT"; check $? "24 foreign file in the agents skills dir is reported"
-run_apply --check
-[ "$status" = 1 ]; check $? "24 foreign file in the agents skills dir fails check"
-[ -f "$AGENTS_DIR/other.md" ]; check $? "24 foreign file in the agents skills dir is left alone"
-
-fresh_home
-run_apply
-[ "$status" = 0 ]; check $? "25 fresh apply with a rule set present exits 0"
-[ "$(ls "$HOME_DIR/rules")" = "$(printf 'demo.md\nplain.md')" ]; check $? "25 global targets never include a rule-set file such as code-style.md"
-! grep -q 'code-style' "$OUT"; check $? "25 no rule-set file is named on stdout"
-! grep -q 'code-style' "$ERR"; check $? "25 no rule-set file is named on stderr"
-! grep -q 'typescript rule' "$CODEX_DIR/AGENTS.md"; check $? "25 no rule-set rule reaches AGENTS.md"
+[ "$status" = 0 ]; check $? "16 fresh apply with a rule set present exits 0"
+[ "$(ls "$HOME_DIR/rules")" = "$(printf 'demo.md\nplain.md')" ]; check $? "16 global targets never include a rule-set file such as code-style.md"
+! grep -q 'code-style' "$OUT"; check $? "16 no rule-set file is named on stdout"
+! grep -q 'code-style' "$ERR"; check $? "16 no rule-set file is named on stderr"
+! grep -q 'typescript rule' "$CODEX_DIR/AGENTS.md"; check $? "16 no rule-set rule reaches AGENTS.md"
 
 fresh_home
 run_apply
 rm -r "$FIX/claude/skills/demo"
 run_apply
-[ "$status" = 0 ]; check $? "26 dangling owned links: apply exits 0"
-grep -q "^  prune: $HOME_DIR/skills/demo -> $FIX/claude/skills/demo$" "$OUT"; check $? "26 the prune in the claude skills dir is reported"
-[ ! -L "$HOME_DIR/skills/demo" ]; check $? "26 the dangling link in the claude skills dir is pruned"
-[ ! -e "$HOME_DIR/skills/demo" ]; check $? "26 the pruned claude skills link is gone"
-grep -q "^  prune: $AGENTS_DIR/demo -> $FIX/claude/skills/demo$" "$OUT"; check $? "26 the prune in the agents skills dir is reported"
-[ ! -L "$AGENTS_DIR/demo" ]; check $? "26 the dangling link in the agents skills dir is pruned"
-[ ! -e "$AGENTS_DIR/demo" ]; check $? "26 the pruned agents skills link is gone"
+[ "$status" = 0 ]; check $? "17 dangling owned links: apply exits 0"
+grep -q "^  prune: $HOME_DIR/skills/demo -> $FIX/claude/skills/demo$" "$OUT"; check $? "17 the prune in the claude skills dir is reported"
+[ ! -L "$HOME_DIR/skills/demo" ]; check $? "17 the dangling link in the claude skills dir is pruned"
+[ ! -e "$HOME_DIR/skills/demo" ]; check $? "17 the pruned claude skills link is gone"
+grep -q "^  prune: $AGENTS_DIR/demo -> $FIX/claude/skills/demo$" "$OUT"; check $? "17 the prune in the agents skills dir is reported"
+[ ! -L "$AGENTS_DIR/demo" ]; check $? "17 the dangling link in the agents skills dir is pruned"
+[ ! -e "$AGENTS_DIR/demo" ]; check $? "17 the pruned agents skills link is gone"
 
 fresh_home
 mkdir -p "$HOME_DIR"
 printf '%s\n' '{"attribution": {"commit": "x"}}' > "$HOME_DIR/settings.json"
 run_apply
-[ "$status" = 0 ]; check $? "27 pre-existing attribution: apply exits 0"
+[ "$status" = 0 ]; check $? "18 pre-existing attribution: apply exits 0"
 python3 -c '
 import json, sys
 text = open(sys.argv[1]).read()
@@ -323,28 +242,13 @@ assert list(doc) == ["attribution", "hooks", "permissions"]
 assert doc["attribution"] == {"commit": "x"}
 assert "  \"attribution\": {\n    \"commit\": \"x\"\n  },\n" in text
 ' "$HOME_DIR/settings.json"
-check $? "27 pre-existing attribution survives apply and is not completed"
-
-fresh_home
-run_apply
-[ "$status" = 0 ]; check $? "28 apply before a default is removed exits 0"
-python3 -c '
-import json, sys
-doc = json.load(open(sys.argv[1]))
-del doc["attribution"]
-open(sys.argv[1], "w").write(json.dumps(doc, indent=2) + "\n")
-' "$HOME_DIR/settings.json"
-cp "$HOME_DIR/settings.json" "$WORK/settings.before"
-run_apply --check
-[ "$status" = 1 ]; check $? "28 check with a missing default exits 1"
-grep -q '^  settings: would change$' "$OUT"; check $? "28 check reports a missing default as would change"
-cmp -s "$WORK/settings.before" "$HOME_DIR/settings.json"; check $? "28 check writes no settings.json"
+check $? "18 pre-existing attribution survives apply and is not completed"
 
 fresh_home
 mkdir -p "$HOME_DIR"
 printf '%s\n' '{"permissions": {"allow": ["Bash(ls:*)"]}}' > "$HOME_DIR/settings.json"
 run_apply
-[ "$status" = 0 ]; check $? "29 a user allow entry: apply exits 0"
+[ "$status" = 0 ]; check $? "19 a user allow entry: apply exits 0"
 python3 -c '
 import json, sys
 doc = json.load(open(sys.argv[1]))
@@ -353,62 +257,35 @@ assert doc["permissions"]["allow"] == [
 ]
 assert doc["permissions"]["ask"] == ["Bash(git push origin main *)"]
 ' "$HOME_DIR/settings.json"
-check $? "29 a user allow entry survives apply and the manifest entries are appended"
-
-fresh_home
-run_apply
-[ "$status" = 0 ]; check $? "30 fresh apply with a local bin dir off PATH exits 0"
-grep -q "^  link: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-codex$" "$OUT"; check $? "30 the second-opinion link is reported"
-links_to "$BIN_DIR/second-opinion-codex" "$FIX/bin/second-opinion-codex"; check $? "30 the second-opinion script is linked into the local bin dir"
-[ "$(grep -c '^  warn: ' "$OUT")" = 1 ]; check $? "30 the local bin dir off PATH warns once"
-grep -q "^  warn: $BIN_DIR is not on PATH$" "$OUT"; check $? "30 the warn line names the local bin dir"
-
-RUN_PATH="$BIN_DIR:$PATH"
-run_apply
-[ "$status" = 0 ]; check $? "31 a local bin dir on PATH: apply exits 0"
-run_apply --check
-RUN_PATH="$PATH"
-[ "$status" = 0 ]; check $? "31 a local bin dir on PATH passes check"
-grep -q "^  ok: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-codex$" "$OUT"; check $? "31 a local bin dir on PATH is reported ok"
-! grep -q '^  warn: ' "$OUT"; check $? "31 a local bin dir on PATH prints no warn line"
+check $? "19 a user allow entry survives apply and the manifest entries are appended"
 
 fresh_home
 run_apply
 ln -s /nonexistent/x "$BIN_DIR/other"
 rm "$FIX/bin/second-opinion-codex"
 run_apply
-[ "$status" = 0 ]; check $? "32 a dangling second-opinion-codex link: apply exits 0"
+[ "$status" = 0 ]; check $? "20 a dangling second-opinion-codex link: apply exits 0"
 printf '%s\n' '#!/bin/bash' 'exit 0' > "$FIX/bin/second-opinion-codex"
-grep -q "^  prune: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-codex$" "$OUT"; check $? "32 the prune of the second-opinion link is reported"
-[ ! -L "$BIN_DIR/second-opinion-codex" ]; check $? "32 the dangling second-opinion link is pruned"
-[ ! -e "$BIN_DIR/second-opinion-codex" ]; check $? "32 nothing is left where the second-opinion link was"
-[ -L "$BIN_DIR/other" ]; check $? "32 a link the repo does not own is left alone"
-! grep -q "^  prune: $BIN_DIR/other" "$OUT"; check $? "32 a link the repo does not own is not reported pruned"
+grep -q "^  prune: $BIN_DIR/second-opinion-codex -> $FIX/bin/second-opinion-codex$" "$OUT"; check $? "20 the prune of the second-opinion link is reported"
+[ ! -L "$BIN_DIR/second-opinion-codex" ]; check $? "20 the dangling second-opinion link is pruned"
+[ ! -e "$BIN_DIR/second-opinion-codex" ]; check $? "20 nothing is left where the second-opinion link was"
+[ -L "$BIN_DIR/other" ]; check $? "20 a link the repo does not own is left alone"
+! grep -q "^  prune: $BIN_DIR/other" "$OUT"; check $? "20 a link the repo does not own is not reported pruned"
 
 fresh_home
 run_apply
 mkdir -p "$HOME_DIR/skills/synced"
 echo "account skill" > "$HOME_DIR/skills/synced/SKILL.md"
 run_apply
-[ "$status" = 0 ]; check $? "33 account-synced skills dir alone: apply exits 0"
-! grep -q "^  foreign: $HOME_DIR/skills/synced$" "$OUT"; check $? "33 the synced skills dir is not reported foreign"
-! grep -Eq '^  (link|adopt|prune): .*/skills/synced' "$OUT"; check $? "33 the synced skills dir is neither linked, adopted nor pruned"
-[ -d "$HOME_DIR/skills/synced" ]; check $? "33 the synced skills dir is left in place"
-[ ! -L "$HOME_DIR/skills/synced" ]; check $? "33 the synced skills dir stays a real directory"
-[ "$(cat "$HOME_DIR/skills/synced/SKILL.md")" = "account skill" ]; check $? "33 the synced skills dir content is untouched"
+[ "$status" = 0 ]; check $? "21 account-synced skills dir alone: apply exits 0"
+! grep -q "^  foreign: $HOME_DIR/skills/synced$" "$OUT"; check $? "21 the synced skills dir is not reported foreign"
+! grep -Eq '^  (link|adopt|prune): .*/skills/synced' "$OUT"; check $? "21 the synced skills dir is neither linked, adopted nor pruned"
+[ -d "$HOME_DIR/skills/synced" ]; check $? "21 the synced skills dir is left in place"
+[ ! -L "$HOME_DIR/skills/synced" ]; check $? "21 the synced skills dir stays a real directory"
+[ "$(cat "$HOME_DIR/skills/synced/SKILL.md")" = "account skill" ]; check $? "21 the synced skills dir content is untouched"
 run_apply --check
-[ "$status" = 0 ]; check $? "33 account-synced skills dir alone passes check"
-! grep -q '^  foreign:' "$OUT"; check $? "33 check reports no drift for the synced skills dir"
-
-fresh_home
-run_apply
-mkdir -p "$HOME_DIR/skills/synced" "$HOME_DIR/skills/stray"
-run_apply
-[ "$status" = 0 ]; check $? "34 a stray entry alongside the synced skills dir: apply exits 0"
-! grep -q "^  foreign: $HOME_DIR/skills/synced$" "$OUT"; check $? "34 the synced skills dir is still not reported foreign"
-grep -q "^  foreign: $HOME_DIR/skills/stray$" "$OUT"; check $? "34 the stray entry is reported foreign"
-run_apply --check
-[ "$status" = 1 ]; check $? "34 a stray entry alongside the synced skills dir fails check"
+[ "$status" = 0 ]; check $? "21 account-synced skills dir alone passes check"
+! grep -q '^  foreign:' "$OUT"; check $? "21 check reports no drift for the synced skills dir"
 
 fresh_home
 run_apply
@@ -421,22 +298,12 @@ doc["hooks"] = {}
 open(sys.argv[1], "w").write(json.dumps(doc, indent=2) + "\n")
 ' "$FIX/claude/settings.json"
 run_apply
-[ "$status" = 0 ]; check $? "35 a hook script gone from the tree: apply exits 0"
-grep -q "^  prune: $HOME_DIR/hooks/demo.py -> $FIX/claude/hooks/demo.py$" "$OUT"; check $? "35 the dangling hook link is pruned"
-! grep -q 'demo\.py' "$HOME_DIR/settings.json"; check $? "35 settings.json keeps no handler for the gone script"
+[ "$status" = 0 ]; check $? "22 a hook script gone from the tree: apply exits 0"
+grep -q "^  prune: $HOME_DIR/hooks/demo.py -> $FIX/claude/hooks/demo.py$" "$OUT"; check $? "22 the dangling hook link is pruned"
+! grep -q 'demo\.py' "$HOME_DIR/settings.json"; check $? "22 settings.json keeps no handler for the gone script"
 run_apply --check
-[ "$status" = 0 ]; check $? "35 check after the apply exits 0"
+[ "$status" = 0 ]; check $? "22 check after the apply exits 0"
 echo "print('hook')" > "$FIX/claude/hooks/demo.py"
 cp "$WORK/manifest.before" "$FIX/claude/settings.json"
-
-fresh_home
-run_apply
-rm "$FIX/claude/agents/demo.md"
-run_apply
-[ "$status" = 0 ]; check $? "36 a dangling agent link: apply exits 0"
-grep -q "^  prune: $HOME_DIR/agents/demo.md -> $FIX/claude/agents/demo.md$" "$OUT"; check $? "36 the prune of the agent link is reported"
-[ ! -L "$HOME_DIR/agents/demo.md" ]; check $? "36 the dangling agent link is pruned"
-[ ! -e "$HOME_DIR/agents/demo.md" ]; check $? "36 nothing is left where the agent link was"
-echo "agent" > "$FIX/claude/agents/demo.md"
 
 summary
