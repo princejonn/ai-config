@@ -53,6 +53,6 @@ in place.
 
 The gate is `bash tests/gate.sh`.
 
-`bash tests/pressure.sh` checks skill triggering on demand — per skill one prompt that must fire it
-and one that must not, through `claude -p` in a scratch project — and spends tokens, so the gate
-leaves it out.
+`bash tests/pressure.sh` checks skill triggering on demand — per pair one prompt that must fire its
+skill and one that must not, through `claude -p` in a scratch project — and spends tokens, so the
+gate leaves it out.

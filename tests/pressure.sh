@@ -1,9 +1,11 @@
 #!/bin/bash
-# Pressure-tests skill triggering: per skill one prompt that must fire it and one that must not, run
-# through `claude -p` in a fresh scratch project. Spends tokens; on demand.
+# Pressure-tests skill triggering: per pair one prompt that must fire its skill and one that must not,
+# run through `claude -p` in a fresh scratch project. Spends tokens; on demand.
 # A `/name` prompt the CLI expands emits no Skill event, so its proxy is the session transcript entry.
 # A skill preloaded in an agent emits none either: a dispatch to an agent whose `skills:` in this tree
-# is that one skill counts as it firing.
+# is that one skill counts as it firing, and so does a dispatch to an agent preloading several when
+# claude/CLAUDE.md routes the skill under test to that agent and the dispatch prompt names that skill
+# as a word before any other skill the agent preloads.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd -P)"
@@ -11,6 +13,7 @@ CONFIG_DIR="$HERE/../claude"
 CLAUDE_HOME="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 SKILLS_DIR="$CONFIG_DIR/skills"
 AGENTS_DIR="$CONFIG_DIR/agents"
+ROUTING="$CONFIG_DIR/CLAUDE.md"
 TIMEOUT=120
 GRACE=5
 MAX_TURNS=3
@@ -25,7 +28,7 @@ pair() {
 }
 
 pair author-gherkin \
-  "Write the feature file for CacheKit's public surface in packages/cache." \
+  'Write the feature file for the public surface of widget.py.' \
   'test_render_empty fails one run in twenty on CI — diagnose the flake within 200 runs.'
 pair author-skill \
   'Add a new skill to my ai-config repo for summarising a changelog and word its description so it fires on the right prompts.' \
@@ -43,7 +46,7 @@ pair diagnose-root-cause \
   'render returns the wrong string for an empty name and the cause is not known — find it.' \
   'Prove the pinning test for render goes red before the fix.'
 pair implement \
-  'Add a strict keyword to render in widget.py that raises ValueError on an empty name.' \
+  'Refactor render in widget.py to build its string with an f-string; its output stays the same.' \
   'Which is the better public surface here, a strict flag on render or a separate render_strict function?'
 pair issue-answer \
   'Which questions are open on the tracker and waiting on me? Give me the first one to rule on.' \
@@ -141,16 +144,6 @@ tag_of() {
   if [ "$ordinal" = 0 ]; then echo "$wanted"; else echo "$wanted-$((ordinal + 1))"; fi
 }
 
-missing=""
-for directory in "$SKILLS_DIR"/*/; do
-  name="$(basename "$directory")"
-  indices_of "$name" >/dev/null || missing="$missing $name"
-done
-if [ -n "$missing" ]; then
-  echo "pressure: no prompt pair for:$missing" >&2
-  exit 2
-fi
-
 unknown=""
 for name in "${SKILL[@]}"; do
   [ -d "$SKILLS_DIR/$name" ] || unknown="$unknown $name"
@@ -217,13 +210,13 @@ run_prompt() {
 }
 
 stream_query() {
-  python3 - "$AGENTS_DIR" "$1" "$2" "${3-}" <<'PY'
+  python3 - "$AGENTS_DIR" "$ROUTING" "$1" "$2" "${3-}" <<'PY'
 import json
 import re
 import sys
 from pathlib import Path
 
-agents, stream, question, skill = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
+agents, routing, stream, question, skill = sys.argv[1:6]
 
 
 def preloaded(path):
@@ -232,11 +225,19 @@ def preloaded(path):
     return re.findall(r"[a-z0-9-]+", line.group(1)) if line else []
 
 
-dedicated = {}
-for path in Path(agents).glob("*.md"):
-    skills = preloaded(path)
+preloads = {path.stem: preloaded(path) for path in Path(agents).glob("*.md")}
+routing_table = Path(routing).read_text(encoding="utf-8")
+row = re.search(r"^\| `%s` \|(.*)$" % re.escape(skill), routing_table, re.MULTILINE)
+routed_to = set(re.findall(r"`([^`]+)`", row.group(1))) if row else set()
+
+
+def dispatched_skill(agent, prompt):
+    skills = preloads.get(agent, [])
     if len(skills) == 1:
-        dedicated[path.stem] = skills[0]
+        return skills[0]
+    named = [word for word in re.findall(r"[\w-]+", prompt) if word in skills]
+    return skill if agent in routed_to and named[:1] == [skill] else None
+
 
 session = None
 subtype = ""
@@ -271,7 +272,8 @@ for line in open(stream, encoding="utf-8", errors="replace"):
         if block.get("name") == "Skill":
             name = argument.get("skill")
         elif block.get("name") == "Agent" and isinstance(argument.get("subagent_type"), str):
-            name = dedicated.get(argument["subagent_type"])
+            prompt = argument.get("prompt")
+            name = dispatched_skill(argument["subagent_type"], prompt if isinstance(prompt, str) else "")
         else:
             continue
         if isinstance(name, str):
